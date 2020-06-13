@@ -57,9 +57,9 @@ pub const test_lib = zag.import.git(
 zag's zig interpretation is a complete sham at this point -- again just getting
 things working here. It only checks for public const variable declarations that
 are initialized with a function having three parameters. It assumes the function
-is `zig.import.git`.
+is `zig.import.git()`.
 
-The arguments for `zig.import.git` are the url of the repo, the branch, and
+The arguments for `zig.import.git()` are the url of the repo, the branch, and
 optionally you may tell zag what the root file you want to include as the base
 of the package. If null is given zag will look for a file called `exports.zig`
 in the root of the dependency.
