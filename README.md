@@ -3,7 +3,7 @@
 This project is merely a prototype exploring a simple packaging use case for
 zig, and that's including source from zig-only projects in git repositories. It
 has a lot of limitiations right now, such as `https` only repos and only first
-order dependencies (not dependencies of dependencies) as it's only a prototype
+order dependencies (no dependencies of dependencies) as it's only a prototype
 and I want to get feedback from the community.
 
 ## Methodology
