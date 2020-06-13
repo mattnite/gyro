@@ -71,7 +71,8 @@ that you use in your application code to `@import` the package. Eg:
 const my_lib = @import("test_lib");
 ```
 
-The package file generated will look like this:
+Run zag in your project root to generate the `packages.zig` file (too simple to
+have arguments right now), the contents will look like this:
 
 ```zig
 const std = @import("std");
