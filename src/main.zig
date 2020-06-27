@@ -5,11 +5,14 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const TailQueue = std.TailQueue;
 const OutStream = std.fs.File.OutStream;
+const ChildProcess = std.ChildProcess;
+const ExecResult = std.ExecResult;
 
 const DependencyGraph = struct {
     allocator: *Allocator,
     nodes: TailQueue(Node),
     queue: TailQueue(Node),
+    stdout: ArrayList(ExecResult),
 
     const Self = @This();
 
@@ -19,10 +22,20 @@ const DependencyGraph = struct {
             .allocator = allocator,
             .nodes = TailQueue.init(),
             .queue = TailQueue.init(),
+            .stdout = ArrayList(ExecResult).init(allocator),
         };
 
         // TODO: get cwd of process
         ret.queue.append(try ret.queue.createNode(Node.init(allocator, ".", "", 0), allocator));
+    }
+
+    fn deinit(self: *Self) void {
+        // clean up queues
+        for (self.stdout) |result| {
+            // clean up the stored runner output
+            self.allocator.destroy(result.stdout);
+            self.allocator.destoyr(result.stderr);
+        }
     }
 
     fn process(self: *Self) !void {
@@ -43,10 +56,17 @@ const DependencyGraph = struct {
             }
 
             // compile pkg_runner
+            const result = try front.pkg_runner();
+
+            // TODO: check result
+
+            try self.stdout.append(result);
 
             // TODO: figure out some sort of system for keeping a giant buffer
             // of all the output of the pkg_runners where the strings can live,
             // and figure out how to do line by line iteration
+
+            // iterate lines in result
             var lines = try front.fetch_dependencies();
             for (lines) |line| {
                 // if not in nodes
@@ -112,7 +132,7 @@ const DependencyGraph = struct {
             };
         }
 
-        fn compile_runner() !Runner {
+        fn compile_runner() !ExecResult {
             var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
             defer arena.deinit();
 
@@ -141,8 +161,7 @@ const DependencyGraph = struct {
 
             // TODO: this should just invoke the default step and build the program
             try b.make(&[_][]const u8{});
-
-            return Runner{};
+            return std.ChildProcess.exec(.{});
         }
     };
 };
@@ -182,7 +201,7 @@ pub fn main() anyerror!void {
         \\
     );
 
-    for (node.dependencies.span()) |dep| {
+    for (dep_graph.root.dependencies.span()) |dep| {
         try recursive_print(file_stream, dep, 1);
     }
 
