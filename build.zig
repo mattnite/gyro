@@ -5,12 +5,9 @@ pub fn build(b: *Builder) void {
     const target = b.standardTargetOptions(.{});
     const mode = b.standardReleaseOptions();
 
-    const exe = b.addExecutable("zag", "src/main.zig");
+    const exe = b.addExecutable("zkg", "src/main.zig");
     exe.setTarget(target);
     exe.setBuildMode(mode);
-    exe.addIncludeDir("/usr/include");
-    exe.linkSystemLibrary("git2");
-    exe.linkLibC();
     exe.install();
 
     const run_cmd = exe.run();

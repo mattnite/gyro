@@ -6,13 +6,14 @@ const ArrayList = std.ArrayList;
 const TailQueue = std.TailQueue;
 const OutStream = std.fs.File.OutStream;
 const ChildProcess = std.ChildProcess;
-const ExecResult = std.ExecResult;
+const ExecResult = std.ChildProcess.ExecResult;
+const Builder = std.build.Builder;
 
 const DependencyGraph = struct {
     allocator: *Allocator,
     nodes: TailQueue(Node),
     queue: TailQueue(Node),
-    stdout: ArrayList(ExecResult),
+    results: ArrayList(ExecResult),
 
     const Self = @This();
 
@@ -20,32 +21,41 @@ const DependencyGraph = struct {
     fn init(allocator: *Allocator, path: []const u8) !DependencyGraph {
         var ret = DependencyGraph{
             .allocator = allocator,
-            .nodes = TailQueue.init(),
-            .queue = TailQueue.init(),
-            .stdout = ArrayList(ExecResult).init(allocator),
+            .nodes = TailQueue(Node).init(),
+            .queue = TailQueue(Node).init(),
+            .results = ArrayList(ExecResult).init(allocator),
         };
 
         // TODO: get cwd of process
-        ret.queue.append(try ret.queue.createNode(Node.init(allocator, ".", "", 0), allocator));
+        ret.queue.append(try ret.queue.createNode(try Node.init(allocator, ".", "", 0), allocator));
+        return ret;
     }
 
     fn deinit(self: *Self) void {
-        // clean up queues
-        for (self.stdout) |result| {
-            // clean up the stored runner output
-            self.allocator.destroy(result.stdout);
-            self.allocator.destoyr(result.stderr);
+        for (self.results.span()) |result| {
+            self.allocator.free(result.stdout);
+            self.allocator.free(result.stderr);
+        }
+
+        var cursor = self.queue.pop();
+        while (cursor != null) : (cursor = self.queue.pop()) {
+            self.queue.destroyNode(cursor.?, self.allocator);
+        }
+
+        cursor = self.nodes.pop();
+        while (cursor != null) : (cursor = self.queue.pop()) {
+            self.nodes.destroyNode(cursor.?, self.allocator);
         }
     }
 
     fn process(self: *Self) !void {
         var maybe_front = self.queue.popFirst();
-        iterate: while (maybe_front) : (maybe_front = self.queue.popFirst()) {
+        iterate: while (maybe_front != null) : (maybe_front = self.queue.popFirst()) {
             const front = maybe_front.?.data;
 
             // destroy if it already exists
             var cursor = self.nodes.first;
-            while (cursor != null) : (cursor = cursor.next) {
+            while (cursor != null) : (cursor = cursor.?.next) {
                 const node = cursor.?.data;
                 if (std.mem.eql(u8, front.base_path, node.base_path) and
                     std.mem.eql(u8, front.version, node.version))
@@ -57,28 +67,43 @@ const DependencyGraph = struct {
 
             // compile pkg_runner
             const result = try front.pkg_runner();
+            switch (result.term) {
+                .Exited => |val| {
+                    if (val != 0) {
+                        std.debug.warn("{}", .{result.stderr});
+                        return error.BadExit;
+                    }
+                },
+                .Signal => |signal| {
+                    std.debug.warn("got signal: {}\n", .{signal});
+                    return error.Signal;
+                },
+                .Stopped => |why| {
+                    std.debug.warn("stopped: {}\n", .{why});
+                    return error.Stopped;
+                },
+                .Unknown => |val| {
+                    std.debug.warn("unknown: {}\n", .{val});
+                    return error.Unkown;
+                },
+            }
 
-            // TODO: check result
-
-            try self.stdout.append(result);
-
-            // TODO: figure out some sort of system for keeping a giant buffer
-            // of all the output of the pkg_runners where the strings can live,
-            // and figure out how to do line by line iteration
+            std.debug.warn("{}\n", .{result});
+            try self.results.append(result);
 
             // iterate lines in result
-            var lines = try front.fetch_dependencies();
-            for (lines) |line| {
-                // if not in nodes
-                // set up edges
-                // set depth to current + 1
+            //var lines = try front.fetch_dependencies();
+            //for (lines) |line| {
+            // if not in nodes
+            // set up edges
+            // set depth to current + 1
 
-                // else if it is in nodes and its depth is less than front
-                // increase depth of node (in node list) to depth + 1
-                // destroy dep
+            // else if it is in nodes and its depth is less than front
+            // increase depth of node (in node list) to depth + 1
+            // destroy dep
 
-                // append to queue
-            }
+            // append to queue
+            //}
 
             try self.validate();
         }
@@ -87,7 +112,7 @@ const DependencyGraph = struct {
     /// Naive check for circular dependencies
     fn validate(self: *Self) !void {
         var cursor = self.nodes.first;
-        while (cursor != null) : (cursor = cursor.next) {
+        while (cursor != null) : (cursor = cursor.?.next) {
             const node = cursor.?.data;
 
             for (node.dependencies.span()) |dep| {
@@ -115,6 +140,7 @@ const DependencyGraph = struct {
     };
 
     const Node = struct {
+        allocator: *Allocator,
         dependencies: ArrayList(DependencyEdge),
         dependents: ArrayList(DependentEdge),
 
@@ -124,15 +150,16 @@ const DependencyGraph = struct {
 
         fn init(allocator: *Allocator, base_path: []const u8, version: []const u8, depth: u32) !Node {
             return Node{
-                .dependencies = ArrayList.init(),
-                .dependents = ArrayList(),
+                .allocator = allocator,
+                .dependencies = ArrayList(DependencyEdge).init(allocator),
+                .dependents = ArrayList(DependentEdge).init(allocator),
                 .base_path = base_path,
                 .version = version,
                 .depth = depth,
             };
         }
 
-        fn compile_runner() !ExecResult {
+        fn pkg_runner(self: *const Node) !ExecResult {
             var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
             defer arena.deinit();
 
@@ -151,17 +178,23 @@ const DependencyGraph = struct {
             builder.resolveInstallPrefix();
 
             // normal build script
-            const target = b.standardTargetOptions(.{});
-            const mode = b.standardReleaseOptions();
+            const target = builder.standardTargetOptions(.{});
+            const mode = builder.standardReleaseOptions();
 
-            const exe = b.addExecutable("pkg_runner", "src/pkg_runner.zig");
+            const exe = builder.addExecutable("pkg_runner", "src/pkg_runner.zig");
             exe.setTarget(target);
             exe.setBuildMode(mode);
+            exe.linkSystemLibrary("git2");
+            exe.linkSystemLibrary("c");
+            exe.addIncludeDir(".");
             exe.install();
 
             // TODO: this should just invoke the default step and build the program
-            try b.make(&[_][]const u8{});
-            return std.ChildProcess.exec(.{});
+            try builder.make(&[_][]const u8{});
+            return std.ChildProcess.exec(.{
+                .allocator = self.allocator,
+                .argv = &[_][]const u8{"pkg_runner"},
+            });
         }
     };
 };
@@ -201,7 +234,7 @@ pub fn main() anyerror!void {
         \\
     );
 
-    for (dep_graph.root.dependencies.span()) |dep| {
+    for (dep_graph.nodes.first.?.data.dependencies.span()) |*dep| {
         try recursive_print(file_stream, dep, 1);
     }
 
@@ -212,19 +245,19 @@ fn indent(stream: OutStream, n: usize) !void {
     try stream.writeByteNTimes(' ', n * 4);
 }
 
-fn recursive_print(stream: std.fs.File.OutStream, edge: *DependencyEdge, depth: usize) !void {
+fn recursive_print(stream: std.fs.File.OutStream, edge: *DependencyGraph.DependencyEdge, depth: usize) anyerror!void {
     try indent(stream, depth);
-    try stream.print("Pkg{{]\n", .{});
+    try stream.print("Pkg{{\n", .{});
     try indent(stream, depth + 1);
-    try stream.print(".name = \"{}\",\n", .{});
+    try stream.print(".name = \"{}\",\n", .{"NAME"});
     try indent(stream, depth + 1);
-    try stream.print(".path = \"{}\",\n", .{});
+    try stream.print(".path = \"{}\",\n", .{"PATH"});
 
-    if (node.dependencies.len) {
+    if (edge.node.dependencies.items.len > 0) {
         try indent(stream, depth + 1);
         try stream.print(".dependencies = &[_]Pkg{{\n", .{});
 
-        for (node.dependencies.span()) |dep| {
+        for (edge.node.dependencies.span()) |*dep| {
             try recursive_print(stream, dep, depth + 2);
         }
     } else {
@@ -233,5 +266,5 @@ fn recursive_print(stream: std.fs.File.OutStream, edge: *DependencyEdge, depth: 
     }
 
     try indent(stream, depth + 1);
-    try stream.print(".path = \"{}\",\n", .{});
+    try stream.print(".path = \"{}\",\n", .{"PATH"});
 }

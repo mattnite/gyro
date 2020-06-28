@@ -9,7 +9,7 @@ const default_root = "exports.zig";
 const Allocator = std.mem.Allocator;
 
 fn get_cache() ![]const u8 {
-    if (getenv("ZAG_CACHE")) |cache| {
+    if (getenv("ZKG_CACHE")) |cache| {
         return cache;
     } else {
         return error.NotFound;
