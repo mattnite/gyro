@@ -65,8 +65,8 @@ const DependencyGraph = struct {
                 }
             }
 
-            // compile pkg_runner
-            const result = try front.pkg_runner();
+            // compile zkg_runner
+            const result = try front.zkg_runner();
             switch (result.term) {
                 .Exited => |val| {
                     if (val != 0) {
@@ -91,20 +91,25 @@ const DependencyGraph = struct {
             std.debug.warn("{}\n", .{result});
             try self.results.append(result);
 
-            // iterate lines in result
-            //var lines = try front.fetch_dependencies();
-            //for (lines) |line| {
-            // if not in nodes
-            // set up edges
-            // set depth to current + 1
+            var reader = std.io.fixedBufferStream(result.stdout).reader();
 
-            // else if it is in nodes and its depth is less than front
-            // increase depth of node (in node list) to depth + 1
-            // destroy dep
+            std.debug.warn("fetching dependencies for {} {}\n", .{ front.base_path, front.version });
+            var buf: [4096]u8 = undefined;
+            var line = try reader.readUntilDelimiterOrEof(&buf, '\n');
+            while (line != null) : (line = try reader.readUntilDelimiterOrEof(&buf, '\n')) {
+                std.debug.warn("{}\n", .{line});
+                // if not in nodes
+                // set up edges
+                // set depth to current + 1
 
-            // append to queue
-            //}
+                // else if it is in nodes and its depth is less than front
+                // increase depth of node (in node list) to depth + 1
+                // destroy dep
 
+                // append to queue
+            }
+
+            self.nodes.append(maybe_front.?);
             try self.validate();
         }
     }
@@ -159,7 +164,7 @@ const DependencyGraph = struct {
             };
         }
 
-        fn pkg_runner(self: *const Node) !ExecResult {
+        fn zkg_runner(self: *const Node) !ExecResult {
             var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
             defer arena.deinit();
 
@@ -169,31 +174,37 @@ const DependencyGraph = struct {
             const build_dir = try std.os.getcwd(&build_buf);
             const cache_dir = try std.fs.path.join(allocator, &[_][]const u8{ build_dir, "zig-cache" });
 
-            std.debug.warn("build dir: {}\n", .{build_dir});
-            std.debug.warn("cache dir: {}\n", .{cache_dir});
+            const lib_dir = if (os.getenv("ZKG_LIB")) |dir| dir else "/usr/lib/zig/zkg";
+            const runner_path = try std.fs.path.join(allocator, &[_][]const u8{ lib_dir, "zkg_runner.zig" });
+            const zkg_path = try std.fs.path.join(allocator, &[_][]const u8{ lib_dir, "zkg.zig" });
 
             const builder = try Builder.create(allocator, "zig", build_dir, cache_dir);
             defer builder.destroy();
 
             builder.resolveInstallPrefix();
+            std.debug.warn("install dir: {}\n", .{builder.install_prefix});
 
             // normal build script
             const target = builder.standardTargetOptions(.{});
             const mode = builder.standardReleaseOptions();
 
-            const exe = builder.addExecutable("pkg_runner", "src/pkg_runner.zig");
+            const exe = builder.addExecutable("zkg_runner", runner_path);
             exe.setTarget(target);
             exe.setBuildMode(mode);
             exe.linkSystemLibrary("git2");
             exe.linkSystemLibrary("c");
-            exe.addIncludeDir(".");
+            exe.addPackage(std.build.Pkg{
+                .name = "zkg",
+                .path = zkg_path,
+            });
+            exe.addIncludeDir(lib_dir);
+            exe.addIncludeDir(build_dir);
             exe.install();
 
-            // TODO: this should just invoke the default step and build the program
             try builder.make(&[_][]const u8{});
             return std.ChildProcess.exec(.{
                 .allocator = self.allocator,
-                .argv = &[_][]const u8{"pkg_runner"},
+                .argv = &[_][]const u8{"zig-cache/bin/zkg_runner"},
             });
         }
     };
@@ -208,14 +219,7 @@ pub fn main() anyerror!void {
     var dep_graph = try DependencyGraph.init(allocator, ".");
     defer dep_graph.deinit();
 
-    // steps of the program:
-    // - create root of dependency graph
-    // - compile and run pkg_runner
-    // - read stdout of pkg_runner and create package objects, add package
-    //   objects to graph
     try dep_graph.process();
-
-    // generate package file
     var cache_dir = std.fs.Dir{ .fd = try os.open("zig-cache", os.O_DIRECTORY, 0) };
     defer cache_dir.close();
 
