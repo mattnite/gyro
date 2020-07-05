@@ -25,6 +25,11 @@ Originally I was parsing `imports.zig` at runtime which greatly limited the
 things you could do in that file, but now zkg builds runner executables which
 include the imports file at comptime so you can now leverage zig properly!
 
+## Dependencies
+
+- `libgit2` as a system library
+- `ZKG_CACHE` and `ZKG_LIB` environment variables (see below)
+
 ## Example
 
 This example can be found [here](https://github.com/mattnite/zkg-example). To
