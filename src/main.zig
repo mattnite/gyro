@@ -3,7 +3,6 @@ const os = std.os;
 
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
-const TailQueue = std.TailQueue;
 const OutStream = std.fs.File.OutStream;
 const ChildProcess = std.ChildProcess;
 const ExecResult = std.ChildProcess.ExecResult;
@@ -11,8 +10,8 @@ const Builder = std.build.Builder;
 
 const DependencyGraph = struct {
     allocator: *Allocator,
-    nodes: TailQueue(Node),
-    queue: TailQueue(Node),
+    queue_start: usize,
+    nodes: std.ArrayList(Node),
     results: ArrayList(ExecResult),
 
     const Self = @This();
@@ -21,51 +20,28 @@ const DependencyGraph = struct {
     fn init(allocator: *Allocator, path: []const u8) !DependencyGraph {
         var ret = DependencyGraph{
             .allocator = allocator,
-            .nodes = TailQueue(Node).init(),
-            .queue = TailQueue(Node).init(),
+            .queue_start = 0,
+            .nodes = ArrayList(Node).init(allocator),
             .results = ArrayList(ExecResult).init(allocator),
         };
 
         // TODO: get cwd of process
-        ret.queue.append(try ret.queue.createNode(try Node.init(allocator, ".", "", 0), allocator));
+        try ret.nodes.append(try Node.init(allocator, ".", 0));
         return ret;
     }
 
     fn deinit(self: *Self) void {
+        self.nodes.deinit();
+
         for (self.results.span()) |result| {
             self.allocator.free(result.stdout);
             self.allocator.free(result.stderr);
         }
-
-        var cursor = self.queue.pop();
-        while (cursor != null) : (cursor = self.queue.pop()) {
-            self.queue.destroyNode(cursor.?, self.allocator);
-        }
-
-        cursor = self.nodes.pop();
-        while (cursor != null) : (cursor = self.queue.pop()) {
-            self.nodes.destroyNode(cursor.?, self.allocator);
-        }
     }
 
     fn process(self: *Self) !void {
-        var maybe_front = self.queue.popFirst();
-        iterate: while (maybe_front != null) : (maybe_front = self.queue.popFirst()) {
-            const front = maybe_front.?.data;
-
-            // destroy if it already exists
-            var cursor = self.nodes.first;
-            while (cursor != null) : (cursor = cursor.?.next) {
-                const node = cursor.?.data;
-                if (std.mem.eql(u8, front.base_path, node.base_path) and
-                    std.mem.eql(u8, front.version, node.version))
-                {
-                    self.queue.destroyNode(maybe_front.?, self.allocator);
-                    continue :iterate;
-                }
-            }
-
-            // compile zkg_runner
+        while (self.queue_start < self.nodes.items.len) : (self.queue_start += 1) {
+            var front = &self.nodes.items[self.queue_start];
             const result = try front.zkg_runner();
             switch (result.term) {
                 .Exited => |val| {
@@ -88,38 +64,51 @@ const DependencyGraph = struct {
                 },
             }
 
-            std.debug.warn("{}\n", .{result});
             try self.results.append(result);
+            var it_line = std.mem.tokenize(result.stdout, "\n");
+            iterate: while (it_line.next()) |line| {
+                var name: []const u8 = undefined;
+                var path: []const u8 = undefined;
+                var root: []const u8 = undefined;
 
-            var reader = std.io.fixedBufferStream(result.stdout).reader();
+                var it = std.mem.tokenize(line, " ");
+                var i: i32 = 0;
 
-            std.debug.warn("fetching dependencies for {} {}\n", .{ front.base_path, front.version });
-            var buf: [4096]u8 = undefined;
-            var line = try reader.readUntilDelimiterOrEof(&buf, '\n');
-            while (line != null) : (line = try reader.readUntilDelimiterOrEof(&buf, '\n')) {
-                std.debug.warn("{}\n", .{line});
-                // if not in nodes
-                // set up edges
-                // set depth to current + 1
+                while (it.next()) |field| {
+                    switch (i) {
+                        0 => name = field,
+                        1 => path = field,
+                        2 => root = field,
+                        else => break,
+                    }
 
-                // else if it is in nodes and its depth is less than front
-                // increase depth of node (in node list) to depth + 1
-                // destroy dep
+                    i += 1;
+                }
 
-                // append to queue
+                if (i != 3) {
+                    return error.IssueWithParsing;
+                }
+
+                var found = for (self.nodes.items) |*node| {
+                    if (std.mem.eql(u8, path, node.base_path))
+                        break node;
+                } else null;
+
+                if (found) |node| {
+                    try front.connect_dependency(node, name, root);
+                } else {
+                    try self.nodes.append(try Node.init(self.allocator, path, front.depth + 1));
+                    try front.connect_dependency(&self.nodes.items[self.nodes.items.len - 1], name, root);
+                }
+
+                try self.validate();
             }
-
-            self.nodes.append(maybe_front.?);
-            try self.validate();
         }
     }
 
     /// Naive check for circular dependencies
     fn validate(self: *Self) !void {
-        var cursor = self.nodes.first;
-        while (cursor != null) : (cursor = cursor.?.next) {
-            const node = cursor.?.data;
-
+        for (self.nodes.items) |*node| {
             for (node.dependencies.span()) |dep| {
                 if (dep.node.depth <= node.depth) {
                     return error.CyclicalDependency;
@@ -127,7 +116,7 @@ const DependencyGraph = struct {
             }
 
             for (node.dependents.span()) |dep| {
-                if (dep.node.depth >= node.depth) {
+                if (dep.depth >= node.depth) {
                     return error.CyclicalDependency;
                 }
             }
@@ -147,61 +136,107 @@ const DependencyGraph = struct {
     const Node = struct {
         allocator: *Allocator,
         dependencies: ArrayList(DependencyEdge),
-        dependents: ArrayList(DependentEdge),
-
+        dependents: ArrayList(*Node),
         base_path: []const u8,
-        version: []const u8,
         depth: u32,
 
-        fn init(allocator: *Allocator, base_path: []const u8, version: []const u8, depth: u32) !Node {
+        fn init(allocator: *Allocator, base_path: []const u8, depth: u32) !Node {
             return Node{
                 .allocator = allocator,
                 .dependencies = ArrayList(DependencyEdge).init(allocator),
-                .dependents = ArrayList(DependentEdge).init(allocator),
+                .dependents = ArrayList(*Node).init(allocator),
                 .base_path = base_path,
-                .version = version,
                 .depth = depth,
             };
         }
 
+        fn connect_dependency(self: *Node, dep: *Node, alias: []const u8, root: []const u8) !void {
+            if (self == dep)
+                return error.CircularDependency;
+
+            if (dep.depth <= self.depth)
+                dep.depth = self.depth + 1;
+
+            try self.dependencies.append(DependencyEdge{
+                .node = dep,
+                .alias = alias,
+                .root = root,
+            });
+            try dep.dependents.append(self);
+        }
+
         fn zkg_runner(self: *const Node) !ExecResult {
-            var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+            var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
 
-            const allocator = &arena.allocator;
+            const imports_file = try std.fs.path.join(
+                self.allocator,
+                &[_][]const u8{ self.base_path, "imports.zig" },
+            );
+            defer self.allocator.free(imports_file);
 
-            var build_buf: [std.os.PATH_MAX]u8 = undefined;
-            const build_dir = try std.os.getcwd(&build_buf);
-            const cache_dir = try std.fs.path.join(allocator, &[_][]const u8{ build_dir, "zig-cache" });
+            // if there is no imports.zig file then we don't need to run the
+            // zkg_runner
+            os.access(imports_file, 0) catch |err| {
+                if (err == error.FileNotFound) {
+                    return ExecResult{
+                        .term = ChildProcess.Term{ .Exited = 0 },
+                        .stdout = "",
+                        .stderr = "",
+                    };
+                }
 
+                return err;
+            };
+
+            const cache_dir = try std.fs.path.join(
+                self.allocator,
+                &[_][]const u8{ self.base_path, "zig-cache" },
+            );
             const lib_dir = if (os.getenv("ZKG_LIB")) |dir| dir else "/usr/lib/zig/zkg";
-            const runner_path = try std.fs.path.join(allocator, &[_][]const u8{ lib_dir, "zkg_runner.zig" });
-            const zkg_path = try std.fs.path.join(allocator, &[_][]const u8{ lib_dir, "zkg.zig" });
+            const source = try std.fs.path.join(
+                self.allocator,
+                &[_][]const u8{ lib_dir, "zkg_runner.zig" },
+            );
+            const zkg_path = try std.fs.path.join(
+                self.allocator,
+                &[_][]const u8{ lib_dir, "zkg.zig" },
+            );
 
-            const builder = try Builder.create(allocator, "zig", build_dir, cache_dir);
+            const builder = try Builder.create(self.allocator, "zig", self.base_path, cache_dir);
             defer builder.destroy();
 
             builder.resolveInstallPrefix();
-            std.debug.warn("install dir: {}\n", .{builder.install_prefix});
 
             // normal build script
             const target = builder.standardTargetOptions(.{});
             const mode = builder.standardReleaseOptions();
 
-            const exe = builder.addExecutable("zkg_runner", runner_path);
+            const exe = builder.addExecutable("zkg_runner", source);
+            const zkg = std.build.Pkg{
+                .name = "zkg",
+                .path = zkg_path,
+            };
+
             exe.setTarget(target);
             exe.setBuildMode(mode);
             exe.linkSystemLibrary("git2");
             exe.linkSystemLibrary("c");
+
+            exe.addPackage(zkg);
             exe.addPackage(std.build.Pkg{
-                .name = "zkg",
-                .path = zkg_path,
+                .name = "imports",
+                .path = imports_file,
+                .dependencies = &[_]std.build.Pkg{zkg},
             });
+
             exe.addIncludeDir(lib_dir);
-            exe.addIncludeDir(build_dir);
+            exe.addIncludeDir(self.base_path);
             exe.install();
 
             try builder.make(&[_][]const u8{});
+            defer std.fs.cwd().deleteFile("zig-cache/bin/zkg_runner") catch {};
+
             return std.ChildProcess.exec(.{
                 .allocator = self.allocator,
                 .argv = &[_][]const u8{"zig-cache/bin/zkg_runner"},
@@ -217,17 +252,16 @@ pub fn main() anyerror!void {
     const allocator = &arena.allocator;
 
     var dep_graph = try DependencyGraph.init(allocator, ".");
-    defer dep_graph.deinit();
-
     try dep_graph.process();
+
     var cache_dir = std.fs.Dir{ .fd = try os.open("zig-cache", os.O_DIRECTORY, 0) };
     defer cache_dir.close();
 
     const gen_file = try cache_dir.createFile("packages.zig", std.fs.File.CreateFlags{
         .truncate = true,
     });
+    errdefer cache_dir.deleteFile("packages.zig") catch {};
     defer gen_file.close();
-    // TODO: errdefer delete file
 
     const file_stream = gen_file.outStream();
     try file_stream.writeAll(
@@ -238,8 +272,8 @@ pub fn main() anyerror!void {
         \\
     );
 
-    for (dep_graph.nodes.first.?.data.dependencies.span()) |*dep| {
-        try recursive_print(file_stream, dep, 1);
+    for (dep_graph.nodes.items[0].dependencies.items) |*dep| {
+        try recursive_print(allocator, file_stream, dep, 1);
     }
 
     try file_stream.writeAll("};\n");
@@ -249,26 +283,40 @@ fn indent(stream: OutStream, n: usize) !void {
     try stream.writeByteNTimes(' ', n * 4);
 }
 
-fn recursive_print(stream: std.fs.File.OutStream, edge: *DependencyGraph.DependencyEdge, depth: usize) anyerror!void {
+fn recursive_print(
+    allocator: *Allocator,
+    stream: std.fs.File.OutStream,
+    edge: *DependencyGraph.DependencyEdge,
+    depth: usize,
+) anyerror!void {
+    const path = try std.fs.path.join(allocator, &[_][]const u8{
+        edge.node.base_path,
+        edge.root,
+    });
+    defer allocator.free(path);
+
     try indent(stream, depth);
     try stream.print("Pkg{{\n", .{});
     try indent(stream, depth + 1);
-    try stream.print(".name = \"{}\",\n", .{"NAME"});
+    try stream.print(".name = \"{}\",\n", .{edge.alias});
     try indent(stream, depth + 1);
-    try stream.print(".path = \"{}\",\n", .{"PATH"});
+    try stream.print(".path = \"{}\",\n", .{path});
 
     if (edge.node.dependencies.items.len > 0) {
         try indent(stream, depth + 1);
         try stream.print(".dependencies = &[_]Pkg{{\n", .{});
 
-        for (edge.node.dependencies.span()) |*dep| {
-            try recursive_print(stream, dep, depth + 2);
+        for (edge.node.dependencies.items) |*dep| {
+            try recursive_print(allocator, stream, dep, depth + 2);
         }
+
+        try indent(stream, depth + 1);
+        try stream.print("}},\n", .{});
     } else {
         try indent(stream, depth + 1);
         try stream.print(".dependencies = null,\n", .{});
     }
 
-    try indent(stream, depth + 1);
-    try stream.print(".path = \"{}\",\n", .{"PATH"});
+    try indent(stream, depth);
+    try stream.print("}},\n", .{});
 }

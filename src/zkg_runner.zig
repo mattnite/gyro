@@ -1,5 +1,5 @@
 const std = @import("std");
-const imports = @import("imports.zig");
+const imports = @import("imports");
 const process = std.process;
 const mem = std.mem;
 const c = @cImport({
@@ -19,10 +19,9 @@ pub fn main() !void {
             const import: *const Import = &@field(imports, decl.name);
             try import.fetch(import, std.heap.page_allocator);
 
-            try stdout.print("{} {} {} {}\n", .{
+            try stdout.print("{} {} {}\n", .{
                 decl.name,
-                import.version,
-                import.url,
+                import.path(import, std.heap.page_allocator),
                 import.root,
             });
         }

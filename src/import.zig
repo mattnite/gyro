@@ -88,6 +88,7 @@ fn git_fetch(self: *const Import, allocator: *Allocator) !void {
     const url = try std.cstr.addNullByte(allocator, self.url);
     defer allocator.free(url);
 
+    std.debug.warn("location: {}\n", .{location});
     const status = c.git_clone(&repo, url, location.ptr, null);
     if (status < 0 and status != -4) {
         const err = @ptrCast(*const c.git_error, c.git_error_last());
