@@ -1,5 +1,6 @@
 const std = @import("std");
 const os = std.os;
+const debug = std.debug;
 
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
@@ -46,20 +47,20 @@ const DependencyGraph = struct {
             switch (result.term) {
                 .Exited => |val| {
                     if (val != 0) {
-                        std.debug.warn("{}", .{result.stderr});
+                        debug.print("{}", .{result.stderr});
                         return error.BadExit;
                     }
                 },
                 .Signal => |signal| {
-                    std.debug.warn("got signal: {}\n", .{signal});
+                    debug.print("got signal: {}\n", .{signal});
                     return error.Signal;
                 },
                 .Stopped => |why| {
-                    std.debug.warn("stopped: {}\n", .{why});
+                    debug.print("stopped: {}\n", .{why});
                     return error.Stopped;
                 },
                 .Unknown => |val| {
-                    std.debug.warn("unknown: {}\n", .{val});
+                    debug.print("unknown: {}\n", .{val});
                     return error.Unkown;
                 },
             }

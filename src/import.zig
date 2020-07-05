@@ -1,6 +1,7 @@
 usingnamespace std.os;
 const std = @import("std");
 const mem = std.mem;
+const debug = std.debug;
 const c = @cImport({
     @cInclude("git2.h");
 });
@@ -88,11 +89,11 @@ fn git_fetch(self: *const Import, allocator: *Allocator) !void {
     const url = try std.cstr.addNullByte(allocator, self.url);
     defer allocator.free(url);
 
-    std.debug.warn("location: {}\n", .{location});
+    debug.print("location: {}\n", .{location});
     const status = c.git_clone(&repo, url, location.ptr, null);
     if (status < 0 and status != -4) {
         const err = @ptrCast(*const c.git_error, c.git_error_last());
-        std.debug.warn("clone issue: ({}) {}\n", .{ status, @ptrCast([*:0]const u8, err.message) });
+        debug.print("clone issue: ({}) {}\n", .{ status, @ptrCast([*:0]const u8, err.message) });
         return error.GitClone;
     }
 }

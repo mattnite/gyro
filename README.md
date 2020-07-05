@@ -1,10 +1,8 @@
 # Zkg: a Zig Package Manager
 
 This project is merely a prototype exploring a simple packaging use case for
-zig, and that's including source from zig-only projects in git repositories. It
-has a lot of limitiations right now, such as `https` only repos and only first
-order dependencies (no dependencies of dependencies) as it's only a prototype
-and I want to get feedback from the community.
+zig, and that's including source from zig-only projects in git repositories.
+Right now it will only fetch using https.
 
 ## Methodology
 
@@ -23,21 +21,26 @@ root directory of your project, fetch the packages described using `libgit2`,
 then generate a `packages.zig` file in `zig-cache` that exports an array of
 `std.build.Pkg`.  These `Pkgs` can then be used in `build.zig`.
 
+Originally I was parsing `imports.zig` at runtime which greatly limited the
+things you could do in that file, but now zkg builds runner executables which
+include the imports file at comptime so you can now leverage zig properly!
+
 ## Example
 
-This example can be found [here](https://github.com/matt1795/zkg-example). To
-get started you need to set an environment variable `ZKG_CACHE` which is where
-all the fetched repositories go, I set mine to `~/.cache/zkg`.
+This example can be found [here](https://github.com/mattnite/zkg-example). To
+get started you need to set two environment variables: `ZKG_CACHE` and
+`ZKG_LIB`. `ZKG_CACHE` is where all the fetched repositories go, I set mine to
+`~/.cache/zkg`. `ZKG_LIB` is the directory some files required by zkg can be
+found, after building they will be found in `zig-cache/lib/zig/zkg`.
 
 `zkg-example` is a program that uses
-[zig-clap](https://github.com/Hejsil/zig-clap) (Thank you Hejsil for making an
-awesome library) to parse arguments that will be concatenated with
-[concat](https://github.com/matt1795/concat) -- a dummy library I made.
+[zig-clap](https://github.com/Hejsil/zig-clap) and
+[ctregex](https://github.com/alexnask/ctregex). Shout out to Hejsil for
+`zig-clap` and alexnask for `ctregex`!
 
 Here is the `imports.zig`:
 
 ```zig
-
 const zkg = @import("zkg");
 
 pub const clap = zkg.import.git(
@@ -46,18 +49,12 @@ pub const clap = zkg.import.git(
     "clap.zig",
 );
 
-pub const test_lib = zkg.import.git(
-    "https://github.com/matt1795/concat.git",
+pub const regex = zkg.import.git(
+    "https://github.com/alexnask/ctregex.zig.git",
     "master",
-    null,
+    "ctregex.zig",
 );
 ```
-
-### IMPORTANT NOTE
-zkg's zig interpretation is a complete sham at this point -- again just getting
-things working here. It only checks for public const variable declarations that
-are initialized with a function having three parameters. It assumes the function
-is `zig.import.git()`.
 
 The arguments for `zig.import.git()` are the url of the repo, the branch, and
 optionally you may tell zkg what the root file you want to include as the base
@@ -68,7 +65,7 @@ The name of the exported variable is important because it will be the string
 that you use in your application code to `@import` the package. Eg:
 
 ```zig
-const my_lib = @import("test_lib");
+const regex = @import("regex");
 ```
 
 Run zkg in your project root to generate the `packages.zig` file (too simple to
@@ -85,8 +82,8 @@ pub const list = [_]Pkg{
         .dependencies = null,
     },
     Pkg{
-        .name = "test_lib",
-        .path = "/home/mknight/.cache/zkg/github.com/matt1795/concat/master/exports.zig",
+        .name = "regex",
+        .path = "/home/mknight/.cache/zkg/github.com/alexnast/ctregex.zig/master/exports.zig",
         .dependencies = null,
     },
 };
