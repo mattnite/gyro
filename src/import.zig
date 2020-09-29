@@ -22,8 +22,8 @@ pub const Import = struct {
     version: ?[]const u8,
     root: []const u8,
     url: []const u8,
-    fetch: fn (self: *const Import, allocator: *Allocator) anyerror!void,
-    path: fn (self: *const Import, allocator: *Allocator) anyerror![]const u8,
+    fetch: fn (self: Import, allocator: *Allocator, deps_dir: []const u8) anyerror!void,
+    path: fn (self: Import, allocator: *Allocator, deps_dir: []const u8) anyerror![]const u8,
 };
 
 pub fn git(repo: []const u8, branch: []const u8, root: ?[]const u8) Import {
@@ -81,9 +81,9 @@ pub const GitError = error{
     ApplyFail,
 };
 
-fn git_fetch(self: *const Import, allocator: *Allocator) !void {
+fn git_fetch(self: Import, allocator: *Allocator, deps_dir: []const u8) !void {
     var repo: ?*c.git_repository = undefined;
-    const location = try self.path(self, allocator);
+    const location = try self.path(self, allocator, deps_dir);
     defer allocator.free(location);
 
     const url = try std.cstr.addNullByte(allocator, self.url);
@@ -98,11 +98,11 @@ fn git_fetch(self: *const Import, allocator: *Allocator) !void {
     }
 }
 
-fn git_path(self: *const Import, allocator: *Allocator) ![]const u8 {
+fn git_path(self: Import, allocator: *Allocator, deps_dir: []const u8) ![]const u8 {
     return try std.cstr.addNullByte(
         allocator,
         try std.mem.join(allocator, std.fs.path.sep_str, &[_][]const u8{
-            try get_cache(),
+            deps_dir,
             try git_url_to_name(self.url),
             self.version.?,
         }),

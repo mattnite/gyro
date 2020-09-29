@@ -28,15 +28,13 @@ include the imports file at comptime so you can now leverage zig properly!
 ## Dependencies
 
 - `libgit2` as a system library
-- `ZKG_CACHE` and `ZKG_LIB` environment variables (see below)
 
 ## Example
 
 This example can be found [here](https://github.com/mattnite/zkg-example). To
-get started you need to set two environment variables: `ZKG_CACHE` and
-`ZKG_LIB`. `ZKG_CACHE` is where all the fetched repositories go, I set mine to
-`~/.cache/zkg`. `ZKG_LIB` is the directory some files required by zkg can be
-found, after building they will be found in `zig-cache/lib/zig/zkg`.
+get started you need to set one environment variable: `ZKG_LIB`. This is the
+directory some files required by zkg can be found, after building they will be
+found in `zig-cache/lib/zig/zkg`.
 
 `zkg-example` is a program that uses
 [zig-clap](https://github.com/Hejsil/zig-clap) and
