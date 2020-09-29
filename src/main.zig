@@ -190,19 +190,10 @@ const DependencyGraph = struct {
                 return err;
             };
 
-            const cache_dir = try std.fs.path.join(
-                self.allocator,
-                &[_][]const u8{ self.base_path, "zig-cache" },
-            );
+            const cache_dir = try std.fs.path.join(self.allocator, &[_][]const u8{ self.base_path, "zig-cache" });
             const lib_dir = if (os.getenv("ZKG_LIB")) |dir| dir else "/usr/lib/zig/zkg";
-            const source = try std.fs.path.join(
-                self.allocator,
-                &[_][]const u8{ lib_dir, "zkg_runner.zig" },
-            );
-            const zkg_path = try std.fs.path.join(
-                self.allocator,
-                &[_][]const u8{ lib_dir, "zkg.zig" },
-            );
+            const source = try std.fs.path.join(self.allocator, &[_][]const u8{ lib_dir, "zkg_runner.zig" });
+            const zkg_path = try std.fs.path.join(self.allocator, &[_][]const u8{ lib_dir, "zkg.zig" });
 
             const builder = try Builder.create(self.allocator, "zig", self.base_path, cache_dir);
             defer builder.destroy();
