@@ -67,7 +67,7 @@ const DependencyGraph = struct {
 
             try self.results.append(result);
             var it_line = std.mem.tokenize(result.stdout, "\n");
-            iterate: while (it_line.next()) |line| {
+            while (it_line.next()) |line| {
                 var name: []const u8 = undefined;
                 var path: []const u8 = undefined;
                 var root: []const u8 = undefined;
