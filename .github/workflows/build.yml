@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
         with:
-          submodules: True
+          submodules: recursive
       - uses: goto-bus-stop/setup-zig@v1.2.4
         with:
           version: master
