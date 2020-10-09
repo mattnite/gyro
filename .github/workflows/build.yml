@@ -1,0 +1,14 @@
+name: build
+on:
+  schedule:
+    - cron: '0 7 * * *'
+
+jobs:
+  build:
+    runs-on: [ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v2
+      - uses: goto-bus-stop/setup-zig@v1.2.4
+        with:
+          version: master
+      - run: zig build
