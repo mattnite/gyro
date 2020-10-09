@@ -408,6 +408,7 @@ fn query(
         &socket_reader,
         &socket_writer,
     );
+    defer ssl_socket.close() catch {};
 
     var http_client = http.base.Client.create(
         &buf,
