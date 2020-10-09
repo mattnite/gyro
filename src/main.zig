@@ -156,6 +156,9 @@ pub fn main() anyerror!void {
             const summary = "Remove a package from your imports file";
             const params = comptime [_]clap.Param(clap.Help){
                 clap.parseParam("-h, --help             Display help") catch unreachable,
+                clap.Param(clap.Help){
+                    .takes_value = .One,
+                },
             };
 
             var args = try clap.ComptimeClap(clap.Help, &params).parse(allocator, clap.args.OsIterator, &iter);
