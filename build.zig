@@ -39,7 +39,6 @@ pub fn build(b: *Builder) void {
     }
 
     ssl.linkBearSSL("libs/zig-bearssl", exe, target);
-    exe.linkLibC();
     exe.install();
 
     b.installLibFile("src/zkg.zig", "zig/zkg/zkg.zig");
