@@ -25,6 +25,8 @@ const stderr = std.io.getStdErr().writer();
 const default_remote = "https://zpm.random-projects.net/api";
 const imports_zig = "imports.zig";
 
+const ziglibs_pem = @embedFile("ziglibs.pem");
+
 const DependencyGraph = struct {
     allocator: *Allocator,
     cache: []const u8,
@@ -383,20 +385,20 @@ fn query(
         return error.UnsupportedProtocol;
 
     const port: u16 = if (uri.port) |port| port else protocol.to_port();
-    var socket = try net.connectToHost(allocator, uri.host.name, port, .tcp);
-    defer socket.close();
-
-    // http ssl setup
-    var x509 = CertificateValidator.init(allocator);
-    defer x509.deinit();
-
-    var ssl_client = ssl.Client.init(x509.getEngine());
-    ssl_client.relocate();
-
     const hostnameZ = try mem.dupeZ(allocator, u8, uri.host.name);
     defer allocator.free(hostnameZ);
 
+    var trust_anchor = ssl.TrustAnchorCollection.init(allocator);
+    defer trust_anchor.deinit();
+
+    try trust_anchor.appendFromPEM(ziglibs_pem);
+    var x509 = ssl.x509.Minimal.init(trust_anchor);
+    var ssl_client = ssl.Client.init(x509.getEngine());
+    ssl_client.relocate();
     try ssl_client.reset(hostnameZ, false);
+
+    var socket = try net.connectToHost(allocator, uri.host.name, port, .tcp);
+    defer socket.close();
 
     var socket_reader = socket.reader();
     var socket_writer = socket.writer();
@@ -432,6 +434,7 @@ fn query(
     try http_client.writeHeaderValue("Accept", "application/json");
     try http_client.writeHeaderValue("Host", uri.host.name);
     try http_client.writeHeadComplete();
+    try ssl_socket.flush();
 
     var response_body = std.ArrayList(u8).init(allocator);
     errdefer response_body.deinit();
