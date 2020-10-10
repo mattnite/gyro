@@ -97,6 +97,7 @@ pub fn main() anyerror!void {
                 clap.parseParam("-r, --remote <REMOTE>  Select which endpoint to query") catch unreachable,
                 clap.parseParam("-t, --tag <TAG>        Filter results for specific tag") catch unreachable,
                 clap.parseParam("-n, --name <NAME>      Query specific package") catch unreachable,
+                clap.parseParam("-a, --author <NAME>    Filter results for specific author") catch unreachable,
                 clap.parseParam("-j, --json             Print raw JSON") catch unreachable,
             };
 
@@ -104,11 +105,29 @@ pub fn main() anyerror!void {
             defer args.deinit();
 
             check_help(summary, &params, args);
+            const name_opt = args.option("--name");
+            const tag_opt = args.option("--tag");
+            const author_opt = args.option("--author");
+
+            var count: usize = 0;
+            if (name_opt != null) count += 1;
+            if (tag_opt != null) count += 1;
+            if (author_opt != null) count += 1;
+
+            if (count > 1) return error.OnlyOneQueryType;
+
+            const search_params = if (name_opt) |name|
+                SearchParams{ .name = name }
+            else if (tag_opt) |tag|
+                SearchParams{ .tag = tag }
+            else if (author_opt) |author|
+                SearchParams{ .author = author }
+            else
+                SearchParams{ .all = {} };
 
             try search(
                 allocator,
-                args.option("--name"),
-                args.option("--tag"),
+                search_params,
                 args.flag("--json"),
                 args.option("--remote"),
             );

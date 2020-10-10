@@ -11,6 +11,7 @@ const debug = std.debug;
 const fs = std.fs;
 const mem = std.mem;
 const json = std.json;
+const fmt = std.fmt;
 
 const Allocator = mem.Allocator;
 const ArrayList = std.ArrayList;
@@ -358,23 +359,157 @@ const Protocol = enum {
     }
 };
 
+fn http_request(
+    allocator: *Allocator,
+    hostname: [:0]const u8,
+    port: u16,
+    params: []const u8,
+) !std.ArrayList(u8) {
+    var socket = try net.connectToHost(allocator, hostname, port, .tcp);
+    defer socket.close();
+
+    var buf: [mem.page_size]u8 = undefined;
+    var http_client = http.base.Client.create(
+        &buf,
+        socket.reader(),
+        socket.writer(),
+    );
+
+    try http_client.writeHead("GET", params);
+    try http_client.writeHeaderValue("Accept", "application/json");
+    try http_client.writeHeaderValue("Host", hostname);
+    try http_client.writeHeaderValue("Agent", "zkg");
+    try http_client.writeHeadComplete();
+
+    return read_http_body(allocator, &http_client);
+}
+
+fn https_request(
+    allocator: *Allocator,
+    hostname: [:0]const u8,
+    port: u16,
+    params: []const u8,
+) !std.ArrayList(u8) {
+    var trust_anchor = ssl.TrustAnchorCollection.init(allocator);
+    defer trust_anchor.deinit();
+
+    try trust_anchor.appendFromPEM(ziglibs_pem);
+    var x509 = ssl.x509.Minimal.init(trust_anchor);
+    var ssl_client = ssl.Client.init(x509.getEngine());
+    ssl_client.relocate();
+    try ssl_client.reset(hostname, false);
+
+    var socket = try net.connectToHost(allocator, hostname, port, .tcp);
+    defer socket.close();
+
+    var socket_reader = socket.reader();
+    var socket_writer = socket.writer();
+
+    var ssl_socket = ssl.initStream(
+        ssl_client.getEngine(),
+        &socket_reader,
+        &socket_writer,
+    );
+    defer ssl_socket.close() catch {};
+
+    var buf: [mem.page_size]u8 = undefined;
+    var http_client = http.base.Client.create(
+        &buf,
+        ssl_socket.inStream(),
+        ssl_socket.outStream(),
+    );
+
+    try http_client.writeHead("GET", params);
+    try http_client.writeHeaderValue("Accept", "application/json");
+    try http_client.writeHeaderValue("Host", hostname);
+    try http_client.writeHeaderValue("Agent", "zkg");
+    try http_client.writeHeadComplete();
+    try ssl_socket.flush();
+
+    return read_http_body(allocator, &http_client);
+}
+
+fn read_http_body(allocator: *mem.Allocator, client: anytype) !std.ArrayList(u8) {
+    var body = std.ArrayList(u8).init(allocator);
+    errdefer body.deinit();
+
+    while (try client.readEvent()) |event| {
+        switch (event) {
+            .status => |status| {
+                if (status.code != 200) {
+                    try stderr.print("got HTTP {} return code\n", .{status.code});
+                    return error.BadStatusCode;
+                }
+            },
+            .invalid => |invalid| {
+                std.debug.print("{}\n", .{invalid.message});
+                return error.Invalid;
+            },
+            .chunk => |chunk| {
+                try body.appendSlice(chunk.data);
+                if (chunk.final) break;
+            },
+            .closed => return error.ClosedAbruptly,
+            .header, .head_complete, .end => {},
+        }
+    }
+
+    return body;
+}
+
+pub const SearchParams = union(enum) {
+    all: void,
+    name: []const u8,
+    tag: []const u8,
+    author: []const u8,
+};
+
+const Params = union(enum) {
+    packages: SearchParams,
+    tags: void,
+
+    fn append_param(buf: []u8, key: []const u8, value: []const u8) ![]u8 {
+        return try fmt.bufPrint(buf, "?{}={}", .{ key, value });
+    }
+
+    fn print(self: Params, buf: []u8, uri: Uri) ![]const u8 {
+        var n = (try fmt.bufPrint(buf, "{}", .{uri.path})).len;
+
+        if (n == 0 or buf[n - 1] != '/') {
+            n += (try fmt.bufPrint(buf[n..], "/", .{})).len;
+        }
+
+        switch (self) {
+            .packages => |search_params| {
+                n += (try fmt.bufPrint(buf[n..], "packages", .{})).len;
+                switch (search_params) {
+                    .name => |name| {
+                        n += (try append_param(buf[n..], "name", name)).len;
+                    },
+                    .tag => |tag| {
+                        n += (try append_param(buf[n..], "tags", tag)).len;
+                    },
+                    .author => |author| {
+                        n += (try append_param(buf[n..], "author", author)).len;
+                    },
+                    .all => {},
+                }
+            },
+            .tags => {
+                n += (try fmt.bufPrint(buf[n..], "tags", .{})).len;
+            },
+        }
+
+        return buf[0..n];
+    }
+};
+
 fn query(
     allocator: *mem.Allocator,
     remote: []const u8,
-    name: ?[]const u8,
-    tag: ?[]const u8,
+    params: Params,
 ) !std.ArrayList(u8) {
-    if (name != null and tag != null) return error.OnlyNameOrTag;
-
-    var uri_buf: [2048]u8 = undefined;
-    const uri_str = if (name != null)
-        try std.fmt.bufPrint(&uri_buf, "{}?{}={}", .{ remote, "name", name.? })
-    else if (tag != null)
-        try std.fmt.bufPrint(&uri_buf, "{}?{}={}", .{ remote, "tags", tag.? })
-    else
-        try std.fmt.bufPrint(&uri_buf, "{}", .{remote});
-
-    const uri = try Uri.parse(uri_str, false);
+    const uri = try Uri.parse(remote, false);
     const protocol: Protocol = if (mem.eql(u8, uri.scheme, "http"))
         .http
     else if (mem.eql(u8, uri.scheme, "https"))
@@ -388,78 +523,15 @@ fn query(
     const hostnameZ = try mem.dupeZ(allocator, u8, uri.host.name);
     defer allocator.free(hostnameZ);
 
-    var trust_anchor = ssl.TrustAnchorCollection.init(allocator);
-    defer trust_anchor.deinit();
-
-    try trust_anchor.appendFromPEM(ziglibs_pem);
-    var x509 = ssl.x509.Minimal.init(trust_anchor);
-    var ssl_client = ssl.Client.init(x509.getEngine());
-    ssl_client.relocate();
-    try ssl_client.reset(hostnameZ, false);
-
-    var socket = try net.connectToHost(allocator, uri.host.name, port, .tcp);
-    defer socket.close();
-
-    var socket_reader = socket.reader();
-    var socket_writer = socket.writer();
-
-    var buf: [mem.page_size]u8 = undefined;
-
-    var ssl_socket = ssl.initStream(
-        ssl_client.getEngine(),
-        &socket_reader,
-        &socket_writer,
-    );
-    defer ssl_socket.close() catch {};
-
-    var http_client = http.base.Client.create(
-        &buf,
-        ssl_socket.inStream(),
-        ssl_socket.outStream(),
-    );
-
     const question: []const u8 = "?";
     const none: []const u8 = "";
     var params_buf: [2048]u8 = undefined;
-    var params = try std.fmt.bufPrint(&params_buf, "{}", .{
-        if (uri.path.len > 0) uri.path else "/",
-    });
+    const params_str = try params.print(&params_buf, uri);
 
-    if (uri.query.len > 0) {
-        params = params_buf[0 .. params.len +
-            (try std.fmt.bufPrint(params_buf[params.len..], "?{}", .{uri.query})).len];
-    }
-
-    try http_client.writeHead("GET", params);
-    try http_client.writeHeaderValue("Accept", "application/json");
-    try http_client.writeHeaderValue("Host", uri.host.name);
-    try http_client.writeHeadComplete();
-    try ssl_socket.flush();
-
-    var response_body = std.ArrayList(u8).init(allocator);
-    errdefer response_body.deinit();
-
-    while (try http_client.readEvent()) |event| {
-        switch (event) {
-            .status => |status| {
-                if (status.code != 200) {
-                    return error.BadStatusCode;
-                }
-            },
-            .invalid => |invalid| {
-                std.debug.print("{}\n", .{invalid.message});
-                return error.Invalid;
-            },
-            .chunk => |chunk| {
-                try response_body.appendSlice(chunk.data);
-                if (chunk.final) break;
-            },
-            .closed => return error.ClosedAbruptly,
-            .header, .head_complete, .end => {},
-        }
-    }
-
-    return response_body;
+    return switch (protocol) {
+        .http => http_request(allocator, hostnameZ, port, params_str),
+        .https => https_request(allocator, hostnameZ, port, params_str),
+    };
 }
 
 const Entry = struct {
@@ -487,28 +559,26 @@ const Column = struct {
     width: usize,
 };
 
-fn print_columns(writer: anytype, name: Column, author: Column, description: []const u8) !void {
-    try writer.print("{}", .{name.str});
-    if (name.str.len < name.width) {
-        try writer.writeByteNTimes(' ', name.width - name.str.len);
+fn print_columns(writer: anytype, columns: []const Column, last: []const u8) !void {
+    for (columns) |column| {
+        try writer.print("{}", .{column.str});
+        if (column.str.len < column.width) {
+            try writer.writeByteNTimes(' ', column.width - column.str.len);
+        }
     }
 
-    try writer.print("{}", .{author.str});
-    if (author.str.len < author.width) {
-        try writer.writeByteNTimes(' ', author.width - author.str.len);
-    }
-
-    try writer.print("{}\n", .{description});
+    try writer.print("{}\n", .{last});
 }
 
 pub fn search(
     allocator: *mem.Allocator,
-    name: ?[]const u8,
-    tag: ?[]const u8,
+    params: SearchParams,
     print_json: bool,
     remote_opt: ?[]const u8,
 ) !void {
-    const response = try query(allocator, remote_opt orelse default_remote, name, tag);
+    const response = try query(allocator, remote_opt orelse default_remote, .{
+        .packages = params,
+    });
     defer response.deinit();
 
     if (print_json) {
@@ -550,23 +620,43 @@ pub fn search(
 
     try print_columns(
         stderr,
-        .{ .str = "NAME", .width = name_width },
-        .{ .str = "AUTHOR", .width = author_width },
+        &[_]Column{
+            .{ .str = name_title, .width = name_width },
+            .{ .str = author_title, .width = author_width },
+        },
         desc_title,
     );
 
     for (entries.items) |item| {
         try print_columns(
             stdout,
-            .{ .str = item.name, .width = name_width },
-            .{ .str = item.author, .width = author_width },
+            &[_]Column{
+                .{ .str = item.name, .width = name_width },
+                .{ .str = item.author, .width = author_width },
+            },
             item.description,
         );
     }
 }
 
+const Tag = struct {
+    name: []const u8,
+    description: []const u8,
+
+    fn from_json(obj: json.Value) !Tag {
+        if (obj != .Object) return error.NotObject;
+
+        return Tag{
+            .name = obj.Object.get("name").?.String,
+            .description = obj.Object.get("description").?.String,
+        };
+    }
+};
+
 pub fn tags(allocator: *mem.Allocator, remote_opt: ?[]const u8) !void {
-    const response = try query(allocator, remote_opt orelse default_remote, null, null);
+    const response = try query(allocator, remote_opt orelse default_remote, .{
+        .tags = {},
+    });
     defer response.deinit();
 
     var parser = json.Parser.init(allocator, false);
@@ -579,19 +669,35 @@ pub fn tags(allocator: *mem.Allocator, remote_opt: ?[]const u8) !void {
         return error.ResponseType;
     }
 
-    // TODO: alphabetic printing
-    var set = std.StringHashMap(void).init(allocator);
-    defer set.deinit();
+    var entries = std.ArrayList(Tag).init(allocator);
+    defer entries.deinit();
 
-    for (root.Array.items) |entry| {
-        for (entry.Object.get("tags").?.Array.items) |tag| {
-            try set.put(tag.String, .{});
-        }
+    for (root.Array.items) |item| {
+        try entries.append(try Tag.from_json(item));
     }
 
-    var it = set.iterator();
-    while (it.next()) |entry| {
-        try stdout.print("{}\n", .{entry.key});
+    const name_title = "TAG";
+    const desc_title = "DESCRIPTION";
+
+    var name_width: usize = 0;
+    for (entries.items) |item| {
+        name_width = std.math.max(name_width, item.name.len);
+    }
+
+    name_width = std.math.max(name_width, name_title.len) + 2;
+
+    try print_columns(
+        stderr,
+        &[_]Column{.{ .str = name_title, .width = name_width }},
+        desc_title,
+    );
+
+    for (entries.items) |item| {
+        try print_columns(
+            stdout,
+            &[_]Column{.{ .str = item.name, .width = name_width }},
+            item.description,
+        );
     }
 }
 
@@ -642,7 +748,9 @@ pub fn add(
         }
     }
 
-    const response = try query(allocator, remote_opt orelse default_remote, name, null);
+    const response = try query(allocator, remote_opt orelse default_remote, .{
+        .packages = .{ .name = name },
+    });
     defer response.deinit();
 
     var parser = json.Parser.init(allocator, false);
