@@ -6,8 +6,9 @@ on:
   pull_request:
 
 jobs:
-  build:
+  linux:
     runs-on: ubuntu-20.04
+
     env:
       ZKG_LIB: ./zig-cache/lib/zig/zkg
 
@@ -24,6 +25,40 @@ jobs:
 
     - name: Install libgit2
       run: sudo apt install libgit2-dev
+
+    - name: Compile
+      run: zig build
+    
+    - name: Init
+      run: ./zig-cache/bin/zkg init
+
+    - name: Search
+      run: ./zig-cache/bin/zkg search
+
+    - name: Add
+      run: ./zig-cache/bin/zkg add clap
+    
+    - name: Fetch
+      run: ./zig-cache/bin/zkg fetch
+
+  macos:
+    runs-on: macos-latest
+    env:
+      ZKG_LIB: ./zig-cache/lib/zig/zkg
+      
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive 
+
+    - name: Setup Zig
+      uses: goto-bus-stop/setup-zig@v1.2.5
+      with:
+        version: master
+
+    - name: Install libgit2
+      run: brew install libgit2
 
     - name: Compile
       run: zig build
