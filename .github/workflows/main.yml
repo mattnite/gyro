@@ -17,6 +17,9 @@ jobs:
       with:
         version: master
 
+    - name: Install libgit2
+      run: sudo apt install libgit2-dev
+
     - name: Compile
       run: zig build
     
