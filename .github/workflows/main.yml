@@ -1,7 +1,9 @@
 name: main
 
 # Run this workflow every time a new commit pushed to your repository
-on: push
+on:
+  push:
+  pull_request:
 
 jobs:
   build:
