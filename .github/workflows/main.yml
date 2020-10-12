@@ -5,7 +5,10 @@ on: push
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
+    env:
+      ZKG_LIB: $GITHUB_WORKSPACE/zkg/zig-cache/lib/zig/zkg
+
     steps:
     - name: Checkout
       uses: actions/checkout@v2
@@ -21,7 +24,7 @@ jobs:
       run: sudo apt install libgit2-dev
 
     - name: Compile
-      run: zig build install --prefix /usr
+      run: zig build
     
     - name: Zkg init
       run: zkg init
