@@ -9,6 +9,17 @@ jobs:
       ZKG_LIB: ./zig-cache/lib/zig/zkg
 
     steps:
+    - name: Checkout libgit2
+      uses: actions/checkout@master
+      with:
+        repository: libgit2/libgit2
+    
+    - name: Configure cmake
+      run: cmake --configure .
+
+    - name: Build and Install libgit2
+      run: cmake --build . --target install
+
     - name: Checkout
       uses: actions/checkout@v2
       with:
@@ -18,9 +29,6 @@ jobs:
       uses: goto-bus-stop/setup-zig@v1.2.5
       with:
         version: master
-
-    - name: Install libgit2
-      run: sudo apt install libgit2-dev
 
     - name: Compile
       run: zig build
