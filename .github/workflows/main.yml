@@ -19,3 +19,18 @@ jobs:
 
     - name: Compile
       run: zig build
+    
+    - run: export PATH=$PATH:$(pwd)/zig-cache/bin
+    - run: cd ~ && mkdir test-project && cd test-project
+    
+    - name: Zkg init
+      run: zkg init
+
+    - name: Zkg search
+      run: zkg search
+
+    - name: Zkg add
+      run: zkg add clap
+    
+    - name: Zkg fetch
+      run: zkg fetch
