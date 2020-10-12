@@ -21,7 +21,7 @@ jobs:
       run: sudo apt install libgit2-dev
 
     - name: Compile
-      run: sudo zig build install --prefix /usr
+      run: zig build install --prefix /usr
     
     - name: Zkg init
       run: zkg init
