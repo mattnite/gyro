@@ -1,0 +1,19 @@
+name: build
+
+# Run this workflow every time a new commit pushed to your repository
+on: push
+
+jobs:
+  build:
+    - runs-on: ubuntu-latest
+    
+    - name: Checkout
+      uses: actions/checkout@v2
+      
+    - name: Setup Zig
+      uses: goto-bus-stop/setup-zig@v1.2.5
+        with:
+          version: master
+          
+    - name: Compile
+      run: zig build
