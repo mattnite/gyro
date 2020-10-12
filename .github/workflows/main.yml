@@ -1,8 +1,5 @@
 name: main
-on:
-  push:
-  schedule:
-    - cron:  '0 7 * * *'
+on: [push, pull_request]
 
 jobs:
   linux:
