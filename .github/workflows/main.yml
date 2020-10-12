@@ -26,14 +26,14 @@ jobs:
     - name: Compile
       run: zig build
     
-    - name: Zkg init
-      run: zkg init
+    - name: Init
+      run: ./zig-cache/bin/zkg init
 
-    - name: Zkg search
-      run: zkg search
+    - name: Search
+      run: ./zig-cache/bin/zkg search
 
-    - name: Zkg add
-      run: zkg add clap
+    - name: Add
+      run: ./zig-cache/bin/zkg add clap
     
-    - name: Zkg fetch
-      run: zkg fetch
+    - name: Fetch
+      run: ./zig-cache/bin/zkg fetch
