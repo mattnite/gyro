@@ -83,6 +83,15 @@ pub const GitError = error{
 
 fn git_fetch(self: Import, allocator: *Allocator, deps_dir: []const u8) !void {
     var repo: ?*c.git_repository = undefined;
+    var opts: c.git_clone_options = undefined;
+
+    var status = c.git_clone_options_init(&opts, c.GIT_CLONE_OPTIONS_VERSION);
+    if (status == -1) {
+        return error.GitCloneOptionsInit;
+    }
+
+    opts.checkout_branch = self.version.?.ptr;
+
     const location = try self.path(self, allocator, deps_dir);
     defer allocator.free(location);
 
@@ -90,7 +99,7 @@ fn git_fetch(self: Import, allocator: *Allocator, deps_dir: []const u8) !void {
     defer allocator.free(url);
 
     debug.print("location: {}\n", .{location});
-    const status = c.git_clone(&repo, url, location.ptr, null);
+    status = c.git_clone(&repo, url, location.ptr, &opts);
     if (status < 0 and status != -4) {
         //const err = @ptrCast(*const c.git_error, c.git_error_last());
         //debug.print("clone issue: ({}) {}\n", .{ status, @ptrCast([*:0]const u8, err.message) });
