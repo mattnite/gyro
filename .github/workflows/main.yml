@@ -1,31 +1,38 @@
 name: main
-
-# Run this workflow every time a new commit pushed to your repository
-on: push
+on: [push, pull_request]
 
 jobs:
   linux:
     runs-on: ubuntu-latest
+
     env:
       ZKG_LIB: ./zig-cache/lib/zig/zkg
 
     steps:
+    - name: Checkout libgit2
+      uses: actions/checkout@master
+      with:
+        repository: libgit2/libgit2
+    
+    - name: Configure cmake
+      run: cmake --configure .
+
+    - name: Build and Install libgit2
+      run: sudo cmake --build . --target install
+
     - name: Checkout
       uses: actions/checkout@v2
       with:
-        submodules: recursive 
+        submodules: recursive
 
     - name: Setup Zig
       uses: goto-bus-stop/setup-zig@v1.2.5
       with:
         version: master
 
-    - name: Install libgit2
-      run: sudo apt install libgit2-dev
-
     - name: Compile
       run: zig build
-    
+
     - name: Init
       run: ./zig-cache/bin/zkg init
 
@@ -34,7 +41,7 @@ jobs:
 
     - name: Add
       run: ./zig-cache/bin/zkg add clap
-    
+
     - name: Fetch
       run: ./zig-cache/bin/zkg fetch
 
@@ -42,12 +49,12 @@ jobs:
     runs-on: macos-latest
     env:
       ZKG_LIB: ./zig-cache/lib/zig/zkg
-      
+
     steps:
     - name: Checkout
       uses: actions/checkout@v2
       with:
-        submodules: recursive 
+        submodules: recursive
 
     - name: Setup Zig
       uses: goto-bus-stop/setup-zig@v1.2.5
@@ -59,7 +66,7 @@ jobs:
 
     - name: Compile
       run: zig build
-    
+
     - name: Init
       run: ./zig-cache/bin/zkg init
 
@@ -68,6 +75,6 @@ jobs:
 
     - name: Add
       run: ./zig-cache/bin/zkg add clap
-    
+
     - name: Fetch
       run: ./zig-cache/bin/zkg fetch
