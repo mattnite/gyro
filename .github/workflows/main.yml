@@ -21,19 +21,16 @@ jobs:
       run: sudo apt install libgit2-dev
 
     - name: Compile
-      run: zig build
-    
-    - name: Set env
-      run: export ZKG_LIB=$(pwd)/zig-cache/lib/zig/zkg
+      run: sudo zig build install --prefix /usr
     
     - name: Zkg init
-      run: ./zig-cache/bin/zkg init
+      run: zkg init
 
     - name: Zkg search
-      run: ./zig-cache/bin/zkg search
+      run: zkg search
 
     - name: Zkg add
-      run: ./zig-cache/bin/zkg add clap
+      run: zkg add clap
     
     - name: Zkg fetch
-      run: ./zig-cache/bin/zkg fetch
+      run: zkg fetch
