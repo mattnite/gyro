@@ -23,6 +23,9 @@ jobs:
     - name: Compile
       run: zig build
     
+    - name: Set env
+      run: export ZKG_LIB=$(pwd)/zig-cache/lib/zig/zkg
+    
     - name: Zkg init
       run: ./zig-cache/bin/zkg init
 
