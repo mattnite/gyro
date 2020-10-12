@@ -18,7 +18,7 @@ jobs:
       run: cmake --configure .
 
     - name: Build and Install libgit2
-      run: cmake --build . --target install
+      run: sudo cmake --build . --target install
 
     - name: Checkout
       uses: actions/checkout@v2
