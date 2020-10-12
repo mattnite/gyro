@@ -27,8 +27,12 @@ const pkgs = [_]Pkg{
 };
 
 pub fn build(b: *Builder) void {
-    const target = b.standardTargetOptions(.{});
+    var target = b.standardTargetOptions(.{});
     const mode = b.standardReleaseOptions();
+
+    if (target.abi == null) {
+        target.abi = .musl;
+    }
 
     const exe = b.addExecutable("zkg", "src/main.zig");
     exe.setTarget(target);
@@ -39,6 +43,7 @@ pub fn build(b: *Builder) void {
     }
 
     ssl.linkBearSSL("libs/zig-bearssl", exe, target);
+    exe.linkLibC();
     exe.install();
 
     b.installLibFile("src/zkg.zig", "zig/zkg/zkg.zig");
