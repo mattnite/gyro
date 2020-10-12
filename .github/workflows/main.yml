@@ -4,8 +4,8 @@ name: main
 on: push
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+  linux:
+    runs-on: [ubuntu-latest macos-latest]
     env:
       ZKG_LIB: ./zig-cache/lib/zig/zkg
 
