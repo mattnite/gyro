@@ -92,8 +92,8 @@ fn git_fetch(self: Import, allocator: *Allocator, deps_dir: []const u8) !void {
     debug.print("location: {}\n", .{location});
     const status = c.git_clone(&repo, url, location.ptr, null);
     if (status < 0 and status != -4) {
-        const err = @ptrCast(*const c.git_error, c.git_error_last());
-        debug.print("clone issue: ({}) {}\n", .{ status, @ptrCast([*:0]const u8, err.message) });
+        //const err = @ptrCast(*const c.git_error, c.git_error_last());
+        //debug.print("clone issue: ({}) {}\n", .{ status, @ptrCast([*:0]const u8, err.message) });
         return error.GitClone;
     }
 }
