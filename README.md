@@ -160,7 +160,7 @@ pub const bearssl = zkg.import.git(
 It should also be noted that `zig-bearssl` contains a git submodule, git
 submodules are recursively checked out. `zkg` uses the declaration name (where
 it says `pub const bearssl`) as the string literal used when importing the
-package (Eg: `const my_lib = @import("bearssl"). If you want to change what that
+package (Eg: `const my_lib = @import("bearssl")`. If you want to change what that
 string shows, you can easily edit `imports.zig` or you can invoke like so: `zkg
 add bearssl --alias ssl`. Now we can:
 
