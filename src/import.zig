@@ -81,6 +81,18 @@ pub const GitError = error{
     ApplyFail,
 };
 
+fn fetch_submodule(submodule: ?*c.git_submodule, name: [*c]const u8, payload: ?*c_void) callconv(.C) c_int {
+    const repo = @ptrCast(*c.git_repository, payload);
+    var status = c.git_submodule_set_fetch_recurse_submodules(repo, name, @intToEnum(c.git_submodule_recurse_t, 1));
+    if (status == -1) return status;
+
+    var opts: c.git_submodule_update_options = undefined;
+    status = c.git_submodule_update_options_init(&opts, c.GIT_SUBMODULE_UPDATE_OPTIONS_VERSION);
+    if (status == -1) return status;
+
+    return c.git_submodule_update(submodule, 1, &opts);
+}
+
 fn git_fetch(self: Import, allocator: *Allocator, deps_dir: []const u8) !void {
     var repo: ?*c.git_repository = undefined;
     var opts: c.git_clone_options = undefined;
@@ -104,6 +116,12 @@ fn git_fetch(self: Import, allocator: *Allocator, deps_dir: []const u8) !void {
         //const err = @ptrCast(*const c.git_error, c.git_error_last());
         //debug.print("clone issue: ({}) {}\n", .{ status, @ptrCast([*:0]const u8, err.message) });
         return error.GitClone;
+    }
+
+    // recursively checkout submodules
+    status = c.git_submodule_foreach(repo, fetch_submodule, repo);
+    if (status == -1) {
+        return error.RecursiveSubmoduleCheckout;
     }
 }
 
