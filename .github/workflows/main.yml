@@ -13,7 +13,7 @@ jobs:
       uses: actions/checkout@master
       with:
         repository: libgit2/libgit2
-    
+
     - name: Configure cmake
       run: cmake --configure .
 
@@ -40,7 +40,7 @@ jobs:
       run: ./zig-cache/bin/zkg search
 
     - name: Add
-      run: ./zig-cache/bin/zkg add clap
+      run: ./zig-cache/bin/zkg add bearssl
 
     - name: Fetch
       run: ./zig-cache/bin/zkg fetch
@@ -74,7 +74,7 @@ jobs:
       run: ./zig-cache/bin/zkg search
 
     - name: Add
-      run: ./zig-cache/bin/zkg add clap
+      run: ./zig-cache/bin/zkg add bearssl
 
     - name: Fetch
       run: ./zig-cache/bin/zkg fetch
