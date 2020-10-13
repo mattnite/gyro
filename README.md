@@ -1,5 +1,7 @@
 # Zkg: a Zig Package Manager
 
+[![Linux](https://github.com/mattnite/zkg/workflows/linux/badge.svg)](https://github.com/mattnite/zkg/actions) [![macOS](https://github.com/mattnite/zkg/workflows/macos/badge.svg)](https://github.com/mattnite/zkg/actions)
+
 This project is merely a prototype exploring a simple packaging use case for
 zig, and that's including source from zig-only projects in git repositories.
 Right now it will only fetch using https.
