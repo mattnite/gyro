@@ -55,4 +55,6 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: zkg
-        path: ./zig-cache/bin/zkg
+        path: |
+          zig-cache/bin/*
+          zig-cache/lib/*
