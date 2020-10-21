@@ -50,24 +50,19 @@ jobs:
 
     - name: Fetch
       run: ./zig-cache/bin/zkg fetch
-    
+      
+    - name: Stage for Release
+      run: zig build --prefix zig-cache/release
+      
     - name: Upload artifacts
       uses: actions/upload-artifact@v2
       with:
         name: zkg
         path: |
-          zig-cache/bin/*
-          zig-cache/lib/*
-    - uses: actions/checkout@master
-    - name: Create release
-      uses: Roang-zero1/github-create-release-action@master
+          zig-cache/release/*
+    - name: Release
+      uses: fnkr/github-action-ghr@v1
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    - name: Create GitHub release
-      uses: Roang-zero1/github-upload-release-artifacts-action@master
-      with:
-        args:
-        - zig-cache/bin
-        - zig-cache/lib
-      env:
+        GHR_COMPRESS: xz
+        GHR_PATH: zig-cache/release/
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
