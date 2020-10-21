@@ -41,3 +41,11 @@ jobs:
 
     - name: Fetch
       run: ./zig-cache/bin/zkg fetch
+
+    - name: Publish
+      uses: actions/upload-artifact@v2
+      with:
+        name: zkg
+        path: |
+          zig-cache/bin/*
+          zig-cache/lib/*
