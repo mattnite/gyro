@@ -58,3 +58,9 @@ jobs:
         path: |
           zig-cache/bin/*
           zig-cache/lib/*
+    - name: Upload the artifacts
+      uses: skx/github-action-publish-binaries@master
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        args: 'example-*'
