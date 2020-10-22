@@ -52,11 +52,10 @@ jobs:
       run: ./zig-cache/bin/zkg fetch
       
     - name: Stage for Release
-      run: zig build --prefix zig-cache/release
+      run: zig build --prefix zkg-linux
       
-    - name: Build project # This would actually build your project, using zip for an example artifact
-      run: |
-        zip --junk-paths my-artifact README.md
+    - name: Tar project
+      run: tar -czf zkg-linux.tar.gz zkg-linux
     - name: Create Release
       id: create_release
       uses: actions/create-release@v1
@@ -65,7 +64,7 @@ jobs:
       with:
         tag_name: nightly
         release_name: Nightly
-        draft: true
+        draft: false
         prerelease: false
     - name: Upload Release Asset
       id: upload-release-asset 
@@ -74,6 +73,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps           asset_path: ./my-artifact.zip
-        asset_path: ./my-artifact.zip
-        asset_name: my-artifact.zip
-        asset_content_type: application/zip
+        asset_path: ./zkg-linux.tar.gz
+        asset_name: zkg-linux.tar.gz
+        asset_content_type: application/gzip
