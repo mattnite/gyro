@@ -43,7 +43,7 @@ jobs:
       run: ./zig-cache/bin/zkg fetch
 
     - name: Stage for Release
-      run: zig build -O ReleaseFast --prefix zkg-macos-x86_64
+      run: zig build -Drelease-fast=true --prefix zkg-macos-x86_64
       
     - name: Tar project
       run: tar -czf zkg-macos-x86_64.tar.gz zkg-macos-x86_64
