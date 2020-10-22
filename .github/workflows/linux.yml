@@ -52,7 +52,7 @@ jobs:
       run: ./zig-cache/bin/zkg fetch
       
     - name: Stage for Release
-      run: zig build -Drelease-fast=true --prefix zkg-linux-x86_64
+      run: zig build -O ReleaseFast --prefix zkg-linux-x86_64
       
     - name: Tar project
       run: tar -czf zkg-linux-x86_64.tar.gz zkg-linux-x86_64
