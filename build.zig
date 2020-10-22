@@ -27,7 +27,6 @@ const pkgs = [_]Pkg{
 };
 
 pub fn build(b: *Builder) void {
-    b.setPreferredReleaseMode(.ReleaseSafe);
     var target = b.standardTargetOptions(.{});
     const mode = b.standardReleaseOptions();
 
