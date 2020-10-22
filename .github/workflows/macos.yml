@@ -47,7 +47,7 @@ jobs:
       
     - name: Tar project
       run: tar -czf zkg-macos-x86_64.tar.gz zkg-macos-x86_64
-
+    - run: uname -a
     - name: Create Release
       id: create_release
       uses: actions/create-release@v1
