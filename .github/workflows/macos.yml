@@ -42,10 +42,29 @@ jobs:
     - name: Fetch
       run: ./zig-cache/bin/zkg fetch
 
-    - name: Publish
-      uses: actions/upload-artifact@v2
+    - name: Stage for Release
+      run: zig build -Drelease-fast=true --prefix zkg-macos-x86_64
+      
+    - name: Tar project
+      run: tar -czf zkg-macos-x86_64.tar.gz zkg-macos-x86_64
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        name: zkg
-        path: |
-          zig-cache/bin/*
-          zig-cache/lib/*
+        tag_name: nightly
+        release_name: Nightly
+        draft: false
+        prerelease: false
+
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./zkg-macos-x86_64.tar.gz
+        asset_name: zkg-macos-x86_64.tar.gz
+        asset_content_type: application/gzip
