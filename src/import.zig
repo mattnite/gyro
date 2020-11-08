@@ -9,42 +9,43 @@ const c = @cImport({
 const default_root = "exports.zig";
 const Allocator = std.mem.Allocator;
 
-fn get_cache() ![]const u8 {
-    if (getenv("ZKG_CACHE")) |cache| {
-        return cache;
-    } else {
-        return error.NotFound;
-    }
-}
+name: []const u8,
+type: Type,
+src: []const u8,
+version: ?[]const u8,
+root: ?[]const u8,
 
-pub const Import = struct {
-    alias: ?[]const u8,
-    version: ?[]const u8,
-    root: []const u8,
-    url: []const u8,
-    fetch: fn (self: Import, allocator: *Allocator, deps_dir: []const u8) anyerror!void,
-    path: fn (self: Import, allocator: *Allocator, deps_dir: []const u8) anyerror![]const u8,
+const Self = @This();
+
+pub const Type = enum {
+    git,
+
+    pub fn toString(self: Type) []const u8 {
+        inline for (std.meta.fields(Type)) |field| {
+            if (@field(Type, field.name) == self) {
+                return field.name;
+            }
+        }
+    }
+
+    pub fn fromString(str: []const u8) !Type {
+        return inline for (std.meta.fields(Type)) |field| {
+            if (std.mem.eql(u8, str, field.name)) {
+                break @field(Type, field.name);
+            }
+        } else error.InvalidTypeName;
+    }
 };
 
-pub fn git(repo: []const u8, branch: []const u8, root: ?[]const u8) Import {
-    return Import{
-        .alias = null,
-        .version = branch,
-        .root = if (root) |r| r else default_root,
-        .url = repo,
-        .fetch = git_fetch,
-        .path = git_path,
+pub fn fetch(self: Self, allocator: *Allocator, deps_dir: []const u8) !void {
+    return switch (self.type) {
+        .git => self.gitFetch(allocator, deps_dir),
     };
 }
 
-pub fn git_alias(alias: []const u8, repo: []const u8, branch: []const u8, root: ?[]const u8) Import {
-    return Import{
-        .alias = alias,
-        .version = branch,
-        .root = if (root) |r| r else default_root,
-        .url = repo,
-        .fetch = git_fetch,
-        .path = git_path,
+pub fn path(self: Self, allocator: *Allocator, deps_dir: []const u8) ![]const u8 {
+    return switch (self.type) {
+        .git => self.gitPath(allocator, deps_dir),
     };
 }
 
@@ -81,7 +82,7 @@ pub const GitError = error{
     ApplyFail,
 };
 
-fn fetch_submodule(submodule: ?*c.git_submodule, name: [*c]const u8, payload: ?*c_void) callconv(.C) c_int {
+fn fetchSubmodule(submodule: ?*c.git_submodule, name: [*c]const u8, payload: ?*c_void) callconv(.C) c_int {
     const repo = @ptrCast(*c.git_repository, payload);
     var status = c.git_submodule_set_fetch_recurse_submodules(repo, name, @intToEnum(c.git_submodule_recurse_t, 1));
     if (status == -1) return status;
@@ -93,7 +94,7 @@ fn fetch_submodule(submodule: ?*c.git_submodule, name: [*c]const u8, payload: ?*
     return c.git_submodule_update(submodule, 1, &opts);
 }
 
-fn git_fetch(self: Import, allocator: *Allocator, deps_dir: []const u8) !void {
+fn gitFetch(self: Self, allocator: *Allocator, deps_dir: []const u8) !void {
     var repo: ?*c.git_repository = undefined;
     var opts: c.git_clone_options = undefined;
 
@@ -104,10 +105,10 @@ fn git_fetch(self: Import, allocator: *Allocator, deps_dir: []const u8) !void {
 
     opts.checkout_branch = self.version.?.ptr;
 
-    const location = try self.path(self, allocator, deps_dir);
+    const location = try self.path(allocator, deps_dir);
     defer allocator.free(location);
 
-    const url = try std.cstr.addNullByte(allocator, self.url);
+    const url = try std.cstr.addNullByte(allocator, self.src);
     defer allocator.free(url);
 
     debug.print("location: {}\n", .{location});
@@ -119,24 +120,24 @@ fn git_fetch(self: Import, allocator: *Allocator, deps_dir: []const u8) !void {
     }
 
     // recursively checkout submodules
-    status = c.git_submodule_foreach(repo, fetch_submodule, repo);
+    status = c.git_submodule_foreach(repo, fetchSubmodule, repo);
     if (status == -1) {
         return error.RecursiveSubmoduleCheckout;
     }
 }
 
-fn git_path(self: Import, allocator: *Allocator, deps_dir: []const u8) ![]const u8 {
+fn gitPath(self: Self, allocator: *Allocator, deps_dir: []const u8) ![]const u8 {
     return try std.cstr.addNullByte(
         allocator,
         try std.mem.join(allocator, std.fs.path.sep_str, &[_][]const u8{
             deps_dir,
-            try git_url_to_name(self.url),
+            try gitUrlToName(self.src),
             self.version.?,
         }),
     );
 }
 
-fn git_url_to_name(url: []const u8) ![]const u8 {
+fn gitUrlToName(url: []const u8) ![]const u8 {
     const https = "https://";
     const dot_git = ".git";
 

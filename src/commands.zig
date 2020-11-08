@@ -5,6 +5,7 @@ const net = @import("net");
 const ssl = @import("ssl");
 const Uri = @import("uri").Uri;
 const CertificateValidator = @import("certificate_validator.zig");
+const Manifest = @import("manifest.zig");
 
 const os = std.os;
 const debug = std.debug;
@@ -24,7 +25,7 @@ const stdout = std.io.getStdOut().writer();
 const stderr = std.io.getStdErr().writer();
 
 const default_remote = "https://zpm.random-projects.net/api";
-const imports_zig = "imports.zig";
+const imports_zzz = "imports.zzz";
 
 const ziglibs_pem = @embedFile("ziglibs.pem");
 
@@ -64,63 +65,35 @@ const DependencyGraph = struct {
     fn process(self: *Self) !void {
         while (self.queue_start < self.nodes.items.len) : (self.queue_start += 1) {
             var front = &self.nodes.items[self.queue_start];
-            const result = try front.zkg_runner(self.cache);
-            switch (result.term) {
-                .Exited => |val| {
-                    if (val != 0) {
-                        debug.print("{}", .{result.stderr});
-                        return error.BadExit;
+
+            const import_path = try std.fs.path.join(self.allocator, &[_][]const u8{ front.base_path, imports_zzz });
+            defer self.allocator.free(import_path);
+
+            std.debug.print("import path: {}, node: {}\n", .{ import_path, front });
+
+            const file = try std.fs.cwd().openFile(import_path, .{ .read = true, .write = true });
+            defer file.close();
+
+            var manifest = try Manifest.init(self.allocator, file);
+            defer manifest.deinit(self.allocator);
+
+            for (manifest.deps.items) |dep| {
+                const deps_dir = try std.fs.path.join(self.allocator, &[_][]const u8{ self.cache, "deps" });
+                defer self.allocator.free(deps_dir);
+
+                try dep.fetch(self.allocator, deps_dir);
+                const path = try dep.path(self.allocator, deps_dir);
+                defer self.allocator.free(path);
+
+                std.debug.print("path: {}\n", .{path});
+                for (self.nodes.items) |*node| {
+                    if (mem.eql(u8, path, node.base_path)) {
+                        try front.connect_dependency(node, dep.name, dep.root orelse "exports.zig");
+                        break;
                     }
-                },
-                .Signal => |signal| {
-                    debug.print("got signal: {}\n", .{signal});
-                    return error.Signal;
-                },
-                .Stopped => |why| {
-                    debug.print("stopped: {}\n", .{why});
-                    return error.Stopped;
-                },
-                .Unknown => |val| {
-                    debug.print("unknown: {}\n", .{val});
-                    return error.Unkown;
-                },
-            }
-
-            try self.results.append(result);
-            var it_line = mem.tokenize(result.stdout, "\n");
-            while (it_line.next()) |line| {
-                var name: []const u8 = undefined;
-                var path: []const u8 = undefined;
-                var root: []const u8 = undefined;
-
-                var it = mem.tokenize(line, " ");
-                var i: i32 = 0;
-
-                while (it.next()) |field| {
-                    switch (i) {
-                        0 => name = field,
-                        1 => path = field,
-                        2 => root = field,
-                        else => break,
-                    }
-
-                    i += 1;
-                }
-
-                if (i != 3) {
-                    return error.IssueWithParsing;
-                }
-
-                var found = for (self.nodes.items) |*node| {
-                    if (mem.eql(u8, path, node.base_path))
-                        break node;
-                } else null;
-
-                if (found) |node| {
-                    try front.connect_dependency(node, name, root);
                 } else {
                     try self.nodes.append(try Node.init(self.allocator, path, front.depth + 1));
-                    try front.connect_dependency(&self.nodes.items[self.nodes.items.len - 1], name, root);
+                    try front.connect_dependency(&self.nodes.items[self.nodes.items.len - 1], dep.name, dep.root orelse "exports.zig");
                 }
 
                 try self.validate();
@@ -163,16 +136,24 @@ const DependencyGraph = struct {
         depth: u32,
 
         fn init(allocator: *Allocator, base_path: []const u8, depth: u32) !Node {
+            std.debug.print("node init base_path: {}\n", .{base_path});
             return Node{
                 .allocator = allocator,
                 .dependencies = ArrayList(DependencyEdge).init(allocator),
                 .dependents = ArrayList(*Node).init(allocator),
-                .base_path = base_path,
+                .base_path = try allocator.dupe(u8, base_path),
                 .depth = depth,
             };
         }
 
+        fn deinit(self: *Node) void {
+            self.allocator(base_path);
+            self.dependents.deinit();
+            self.dependencies.deinit();
+        }
+
         fn connect_dependency(self: *Node, dep: *Node, alias: []const u8, root: []const u8) !void {
+            std.debug.print("connect, alias: {}, root: {}\n", .{ alias, root });
             if (self == dep)
                 return error.CircularDependency;
 
@@ -185,79 +166,6 @@ const DependencyGraph = struct {
                 .root = root,
             });
             try dep.dependents.append(self);
-        }
-
-        fn zkg_runner(self: *const Node, cache: []const u8) !ExecResult {
-            var arena = std.heap.ArenaAllocator.init(self.allocator);
-            defer arena.deinit();
-
-            const imports_file = try fs.path.join(
-                self.allocator,
-                &[_][]const u8{ self.base_path, "imports.zig" },
-            );
-            defer self.allocator.free(imports_file);
-
-            // if there is no imports.zig file then we don't need to run the
-            // zkg_runner
-            os.access(imports_file, 0) catch |err| {
-                if (err == error.FileNotFound) {
-                    return ExecResult{
-                        .term = ChildProcess.Term{ .Exited = 0 },
-                        .stdout = "",
-                        .stderr = "",
-                    };
-                }
-
-                return err;
-            };
-
-            const cache_dir = try fs.path.join(self.allocator, &[_][]const u8{ self.base_path, cache });
-            const lib_dir = if (os.getenv("ZKG_LIB")) |dir| dir else "/usr/lib/zig/zkg";
-            const source = try fs.path.join(self.allocator, &[_][]const u8{ lib_dir, "zkg_runner.zig" });
-            const zkg_path = try fs.path.join(self.allocator, &[_][]const u8{ lib_dir, "zkg.zig" });
-
-            const builder = try Builder.create(self.allocator, "zig", self.base_path, cache_dir);
-            defer builder.destroy();
-
-            builder.resolveInstallPrefix();
-
-            // normal build script
-            const target = builder.standardTargetOptions(.{});
-            const mode = builder.standardReleaseOptions();
-
-            const exe = builder.addExecutable("zkg_runner", source);
-            const zkg = std.build.Pkg{
-                .name = "zkg",
-                .path = zkg_path,
-            };
-
-            exe.setTarget(target);
-            exe.setBuildMode(mode);
-            exe.linkSystemLibrary("git2");
-            exe.linkSystemLibrary("c");
-
-            exe.addPackage(zkg);
-            exe.addPackage(std.build.Pkg{
-                .name = "imports",
-                .path = imports_file,
-                .dependencies = &[_]std.build.Pkg{zkg},
-            });
-
-            exe.addIncludeDir(lib_dir);
-            exe.addIncludeDir(self.base_path);
-            exe.install();
-
-            try builder.make(&[_][]const u8{});
-            const runner_exe = try fs.path.join(self.allocator, &[_][]const u8{ cache, "bin", "zkg_runner" });
-            defer {
-                fs.cwd().deleteFile(runner_exe) catch {};
-                self.allocator.free(runner_exe);
-            }
-
-            return std.ChildProcess.exec(.{
-                .allocator = self.allocator,
-                .argv = &[_][]const u8{runner_exe},
-            });
         }
     };
 };
@@ -310,9 +218,9 @@ pub fn fetch(cache_path: ?[]const u8) !void {
 
     const allocator = &arena.allocator;
 
-    fs.cwd().access(imports_zig, .{ .read = true, .write = true }) catch |err| {
+    fs.cwd().access(imports_zzz, .{ .read = true, .write = true }) catch |err| {
         if (err == error.FileNotFound) {
-            _ = try stderr.write("imports.zig has not been initialized in this directory\n");
+            _ = try stderr.write("imports.zzz does not exist\n");
         }
 
         return err;
@@ -701,17 +609,6 @@ pub fn tags(allocator: *mem.Allocator, remote_opt: ?[]const u8) !void {
     }
 }
 
-pub fn init() !void {
-    fs.cwd().access(imports_zig, .{ .read = true, .write = true }) catch |err| {
-        switch (err) {
-            error.FileNotFound => {
-                try fs.cwd().writeFile(imports_zig, "const zkg = @import(\"zkg\");\n");
-            },
-            else => return err,
-        }
-    };
-}
-
 pub fn add(
     allocator: *mem.Allocator,
     name: []const u8,
@@ -719,34 +616,16 @@ pub fn add(
     remote_opt: ?[]const u8,
 ) !void {
     const alias = alias_opt orelse name;
-    const imports = fs.cwd().openFile(imports_zig, .{ .read = true, .write = true }) catch |err| {
-        if (err == error.FileNotFound) {
-            _ = try stderr.write("need to create an imports.zig file with 'zkg init'\n");
-        }
 
-        return err;
-    };
-    defer imports.close();
+    const file = try std.fs.cwd().createFile(imports_zzz, .{
+        .read = true,
+        .exclusive = false,
+        .truncate = false,
+    });
+    defer file.close();
 
-    const contents = try imports.readToEndAlloc(allocator, 0x2000);
-    defer allocator.free(contents);
-
-    var it = mem.tokenize(contents, ";");
-
-    while (it.next()) |expr| {
-        var tok_it = mem.tokenize(expr, "\n ");
-        const public = tok_it.next() orelse continue;
-        const constant = tok_it.next() orelse continue;
-
-        if (!mem.eql(u8, public, "pub")) continue;
-        if (!mem.eql(u8, constant, "const")) continue;
-
-        const token = tok_it.next() orelse continue;
-        if (mem.eql(u8, token, alias)) {
-            try stderr.print("{} is already declared in imports.zig\n", .{alias});
-            return error.AliasExists;
-        }
-    }
+    var manifest = try Manifest.init(allocator, file);
+    defer manifest.deinit(allocator);
 
     const response = try query(allocator, remote_opt orelse default_remote, .{
         .packages = .{ .name = name },
@@ -770,19 +649,25 @@ pub fn add(
     }
 
     const entry = try Entry.from_json(root.Array.items[0]);
-    const writer = imports.writer();
-    try writer.print(
-        \\
-        \\pub const {} = zkg.import.git(
-        \\    "{}",
-        \\    "master",
-        \\    "{}",
-        \\);
-        \\
-    , .{ alias, entry.git, entry.root_file });
+    try manifest.addImport(.{
+        .name = alias,
+        // ziglibs gives us git for now
+        .type = .git,
+        .src = entry.git,
+        .version = "master",
+        .root = entry.root_file,
+    });
+
+    try manifest.commit();
 }
 
-pub fn remove(name: []const u8) !void {
-    // search imports for declaration matching name, delete it
-    return error.NotImplementedYetSry;
+pub fn remove(allocator: *Allocator, name: []const u8) !void {
+    const file = try std.fs.cwd().openFile(imports_zzz, .{ .read = true, .write = true });
+    defer file.close();
+
+    var manifest = try Manifest.init(allocator, file);
+    defer manifest.deinit(allocator);
+
+    try manifest.removeImport(name);
+    try manifest.commit();
 }

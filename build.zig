@@ -24,10 +24,13 @@ const pkgs = [_]Pkg{
         .name = "uri",
         .path = "libs/zuri/src/zuri.zig",
     },
+    Pkg{
+        .name = "zzz",
+        .path = "libs/zzz/src/main.zig",
+    },
 };
 
 pub fn build(b: *Builder) void {
-    b.setPreferredReleaseMode(.ReleaseSafe);
     var target = b.standardTargetOptions(.{});
     const mode = b.standardReleaseOptions();
 
@@ -44,12 +47,14 @@ pub fn build(b: *Builder) void {
     }
 
     ssl.linkBearSSL("libs/zig-bearssl", exe, target);
+    exe.linkSystemLibrary("git2");
+    exe.linkSystemLibrary("openssl");
+    exe.linkSystemLibrary("crypto");
+    exe.linkSystemLibrary("ssh2");
+    exe.linkSystemLibrary("zlib");
+    exe.linkSystemLibrary("pcre");
     exe.linkLibC();
     exe.install();
-
-    b.installLibFile("src/zkg.zig", "zig/zkg/zkg.zig");
-    b.installLibFile("src/import.zig", "zig/zkg/import.zig");
-    b.installLibFile("src/zkg_runner.zig", "zig/zkg/zkg_runner.zig");
 
     const run_cmd = exe.run();
     run_cmd.step.dependOn(b.getInstallStep());

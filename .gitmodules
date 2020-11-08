@@ -16,3 +16,6 @@
 [submodule "libs/zuri"]
 	path = libs/zuri
 	url = https://github.com/Vexu/zuri.git
+[submodule "libs/zzz"]
+	path = libs/zzz
+	url = https://github.com/gruebite/zzz.git
