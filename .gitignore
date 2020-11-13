@@ -1,1 +1,4 @@
 zig-cache
+zig-deps
+deps.zig
+imports.zzz

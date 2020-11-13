@@ -1,30 +1,29 @@
 usingnamespace std.build;
 const std = @import("std");
+const ssl = @import(pkgs.ssl.path);
 
-const ssl = @import("libs/zig-bearssl/bearssl.zig");
-
-const pkgs = [_]Pkg{
-    Pkg{
+const pkgs = .{
+    .clap = .{
         .name = "clap",
         .path = "libs/zig-clap/clap.zig",
     },
-    Pkg{
+    .http = .{
         .name = "http",
         .path = "libs/hzzp/src/main.zig",
     },
-    Pkg{
+    .net = .{
         .name = "net",
         .path = "libs/zig-network/network.zig",
     },
-    Pkg{
+    .ssl = .{
         .name = "ssl",
         .path = "libs/zig-bearssl/bearssl.zig",
     },
-    Pkg{
+    .uri = .{
         .name = "uri",
         .path = "libs/zuri/src/zuri.zig",
     },
-    Pkg{
+    .zzz = .{
         .name = "zzz",
         .path = "libs/zzz/src/main.zig",
     },
@@ -42,23 +41,26 @@ pub fn build(b: *Builder) void {
     exe.setTarget(target);
     exe.setBuildMode(mode);
 
-    for (pkgs) |pkg| {
-        exe.addPackage(pkg);
+    const tests = b.addTest("src/import.zig");
+    tests.setBuildMode(mode);
+    inline for (std.meta.fields(@TypeOf(pkgs))) |field| {
+        exe.addPackage(@field(pkgs, field.name));
+        tests.addPackage(@field(pkgs, field.name));
     }
 
     ssl.linkBearSSL("libs/zig-bearssl", exe, target);
-    exe.linkSystemLibrary("git2");
-    exe.linkSystemLibrary("openssl");
-    exe.linkSystemLibrary("crypto");
-    exe.linkSystemLibrary("ssh2");
-    exe.linkSystemLibrary("zlib");
-    exe.linkSystemLibrary("pcre");
     exe.linkLibC();
     exe.install();
 
     const run_cmd = exe.run();
     run_cmd.step.dependOn(b.getInstallStep());
+    if (b.args) |args| {
+        run_cmd.addArgs(args);
+    }
 
     const run_step = b.step("run", "Run zkg");
     run_step.dependOn(&run_cmd.step);
+
+    const test_step = b.step("test", "Run tests");
+    run_step.dependOn(&tests.step);
 }

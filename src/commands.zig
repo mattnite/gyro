@@ -4,8 +4,8 @@ const http = @import("http");
 const net = @import("net");
 const ssl = @import("ssl");
 const Uri = @import("uri").Uri;
-const CertificateValidator = @import("certificate_validator.zig");
 const Manifest = @import("manifest.zig");
+const Import = @import("import.zig").Import;
 
 const os = std.os;
 const debug = std.debug;
@@ -17,9 +17,6 @@ const fmt = std.fmt;
 const Allocator = mem.Allocator;
 const ArrayList = std.ArrayList;
 const OutStream = std.fs.File.OutStream;
-const ChildProcess = std.ChildProcess;
-const ExecResult = std.ChildProcess.ExecResult;
-const Builder = std.build.Builder;
 
 const stdout = std.io.getStdOut().writer();
 const stderr = std.io.getStdErr().writer();
@@ -34,7 +31,7 @@ const DependencyGraph = struct {
     cache: []const u8,
     queue_start: usize,
     nodes: std.ArrayList(Node),
-    results: ArrayList(ExecResult),
+    manifests: ArrayList(Manifest),
 
     const Self = @This();
 
@@ -45,7 +42,7 @@ const DependencyGraph = struct {
             .cache = cache,
             .queue_start = 0,
             .nodes = ArrayList(Node).init(allocator),
-            .results = ArrayList(ExecResult).init(allocator),
+            .manifests = ArrayList(Manifest).init(allocator),
         };
 
         // TODO: get cwd of process
@@ -56,9 +53,8 @@ const DependencyGraph = struct {
     fn deinit(self: *Self) void {
         self.nodes.deinit();
 
-        for (self.results.span()) |result| {
-            self.allocator.free(result.stdout);
-            self.allocator.free(result.stderr);
+        for (self.manifests.items) |manifest| {
+            manifest.deinit();
         }
     }
 
@@ -69,31 +65,31 @@ const DependencyGraph = struct {
             const import_path = try std.fs.path.join(self.allocator, &[_][]const u8{ front.base_path, imports_zzz });
             defer self.allocator.free(import_path);
 
-            std.debug.print("import path: {}, node: {}\n", .{ import_path, front });
+            std.debug.print("import path: {}\n", .{import_path});
 
-            const file = try std.fs.cwd().openFile(import_path, .{ .read = true, .write = true });
-            defer file.close();
+            const file = std.fs.cwd().openFile(import_path, .{ .read = true }) catch |err| {
+                if (err == error.FileNotFound)
+                    continue
+                else
+                    return err;
+            };
+            try self.manifests.append(try Manifest.init(self.allocator, file));
 
-            var manifest = try Manifest.init(self.allocator, file);
-            defer manifest.deinit(self.allocator);
-
-            for (manifest.deps.items) |dep| {
-                const deps_dir = try std.fs.path.join(self.allocator, &[_][]const u8{ self.cache, "deps" });
-                defer self.allocator.free(deps_dir);
-
-                try dep.fetch(self.allocator, deps_dir);
-                const path = try dep.path(self.allocator, deps_dir);
+            var manifest = &self.manifests.items[self.manifests.items.len - 1];
+            for (manifest.*.deps.items) |dep| {
+                const path = try dep.path(self.allocator, self.cache);
                 defer self.allocator.free(path);
 
-                std.debug.print("path: {}\n", .{path});
+                std.debug.print("name: {}, path: {}\n", .{ dep.name, path });
                 for (self.nodes.items) |*node| {
                     if (mem.eql(u8, path, node.base_path)) {
-                        try front.connect_dependency(node, dep.name, dep.root orelse "exports.zig");
+                        try front.connect_dependency(node, dep.name, dep.root);
                         break;
                     }
                 } else {
+                    try dep.fetch(self.allocator, self.cache);
                     try self.nodes.append(try Node.init(self.allocator, path, front.depth + 1));
-                    try front.connect_dependency(&self.nodes.items[self.nodes.items.len - 1], dep.name, dep.root orelse "exports.zig");
+                    try front.connect_dependency(&self.nodes.items[self.nodes.items.len - 1], dep.name, dep.root);
                 }
 
                 try self.validate();
@@ -226,17 +222,13 @@ pub fn fetch(cache_path: ?[]const u8) !void {
         return err;
     };
 
-    const cache = cache_path orelse "zig-cache";
-    var dep_graph = try DependencyGraph.init(allocator, ".", cache);
+    var dep_graph = try DependencyGraph.init(allocator, ".", "zig-deps");
     try dep_graph.process();
 
-    var cache_dir = fs.Dir{ .fd = try os.open(cache, os.O_DIRECTORY, 0) };
-    defer cache_dir.close();
-
-    const gen_file = try cache_dir.createFile("packages.zig", fs.File.CreateFlags{
+    const gen_file = try std.fs.cwd().createFile("deps.zig", fs.File.CreateFlags{
         .truncate = true,
     });
-    errdefer cache_dir.deleteFile("packages.zig") catch {};
+    errdefer std.fs.cwd().deleteFile("deps.zig") catch {};
     defer gen_file.close();
 
     const file_stream = gen_file.outStream();
@@ -301,7 +293,13 @@ fn https_request(
     var trust_anchor = ssl.TrustAnchorCollection.init(allocator);
     defer trust_anchor.deinit();
 
-    try trust_anchor.appendFromPEM(ziglibs_pem);
+    const certs = try std.fs.openFileAbsolute("/etc/ssl/cert.pem", .{ .read = true });
+    defer certs.close();
+
+    const pem = try certs.readToEndAlloc(allocator, 0x100000);
+    defer allocator.free(pem);
+
+    try trust_anchor.appendFromPEM(pem);
     var x509 = ssl.x509.Minimal.init(trust_anchor);
     var ssl_client = ssl.Client.init(x509.getEngine());
     ssl_client.relocate();
@@ -625,7 +623,7 @@ pub fn add(
     defer file.close();
 
     var manifest = try Manifest.init(allocator, file);
-    defer manifest.deinit(allocator);
+    defer manifest.deinit();
 
     const response = try query(allocator, remote_opt orelse default_remote, .{
         .packages = .{ .name = name },
@@ -651,11 +649,8 @@ pub fn add(
     const entry = try Entry.from_json(root.Array.items[0]);
     try manifest.addImport(.{
         .name = alias,
-        // ziglibs gives us git for now
-        .type = .git,
-        .src = entry.git,
-        .version = "master",
         .root = entry.root_file,
+        .src = try Import.urlToSource(entry.git),
     });
 
     try manifest.commit();
@@ -666,7 +661,7 @@ pub fn remove(allocator: *Allocator, name: []const u8) !void {
     defer file.close();
 
     var manifest = try Manifest.init(allocator, file);
-    defer manifest.deinit(allocator);
+    defer manifest.deinit();
 
     try manifest.removeImport(name);
     try manifest.commit();
