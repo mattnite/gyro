@@ -30,7 +30,7 @@ const pkgs = .{
 };
 
 pub fn build(b: *Builder) !void {
-    const target = b.standardTargetOptions(.{
+    var target = b.standardTargetOptions(.{
         .default_target = try std.zig.CrossTarget.parse(.{
             .arch_os_abi = if (std.builtin.os.tag == .windows)
                 "native-native-gnu" // on windows, use gnu by default
@@ -38,6 +38,13 @@ pub fn build(b: *Builder) !void {
                 "native-linux-musl", // glibc has some problems by-default, use musl instead
         }),
     });
+
+    if (target.abi == null) {
+        target.abi = switch (std.builtin.os.tag) {
+            .windows => .gnu,
+            else => .musl,
+        };
+    }
 
     const mode = b.standardReleaseOptions();
 
