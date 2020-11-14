@@ -10,9 +10,8 @@ const Command = enum {
     remove,
 };
 
-const stderr = std.io.getStdErr().writer();
-
 fn printUsage() noreturn {
+    const stderr = std.io.getStdErr().writer();
     _ = stderr.write(
         \\zkg <cmd> [cmd specific options]
         \\
@@ -33,6 +32,7 @@ fn printUsage() noreturn {
 }
 
 fn checkHelp(comptime summary: []const u8, comptime params: anytype, args: anytype) void {
+    const stderr = std.io.getStdErr().writer();
     if (args.flag("--help")) {
         _ = stderr.write(summary ++ "\n\n") catch {};
         clap.help(stderr, params) catch {};
@@ -42,6 +42,7 @@ fn checkHelp(comptime summary: []const u8, comptime params: anytype, args: anyty
 }
 
 pub fn main() anyerror!void {
+    const stderr = std.io.getStdErr().writer();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = &gpa.allocator;
 

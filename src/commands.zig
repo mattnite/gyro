@@ -19,9 +19,6 @@ const Allocator = mem.Allocator;
 const ArrayList = std.ArrayList;
 const OutStream = std.fs.File.OutStream;
 
-const stdout = std.io.getStdOut().writer();
-const stderr = std.io.getStdErr().writer();
-
 const default_remote = "https://zpm.random-projects.net/api";
 const imports_zzz = "imports.zzz";
 
@@ -220,7 +217,7 @@ pub fn fetch(cache_path: ?[]const u8) !void {
 
     fs.cwd().access(imports_zzz, .{ .read = true, .write = true }) catch |err| {
         if (err == error.FileNotFound) {
-            _ = try stderr.write("imports.zzz does not exist\n");
+            _ = try std.io.getStdErr().writer().write("imports.zzz does not exist\n");
         }
 
         return err;
@@ -357,7 +354,7 @@ fn readHttpBody(allocator: *mem.Allocator, client: anytype) !std.ArrayList(u8) {
         switch (event) {
             .status => |status| {
                 if (status.code != 200) {
-                    try stderr.print("got HTTP {} return code\n", .{status.code});
+                    try std.io.getStdErr().writer().print("got HTTP {} return code\n", .{status.code});
                     return error.BadStatusCode;
                 }
             },
@@ -501,7 +498,7 @@ pub fn search(
     defer response.deinit();
 
     if (print_json) {
-        _ = try stdout.write(response.items);
+        _ = try std.io.getStdOut().writer().write(response.items);
         return;
     }
 
@@ -538,7 +535,7 @@ pub fn search(
     author_width = std.math.max(author_width, author_title.len) + 2;
 
     try printColumns(
-        stderr,
+        std.io.getStdErr().writer(),
         &[_]Column{
             .{ .str = name_title, .width = name_width },
             .{ .str = author_title, .width = author_width },
@@ -548,7 +545,7 @@ pub fn search(
 
     for (entries.items) |item| {
         try printColumns(
-            stdout,
+            std.io.getStdOut().writer(),
             &[_]Column{
                 .{ .str = item.name, .width = name_width },
                 .{ .str = item.author, .width = author_width },
@@ -606,14 +603,14 @@ pub fn tags(allocator: *mem.Allocator, remote_opt: ?[]const u8) !void {
     name_width = std.math.max(name_width, name_title.len) + 2;
 
     try printColumns(
-        stderr,
+        std.io.getStdErr().writer(),
         &[_]Column{.{ .str = name_title, .width = name_width }},
         desc_title,
     );
 
     for (entries.items) |item| {
         try printColumns(
-            stdout,
+            std.io.getStdOut().writer(),
             &[_]Column{.{ .str = item.name, .width = name_width }},
             item.description,
         );

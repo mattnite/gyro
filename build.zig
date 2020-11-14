@@ -29,13 +29,17 @@ const pkgs = .{
     },
 };
 
-pub fn build(b: *Builder) void {
-    var target = b.standardTargetOptions(.{});
-    const mode = b.standardReleaseOptions();
+pub fn build(b: *Builder) !void {
+    const target = b.standardTargetOptions(.{
+        .default_target = try std.zig.CrossTarget.parse(.{
+            .arch_os_abi = if (std.builtin.os.tag == .windows)
+                "native-native-gnu" // on windows, use gnu by default
+            else
+                "native-linux-musl", // glibc has some problems by-default, use musl instead
+        }),
+    });
 
-    if (target.abi == null) {
-        target.abi = .musl;
-    }
+    const mode = b.standardReleaseOptions();
 
     const exe = b.addExecutable("zkg", "src/main.zig");
     exe.setTarget(target);
