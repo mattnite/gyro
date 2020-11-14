@@ -1,0 +1,6 @@
+shared:
+  src:
+    github:
+      user: mattnite
+      repo: zkg-test-circular-1
+      ref: master

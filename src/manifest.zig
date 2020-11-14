@@ -55,7 +55,6 @@ pub fn init(allocator: *Allocator, file: std.fs.File) !Self {
 
 /// on destruction serialize to file
 pub fn deinit(self: *Self) void {
-    self.file.close();
     self.deps.deinit();
     self.allocator.free(self.text);
 }

@@ -41,7 +41,7 @@ pub fn build(b: *Builder) void {
     exe.setTarget(target);
     exe.setBuildMode(mode);
 
-    const tests = b.addTest("src/import.zig");
+    const tests = b.addTest("tests/main.zig");
     tests.setBuildMode(mode);
     inline for (std.meta.fields(@TypeOf(pkgs))) |field| {
         exe.addPackage(@field(pkgs, field.name));

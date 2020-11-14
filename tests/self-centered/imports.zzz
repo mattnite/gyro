@@ -1,0 +1,6 @@
+self_centered:
+  src:
+    github:
+      user: mattnite
+      repo: zkg-test-self-centered
+      ref: master

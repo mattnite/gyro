@@ -1,0 +1,13 @@
+diamond_1:
+  src:
+    github:
+      user: mattnite
+      repo: zkg-test-diamond-1
+      ref: master
+
+diamond_2:
+  src:
+    github:
+      user: mattnite
+      repo: zkg-test-diamond-2
+      ref: master

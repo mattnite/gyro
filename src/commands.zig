@@ -62,10 +62,11 @@ const DependencyGraph = struct {
         while (self.queue_start < self.nodes.items.len) : (self.queue_start += 1) {
             var front = &self.nodes.items[self.queue_start];
 
-            const import_path = try std.fs.path.join(self.allocator, &[_][]const u8{ front.base_path, imports_zzz });
+            const import_path = try std.fs.path.join(self.allocator, &[_][]const u8{
+                front.base_path,
+                imports_zzz,
+            });
             defer self.allocator.free(import_path);
-
-            std.debug.print("import path: {}\n", .{import_path});
 
             const file = std.fs.cwd().openFile(import_path, .{ .read = true }) catch |err| {
                 if (err == error.FileNotFound)
@@ -80,7 +81,6 @@ const DependencyGraph = struct {
                 const path = try dep.path(self.allocator, self.cache);
                 defer self.allocator.free(path);
 
-                std.debug.print("name: {}, path: {}\n", .{ dep.name, path });
                 for (self.nodes.items) |*node| {
                     if (mem.eql(u8, path, node.base_path)) {
                         try front.connect_dependency(node, dep.name, dep.root);
@@ -89,7 +89,11 @@ const DependencyGraph = struct {
                 } else {
                     try dep.fetch(self.allocator, self.cache);
                     try self.nodes.append(try Node.init(self.allocator, path, front.depth + 1));
-                    try front.connect_dependency(&self.nodes.items[self.nodes.items.len - 1], dep.name, dep.root);
+                    try front.connect_dependency(
+                        &self.nodes.items[self.nodes.items.len - 1],
+                        dep.name,
+                        dep.root,
+                    );
                 }
 
                 try self.validate();
@@ -132,7 +136,6 @@ const DependencyGraph = struct {
         depth: u32,
 
         fn init(allocator: *Allocator, base_path: []const u8, depth: u32) !Node {
-            std.debug.print("node init base_path: {}\n", .{base_path});
             return Node{
                 .allocator = allocator,
                 .dependencies = ArrayList(DependencyEdge).init(allocator),
@@ -149,7 +152,6 @@ const DependencyGraph = struct {
         }
 
         fn connect_dependency(self: *Node, dep: *Node, alias: []const u8, root: []const u8) !void {
-            std.debug.print("connect, alias: {}, root: {}\n", .{ alias, root });
             if (self == dep)
                 return error.CircularDependency;
 
@@ -170,7 +172,7 @@ fn indent(stream: OutStream, n: usize) !void {
     try stream.writeByteNTimes(' ', n * 4);
 }
 
-fn recursive_print(
+fn recusivePrint(
     allocator: *Allocator,
     stream: fs.File.OutStream,
     edge: *DependencyGraph.DependencyEdge,
@@ -183,25 +185,26 @@ fn recursive_print(
     defer allocator.free(path);
 
     try indent(stream, depth);
-    try stream.print("Pkg{{\n", .{});
+    if (depth == 1) {
+        try stream.print(".{} = .{{\n", .{edge.alias});
+    } else {
+        try stream.print(".{{\n", .{});
+    }
+
     try indent(stream, depth + 1);
     try stream.print(".name = \"{}\",\n", .{edge.alias});
     try indent(stream, depth + 1);
     try stream.print(".path = \"{}\",\n", .{path});
-
     if (edge.node.dependencies.items.len > 0) {
         try indent(stream, depth + 1);
-        try stream.print(".dependencies = &[_]Pkg{{\n", .{});
+        try stream.print(".dependencies = .{{\n", .{});
 
         for (edge.node.dependencies.items) |*dep| {
-            try recursive_print(allocator, stream, dep, depth + 2);
+            try recusivePrint(allocator, stream, dep, depth + 2);
         }
 
         try indent(stream, depth + 1);
         try stream.print("}},\n", .{});
-    } else {
-        try indent(stream, depth + 1);
-        try stream.print(".dependencies = null,\n", .{});
     }
 
     try indent(stream, depth);
@@ -233,15 +236,12 @@ pub fn fetch(cache_path: ?[]const u8) !void {
 
     const file_stream = gen_file.outStream();
     try file_stream.writeAll(
-        \\const std = @import("std");
-        \\const Pkg = std.build.Pkg;
-        \\
-        \\pub const list = [_]Pkg{
+        \\pub const pkgs = .{
         \\
     );
 
     for (dep_graph.nodes.items[0].dependencies.items) |*dep| {
-        try recursive_print(allocator, file_stream, dep, 1);
+        try recusivePrint(allocator, file_stream, dep, 1);
     }
 
     try file_stream.writeAll("};\n");
@@ -259,7 +259,7 @@ const Protocol = enum {
     }
 };
 
-fn http_request(
+fn httpRequest(
     allocator: *Allocator,
     hostname: [:0]const u8,
     port: u16,
@@ -281,10 +281,10 @@ fn http_request(
     try http_client.writeHeaderValue("Agent", "zkg");
     try http_client.writeHeadComplete();
 
-    return read_http_body(allocator, &http_client);
+    return readHttpBody(allocator, &http_client);
 }
 
-fn https_request(
+fn httpsRequest(
     allocator: *Allocator,
     hostname: [:0]const u8,
     port: u16,
@@ -332,10 +332,10 @@ fn https_request(
     try http_client.writeHeadComplete();
     try ssl_socket.flush();
 
-    return read_http_body(allocator, &http_client);
+    return readHttpBody(allocator, &http_client);
 }
 
-fn read_http_body(allocator: *mem.Allocator, client: anytype) !std.ArrayList(u8) {
+fn readHttpBody(allocator: *mem.Allocator, client: anytype) !std.ArrayList(u8) {
     var body = std.ArrayList(u8).init(allocator);
     errdefer body.deinit();
 
@@ -348,7 +348,6 @@ fn read_http_body(allocator: *mem.Allocator, client: anytype) !std.ArrayList(u8)
                 }
             },
             .invalid => |invalid| {
-                std.debug.print("{}\n", .{invalid.message});
                 return error.Invalid;
             },
             .chunk => |chunk| {
@@ -435,8 +434,8 @@ fn query(
     const params_str = try params.print(&params_buf, uri);
 
     return switch (protocol) {
-        .http => http_request(allocator, hostnameZ, port, params_str),
-        .https => https_request(allocator, hostnameZ, port, params_str),
+        .http => httpRequest(allocator, hostnameZ, port, params_str),
+        .https => httpsRequest(allocator, hostnameZ, port, params_str),
     };
 }
 
@@ -465,7 +464,7 @@ const Column = struct {
     width: usize,
 };
 
-fn print_columns(writer: anytype, columns: []const Column, last: []const u8) !void {
+fn printColumns(writer: anytype, columns: []const Column, last: []const u8) !void {
     for (columns) |column| {
         try writer.print("{}", .{column.str});
         if (column.str.len < column.width) {
@@ -524,7 +523,7 @@ pub fn search(
     name_width = std.math.max(name_width, name_title.len) + 2;
     author_width = std.math.max(author_width, author_title.len) + 2;
 
-    try print_columns(
+    try printColumns(
         stderr,
         &[_]Column{
             .{ .str = name_title, .width = name_width },
@@ -534,7 +533,7 @@ pub fn search(
     );
 
     for (entries.items) |item| {
-        try print_columns(
+        try printColumns(
             stdout,
             &[_]Column{
                 .{ .str = item.name, .width = name_width },
@@ -592,14 +591,14 @@ pub fn tags(allocator: *mem.Allocator, remote_opt: ?[]const u8) !void {
 
     name_width = std.math.max(name_width, name_title.len) + 2;
 
-    try print_columns(
+    try printColumns(
         stderr,
         &[_]Column{.{ .str = name_title, .width = name_width }},
         desc_title,
     );
 
     for (entries.items) |item| {
-        try print_columns(
+        try printColumns(
             stdout,
             &[_]Column{.{ .str = item.name, .width = name_width }},
             item.description,

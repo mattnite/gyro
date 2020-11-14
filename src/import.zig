@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const net = @import("net");
 const ssl = @import("ssl");
 const http = @import("http");
@@ -8,6 +9,8 @@ const zzz = @import("zzz");
 
 const Allocator = std.mem.Allocator;
 const gzipStream = std.compress.gzip.gzipStream;
+
+const github_pem = @embedFile("github-com-chain.pem");
 
 pub const Import = struct {
     name: []const u8,
@@ -36,9 +39,12 @@ pub const Import = struct {
             switch (source) {
                 .github => |github| {
                     var node = try tree.addNode(root, .{ .String = "github" });
-                    _ = try tree.addNode(node, .{ .String = github.user });
-                    _ = try tree.addNode(node, .{ .String = github.repo });
-                    _ = try tree.addNode(node, .{ .String = github.ref });
+                    var repo_key = try tree.addNode(node, .{ .String = "repo" });
+                    _ = try tree.addNode(repo_key, .{ .String = github.repo });
+                    var user_key = try tree.addNode(node, .{ .String = "user" });
+                    _ = try tree.addNode(user_key, .{ .String = github.user });
+                    var ref_key = try tree.addNode(node, .{ .String = "ref" });
+                    _ = try tree.addNode(ref_key, .{ .String = github.ref });
                 },
                 .url => |url| {
                     var node = try tree.addNode(root, .{ .String = "url" });
@@ -65,7 +71,6 @@ pub const Import = struct {
                     } else if (std.mem.eql(u8, "ref", gh_key)) {
                         ref = try getZNodeString(elem.child orelse return error.MissingRef);
                     } else {
-                        std.debug.print("unknown gh_key: {}\n", .{gh_key});
                         return error.UnknownKey;
                     }
                 }
@@ -80,7 +85,6 @@ pub const Import = struct {
             } else if (std.mem.eql(u8, "url", key))
                 Source{ .url = try getZNodeString(node.*.child orelse return error.MissingUrl) }
             else {
-                std.debug.print("unknown key: {}\n", .{key});
                 return error.UnknownKey;
             };
         }
@@ -124,13 +128,12 @@ pub const Import = struct {
             const key = try getZNodeString(elem);
 
             if (std.mem.eql(u8, "root", key)) {
-                root_path = try getZNodeString(elem);
+                root_path = if (elem.child) |child_node| try getZNodeString(child_node) else null;
             } else if (std.mem.eql(u8, "src", key)) {
                 src = try Source.fromZNode(elem.child orelse return error.MissingSourceType);
             } else if (std.mem.eql(u8, "integrity", key)) {
                 integrity = try Integrity.fromZNode(elem.child orelse return error.MissingHashType);
             } else {
-                std.debug.print("unknown key: {}\n", .{key});
                 return error.UnknownKey;
             }
         }
@@ -164,7 +167,19 @@ pub const Import = struct {
     }
 
     pub fn urlToSource(url: []const u8) !Source {
-        return Source{ .url = "" };
+        const prefix = "https://github.com/";
+        if (!std.mem.startsWith(u8, url, prefix)) return error.SorryOnlyGithubOverHttps;
+
+        var it = std.mem.tokenize(url[prefix.len..], "/");
+        const user = it.next() orelse return error.MissingUser;
+        const repo = it.next() orelse return error.MissingRepo;
+        return Source{
+            .github = .{
+                .user = user,
+                .repo = repo,
+                .ref = "master",
+            },
+        };
     }
 
     pub fn toUrl(self: Import, allocator: *Allocator) ![]const u8 {
@@ -293,7 +308,6 @@ const Connection = struct {
         else if (try self.http_client.readEvent()) |event| blk: {
             switch (event) {
                 .closed => {
-                    std.debug.print("got close\n", .{});
                     break :blk 0;
                 },
                 .chunk => |chunk| {
@@ -301,7 +315,6 @@ const Connection = struct {
                     break :blk self.copyToBuf(buffer);
                 },
                 else => |val| {
-                    std.debug.print("something else: {}\n", .{val});
                     break :blk @as(usize, 0);
                 },
             }
@@ -325,14 +338,28 @@ const HttpsSource = struct {
         var url = try import.toUrl(allocator);
         defer allocator.free(url);
 
-        const file = try std.fs.openFileAbsolute("/etc/ssl/cert.pem", .{ .read = true });
-        defer file.close();
-
-        const certs = try file.readToEndAlloc(allocator, 500000);
-        defer allocator.free(certs);
-
         var trust_anchor = ssl.TrustAnchorCollection.init(allocator);
-        try trust_anchor.appendFromPEM(certs);
+        errdefer trust_anchor.deinit();
+
+        switch (builtin.os.tag) {
+            .linux => pem: {
+                const file = std.fs.openFileAbsolute("/etc/ssl/cert.pem", .{ .read = true }) catch |err| {
+                    if (err == error.FileNotFound) {
+                        try trust_anchor.appendFromPEM(github_pem);
+                        break :pem;
+                    } else return err;
+                };
+                defer file.close();
+
+                const certs = try file.readToEndAlloc(allocator, 500000);
+                defer allocator.free(certs);
+
+                try trust_anchor.appendFromPEM(certs);
+            },
+            else => {
+                try trust_anchor.appendFromPEM(github_pem);
+            },
+        }
 
         var x509 = ssl.x509.Minimal.init(trust_anchor);
 
@@ -341,7 +368,12 @@ const HttpsSource = struct {
             const uri = try Uri.parse(url, true);
             const port = uri.port orelse 443;
 
-            if (!std.mem.eql(u8, uri.scheme, "https")) return error.HttpsOnly;
+            if (!std.mem.eql(u8, uri.scheme, "https")) {
+                return if (uri.scheme.len == 0)
+                    error.PutQuotesAroundUrl
+                else
+                    error.HttpsOnly;
+            }
 
             const hostname = try std.cstr.addNullByte(allocator, uri.host.name);
             defer allocator.free(hostname);
@@ -375,6 +407,8 @@ const HttpsSource = struct {
                 }
             }
         }
+
+        std.log.info("fetching {}", .{url});
 
         return Self{
             .allocator = allocator,

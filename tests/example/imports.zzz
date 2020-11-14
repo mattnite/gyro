@@ -1,0 +1,15 @@
+clap:
+  root: clap.zig
+  src:
+    github:
+      user: Hejsil
+      repo: zig-clap
+      ref: master
+
+regex:
+  root: ctregex.zig
+  src:
+    github:
+      user: alexnask
+      repo: ctregex.zig
+      ref: master
