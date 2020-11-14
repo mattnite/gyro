@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const clap = @import("clap");
 const http = @import("http");
 const net = @import("net");
@@ -293,13 +294,26 @@ fn httpsRequest(
     var trust_anchor = ssl.TrustAnchorCollection.init(allocator);
     defer trust_anchor.deinit();
 
-    const certs = try std.fs.openFileAbsolute("/etc/ssl/cert.pem", .{ .read = true });
-    defer certs.close();
+    switch (builtin.os.tag) {
+        .linux => pem: {
+            const file = std.fs.openFileAbsolute("/etc/ssl/cert.pem", .{ .read = true }) catch |err| {
+                if (err == error.FileNotFound) {
+                    try trust_anchor.appendFromPEM(ziglibs_pem);
+                    break :pem;
+                } else return err;
+            };
+            defer file.close();
 
-    const pem = try certs.readToEndAlloc(allocator, 0x100000);
-    defer allocator.free(pem);
+            const certs = try file.readToEndAlloc(allocator, 500000);
+            defer allocator.free(certs);
 
-    try trust_anchor.appendFromPEM(pem);
+            try trust_anchor.appendFromPEM(certs);
+        },
+        else => {
+            try trust_anchor.appendFromPEM(ziglibs_pem);
+        },
+    }
+
     var x509 = ssl.x509.Minimal.init(trust_anchor);
     var ssl_client = ssl.Client.init(x509.getEngine());
     ssl_client.relocate();
