@@ -1,18 +1,33 @@
 const std = @import("std");
 const testing = std.testing;
 const ChildProcess = std.ChildProcess;
-
-const zkg_fetch = &[_][]const u8{ "zkg", "fetch" };
+const Term = ChildProcess.Term;
 
 fn zkgFetch(cwd: []const u8) !ChildProcess.ExecResult {
-    const result = ChildProcess.exec(.{
-        .allocator = &testing.allocator_instance,
-        .argv = zkg_fetch,
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    return ChildProcess.exec(.{
+        .allocator = &gpa.allocator,
+        .argv = &[_][]const u8{ "zkg", "fetch" },
         .cwd = cwd,
     });
 }
 
-test "normal example" {
-    const result = try zkgFetch("example");
-    testing.expectEqual(ChildProcess.Term{ .Exited = 0 }, result);
+test "example" {
+    const result = try zkgFetch("tests/example");
+    testing.expectEqual(Term{ .Exited = 0 }, result.term);
+}
+
+test "diamond" {
+    const result = try zkgFetch("tests/diamond");
+    testing.expectEqual(Term{ .Exited = 0 }, result.term);
+}
+
+test "circular" {
+    const result = try zkgFetch("tests/circular");
+    testing.expectEqual(Term{ .Exited = 1 }, result.term);
+}
+
+test "self-centered" {
+    const result = try zkgFetch("tests/self-centered");
+    testing.expectEqual(Term{ .Exited = 1 }, result.term);
 }

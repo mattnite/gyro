@@ -30,6 +30,7 @@ const pkgs = .{
 };
 
 pub fn build(b: *Builder) !void {
+    b.setPreferredReleaseMode(.ReleaseFast);
     var target = b.standardTargetOptions(.{});
     if (target.abi == null) {
         target.abi = switch (std.builtin.os.tag) {
@@ -44,11 +45,8 @@ pub fn build(b: *Builder) !void {
     exe.setTarget(target);
     exe.setBuildMode(mode);
 
-    const tests = b.addTest("tests/main.zig");
-    tests.setBuildMode(mode);
     inline for (std.meta.fields(@TypeOf(pkgs))) |field| {
         exe.addPackage(@field(pkgs, field.name));
-        tests.addPackage(@field(pkgs, field.name));
     }
 
     ssl.linkBearSSL("libs/zig-bearssl", exe, target);
@@ -64,6 +62,10 @@ pub fn build(b: *Builder) !void {
     const run_step = b.step("run", "Run zkg");
     run_step.dependOn(&run_cmd.step);
 
+    const tests = b.addTest("tests/main.zig");
+    tests.setBuildMode(mode);
+    tests.step.dependOn(b.getInstallStep());
+
     const test_step = b.step("test", "Run tests");
-    run_step.dependOn(&tests.step);
+    test_step.dependOn(&tests.step);
 }
