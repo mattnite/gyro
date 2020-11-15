@@ -253,7 +253,7 @@ const Connection = struct {
     window: []const u8,
 
     const SslStream = ssl.Stream(*net.Socket.Reader, *net.Socket.Writer);
-    const HttpClient = http.base.Client.Client(SslStream.DstInStream, SslStream.DstOutStream);
+    const HttpClient = http.base.client.BaseClient(SslStream.DstInStream, SslStream.DstOutStream);
     const Self = @This();
 
     pub fn init(allocator: *Allocator, hostname: [:0]const u8, port: u16, x509: *ssl.x509.Minimal) !*Self {
@@ -278,7 +278,7 @@ const Connection = struct {
         );
         errdefer ret.ssl_socket.close catch {};
 
-        ret.http_client = http.base.Client.create(
+        ret.http_client = http.base.client.create(
             &ret.http_buf,
             ret.ssl_socket.inStream(),
             ret.ssl_socket.outStream(),
@@ -292,37 +292,10 @@ const Connection = struct {
         self.socket.close();
     }
 
-    const ReadError = HttpClient.ReadError || error{AbruptClose};
-    pub const Reader = std.io.Reader(*Connection, ReadError, read);
-
-    fn copyToBuf(self: *Self, buffer: []u8) usize {
-        const len = std.math.min(buffer.len, self.window.len);
-        std.mem.copy(u8, buffer[0..len], self.window[0..len]);
-        self.window = self.window[len..];
-        return len;
-    }
-
-    fn read(self: *Self, buffer: []u8) ReadError!usize {
-        return if (self.window.len != 0)
-            self.copyToBuf(buffer)
-        else if (try self.http_client.readEvent()) |event| blk: {
-            switch (event) {
-                .closed => {
-                    break :blk 0;
-                },
-                .chunk => |chunk| {
-                    self.window = chunk.data;
-                    break :blk self.copyToBuf(buffer);
-                },
-                else => |val| {
-                    break :blk @as(usize, 0);
-                },
-            }
-        } else 0;
-    }
+    pub const Reader = HttpClient.PayloadReader;
 
     pub fn reader(self: *Self) Reader {
-        return .{ .context = self };
+        return self.http_client.reader();
     }
 };
 
@@ -379,15 +352,15 @@ const HttpsSource = struct {
             defer allocator.free(hostname);
 
             conn = try Connection.init(allocator, hostname, port, &x509);
-            try conn.http_client.writeHead("GET", uri.path);
+            try conn.http_client.writeStatusLine("GET", uri.path);
             try conn.http_client.writeHeaderValue("Host", hostname);
             try conn.http_client.writeHeaderValue("User-Agent", "zkg");
             try conn.http_client.writeHeaderValue("Accept", "*/*");
-            try conn.http_client.writeHeadComplete();
+            try conn.http_client.finishHeaders();
             try conn.ssl_socket.flush();
 
             var redirect = false;
-            while (try conn.http_client.readEvent()) |event| {
+            while (try conn.http_client.next()) |event| {
                 switch (event) {
                     .status => |status| switch (status.code) {
                         200 => {},
@@ -402,7 +375,7 @@ const HttpsSource = struct {
                             continue :redirect;
                         }
                     },
-                    .head_complete => break :redirect,
+                    .head_done => break :redirect,
                     else => |val| std.debug.print("got other: {}\n", .{val}),
                 }
             }

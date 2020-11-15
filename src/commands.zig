@@ -267,17 +267,17 @@ fn httpRequest(
     defer socket.close();
 
     var buf: [mem.page_size]u8 = undefined;
-    var http_client = http.base.Client.create(
+    var http_client = http.base.client.create(
         &buf,
         socket.reader(),
         socket.writer(),
     );
 
-    try http_client.writeHead("GET", params);
+    try http_client.writeStatusLine("GET", params);
     try http_client.writeHeaderValue("Accept", "application/json");
     try http_client.writeHeaderValue("Host", hostname);
     try http_client.writeHeaderValue("Agent", "zkg");
-    try http_client.writeHeadComplete();
+    try http_client.finishHeaders();
 
     return readHttpBody(allocator, &http_client);
 }
@@ -330,17 +330,17 @@ fn httpsRequest(
     defer ssl_socket.close() catch {};
 
     var buf: [mem.page_size]u8 = undefined;
-    var http_client = http.base.Client.create(
+    var http_client = http.base.client.create(
         &buf,
         ssl_socket.inStream(),
         ssl_socket.outStream(),
     );
 
-    try http_client.writeHead("GET", params);
+    try http_client.writeStatusLine("GET", params);
     try http_client.writeHeaderValue("Accept", "application/json");
     try http_client.writeHeaderValue("Host", hostname);
     try http_client.writeHeaderValue("Agent", "zkg");
-    try http_client.writeHeadComplete();
+    try http_client.finishHeaders();
     try ssl_socket.flush();
 
     return readHttpBody(allocator, &http_client);
@@ -349,8 +349,8 @@ fn httpsRequest(
 fn readHttpBody(allocator: *mem.Allocator, client: anytype) !std.ArrayList(u8) {
     var body = std.ArrayList(u8).init(allocator);
     errdefer body.deinit();
-
-    while (try client.readEvent()) |event| {
+    
+    while (try client.next()) |event| {
         switch (event) {
             .status => |status| {
                 if (status.code != 200) {
@@ -358,17 +358,13 @@ fn readHttpBody(allocator: *mem.Allocator, client: anytype) !std.ArrayList(u8) {
                     return error.BadStatusCode;
                 }
             },
-            .invalid => |invalid| {
-                return error.Invalid;
-            },
-            .chunk => |chunk| {
-                try body.appendSlice(chunk.data);
-                if (chunk.final) break;
-            },
-            .closed => return error.ClosedAbruptly,
-            .header, .head_complete, .end => {},
+            .head_done => break,
+            .header, .end, .skip => {},
+            .payload => unreachable,
         }
     }
+
+    try client.reader().readAllArrayList(&body, 4 * 1024 * 1024);
 
     return body;
 }
