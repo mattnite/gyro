@@ -10,8 +10,6 @@ on:
 jobs:
   build:
     runs-on: macos-latest
-    env:
-      ZKG_LIB: ./zig-cache/lib/zig/zkg
 
     steps:
     - name: Checkout
@@ -24,14 +22,8 @@ jobs:
       with:
         version: master
 
-    - name: Install libgit2
-      run: brew install libgit2
-
     - name: Compile
       run: zig build
-
-    - name: Init
-      run: ./zig-cache/bin/zkg init
 
     - name: Search
       run: ./zig-cache/bin/zkg search

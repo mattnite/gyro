@@ -1,5 +1,6 @@
 const std = @import("std");
 const clap = @import("clap");
+const net = @import("net");
 usingnamespace @import("commands.zig");
 
 const Command = enum {
@@ -8,17 +9,14 @@ const Command = enum {
     tags,
     add,
     remove,
-    init,
 };
 
-const stderr = std.io.getStdErr().writer();
-
-fn print_usage() noreturn {
+fn printUsage() noreturn {
+    const stderr = std.io.getStdErr().writer();
     _ = stderr.write(
         \\zkg <cmd> [cmd specific options]
         \\
         \\cmds:
-        \\  init    Initialize an imports file
         \\  search  List packages matching your query
         \\  tags    List tags found in your remote
         \\  add     Add a package to your imports file
@@ -34,7 +32,8 @@ fn print_usage() noreturn {
     std.os.exit(1);
 }
 
-fn check_help(comptime summary: []const u8, comptime params: anytype, args: anytype) void {
+fn checkHelp(comptime summary: []const u8, comptime params: anytype, args: anytype) void {
+    const stderr = std.io.getStdErr().writer();
     if (args.flag("--help")) {
         _ = stderr.write(summary ++ "\n\n") catch {};
         clap.help(stderr, params) catch {};
@@ -44,15 +43,19 @@ fn check_help(comptime summary: []const u8, comptime params: anytype, args: anyt
 }
 
 pub fn main() anyerror!void {
+    const stderr = std.io.getStdErr().writer();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = &gpa.allocator;
+
+    try net.init();
+    defer net.deinit();
 
     var iter = try clap.args.OsIterator.init(allocator);
     defer iter.deinit();
 
     const cmd_str = (try iter.next()) orelse {
         try stderr.print("no command given\n", .{});
-        print_usage();
+        printUsage();
     };
 
     const cmd = inline for (std.meta.fields(Command)) |field| {
@@ -61,7 +64,7 @@ pub fn main() anyerror!void {
         }
     } else {
         try stderr.print("{} is not a valid command\n", .{cmd_str});
-        print_usage();
+        printUsage();
     };
 
     @setEvalBranchQuota(5000);
@@ -74,21 +77,9 @@ pub fn main() anyerror!void {
             };
 
             var args = try clap.ComptimeClap(clap.Help, &params).parse(allocator, clap.args.OsIterator, &iter);
-            check_help(summary, &params, args);
+            checkHelp(summary, &params, args);
 
             try fetch(args.option("--cache-dir"));
-        },
-        .init => {
-            const summary = "Initialize an imports file";
-            const params = comptime [_]clap.Param(clap.Help){
-                clap.parseParam("-h, --help             Display help") catch unreachable,
-            };
-
-            var args = try clap.ComptimeClap(clap.Help, &params).parse(allocator, clap.args.OsIterator, &iter);
-            defer args.deinit();
-
-            check_help(summary, &params, args);
-            try init();
         },
         .search => {
             const summary = "Lists packages matching your query";
@@ -104,7 +95,7 @@ pub fn main() anyerror!void {
             var args = try clap.ComptimeClap(clap.Help, &params).parse(allocator, clap.args.OsIterator, &iter);
             defer args.deinit();
 
-            check_help(summary, &params, args);
+            checkHelp(summary, &params, args);
             const name_opt = args.option("--name");
             const tag_opt = args.option("--tag");
             const author_opt = args.option("--author");
@@ -142,7 +133,7 @@ pub fn main() anyerror!void {
             var args = try clap.ComptimeClap(clap.Help, &params).parse(allocator, clap.args.OsIterator, &iter);
             defer args.deinit();
 
-            check_help(summary, &params, args);
+            checkHelp(summary, &params, args);
 
             try tags(allocator, args.option("--remote"));
         },
@@ -160,7 +151,7 @@ pub fn main() anyerror!void {
             var args = try clap.ComptimeClap(clap.Help, &params).parse(allocator, clap.args.OsIterator, &iter);
             defer args.deinit();
 
-            check_help(summary, &params, args);
+            checkHelp(summary, &params, args);
 
             // there can only be one positional argument
             if (args.positionals().len > 1) {
@@ -183,7 +174,7 @@ pub fn main() anyerror!void {
             var args = try clap.ComptimeClap(clap.Help, &params).parse(allocator, clap.args.OsIterator, &iter);
             defer args.deinit();
 
-            check_help(summary, &params, args);
+            checkHelp(summary, &params, args);
 
             // there can only be one positional argument
             if (args.positionals().len > 1) {
@@ -192,7 +183,7 @@ pub fn main() anyerror!void {
                 return error.MissingName;
             }
 
-            try remove(args.positionals()[0]);
+            try remove(allocator, args.positionals()[0]);
         },
     }
 }

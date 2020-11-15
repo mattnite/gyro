@@ -1,6 +1,7 @@
 # Zkg: a Zig Package Manager
 
-![Linux](https://github.com/mattnite/zkg/workflows/Linux/badge.svg) ![macOS](https://github.com/mattnite/zkg/workflows/macOS/badge.svg)
+[![Linux](https://github.com/mattnite/zkg/workflows/Linux/badge.svg)](https://github.com/mattnite/zkg/actions) [![macOS](https://github.com/mattnite/zkg/workflows/macOS/badge.svg)](https://github.com/mattnite/zkg/actions) [![windows](https://github.com/mattnite/zkg/workflows/windows/badge.svg)](https://github.com/mattnite/zkg/actions)
+
 
 This project is merely a prototype exploring a simple packaging use case for
 zig, and that's including source from zig-only projects in git repositories.
