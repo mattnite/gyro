@@ -90,19 +90,71 @@ pub const Import = struct {
         }
     };
 
-    const Integrity = union(enum) {
-        sha256: []const u8,
+    const Integrity = struct {
+        hash: Hash,
+        digest: []const u8,
+
+        const Hash = @TagType(Hasher);
+
+        const Hasher = union(enum) {
+            md: std.crypto.hash.Md5,
+            sha1: std.crypto.hash.Sha1,
+            sha224: std.crypto.hash.sha2.Sha224,
+            sha256: std.crypto.hash.sha2.Sha256,
+            sha384: std.crypto.hash.sha2.Sha384,
+            sha512: std.crypto.hash.sha2.Sha512,
+            blake2: std.crypto.hash.blake2.Blake2b,
+        };
+
+        const Checker = struct {
+            hasher: ?Hasher,
+            reader: anytype,
+
+            const Self = @This();
+            const Reader = std.io.Reader(Self, read, Error);
+
+            fn init(integrity: ?Integrity, reader: anytype) !Checker {
+                return Self{
+                    .reader = reader,
+                    .hasher = if (integrity) |integ| inline for (std.meta.fields(Hash)) |field| {
+                        if (integ.hash == @field(Hash, field.name))
+                            break @field(Hasher, integ.hash).init(.{});
+                    } else null,
+                };
+            }
+
+            fn read(self: Self, buf: []u8) !usize {
+                return if (self.integrity) |integ| {
+                    //
+                } else self.reader(buf);
+            }
+
+            fn reader(self: *Self) Reader {
+                return .{ .context = self };
+            }
+
+            fn hash_string(self: Self, allocator: *Allocator) ![]const u8 {
+                if (self.hasher) |hasher| {
+                    var ret = allocator.alloc(u8, hasher_digest_size);
+                    hasher.final(&ret);
+                    return ret;
+                } else return error.NotHashing;
+            }
+        };
 
         fn fromZNode(node: *const zzz.ZNode) !Integrity {
             const key = try getZNodeString(node);
 
-            const hash_type = try getZNodeString(node.*.child orelse return error.MissingHash);
+            const hash_type = try getZNodeString(node);
             const digest = try getZNodeString(node.*.child orelse return error.MissingDigest);
 
-            return if (std.mem.eql(u8, "sha256", hash_type))
-                Integrity{ .sha256 = digest }
-            else
-                error.UnknownHashType;
+            std.debug.print("hash_type: {}, digest: {}\n", .{ hash_type, digest });
+            return Integrity{
+                .digest = digest,
+                .hash = inline for (std.meta.fields(Hash)) |field| {
+                    if (std.mem.eql(u8, field.name, hash_type)) break @field(Hash, field.name);
+                } else return error.UnknownHashType,
+            };
         }
     };
 
@@ -160,9 +212,12 @@ pub const Import = struct {
 
         if (self.integrity) |integrity| {
             const integ_node = try tree.addNode(import, .{ .String = "integrity" });
-            switch (integrity) {
-                .sha256 => |sha256| _ = try tree.addNode(integ_node, .{ .String = sha256 }),
-            }
+            const hash_type = try tree.addNode(integ_node, .{
+                .String = inline for (std.meta.fields(Integrity.Hash)) |field| {
+                    if (integrity.hash == @field(Integrity.Hash, field.name)) break field.name;
+                } else unreachable,
+            });
+            _ = try tree.addNode(hash_type, .{ .String = integrity.digest });
         }
     }
 
@@ -226,9 +281,8 @@ pub const Import = struct {
         var source = try HttpsSource.init(allocator, self);
         defer source.deinit();
 
-        // TODO: integrity check here
-
-        var gzip = try gzipStream(allocator, source.reader());
+        var checker = try Checker.init(self.integrity, source.reader());
+        var gzip = try gzipStream(allocator, checker.reader());
         defer gzip.deinit();
 
         var deps_dir = try std.fs.cwd().makeOpenPath(deps_path, .{ .access_sub_paths = true });
@@ -239,6 +293,13 @@ pub const Import = struct {
         defer dest_dir.close();
 
         try tar.instantiate(allocator, dest_dir, gzip.reader(), 1);
+        checker.check() catch |err| {
+            if (err == error.FailedHash) {
+                // TODO: delete dest_dir and its contents
+            }
+
+            return err;
+        }
     }
 };
 
