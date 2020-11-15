@@ -1,5 +1,6 @@
 const std = @import("std");
 const clap = @import("clap");
+const net = @import("net");
 usingnamespace @import("commands.zig");
 
 const Command = enum {
@@ -45,6 +46,9 @@ pub fn main() anyerror!void {
     const stderr = std.io.getStdErr().writer();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = &gpa.allocator;
+
+    try net.init();
+    defer net.deinit();
 
     var iter = try clap.args.OsIterator.init(allocator);
     defer iter.deinit();
