@@ -9,7 +9,7 @@ pub fn main() anyerror!void {
         clap.parseParam("-a <A>, checks if matches to 'fast'") catch unreachable,
     };
 
-    var args = try clap.parse(clap.Help, &params, std.heap.page_allocator);
+    var args = try clap.parse(clap.Help, &params, std.heap.page_allocator, null);
     defer args.deinit();
 
     @setEvalBranchQuota(1250);

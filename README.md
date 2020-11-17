@@ -4,8 +4,7 @@
 
 
 This project is merely a prototype exploring a simple packaging use case for
-zig, and that's including source from zig-only projects in git repositories.
-Right now it will only fetch using https.
+zig, inspiration is taken from nix.
 
 ## Methodology
 
@@ -19,97 +18,84 @@ appeal to authority.
 ```
 [reference](https://github.com/ziglang/zig/issues/943#issuecomment-586386891)
 
-And zkg is exactly that. We parse an `imports.zig` file that you place in the
-root directory of your project, fetch the packages described using `libgit2`,
-then generate a `packages.zig` file in `zig-cache` that exports an array of
+And zkg is exactly that. We parse an `imports.zzz` file that you place in the
+root directory of your project, fetch the packages
+then generate a `deps.zig` file in the project root that exports an array of
 `std.build.Pkg`.  These `Pkgs` can then be used in `build.zig`.
-
-Originally I was parsing `imports.zig` at runtime which greatly limited the
-things you could do in that file, but now zkg builds runner executables which
-include the imports file at comptime so you can now leverage zig properly!
 
 ## Dependencies
 
-- `libgit2` as a system library
+This is a static executable with no runtime dependencies
 
 ## Basics
 
-This example can be found [here](https://github.com/mattnite/zkg-example). To
-get started you need to set one environment variable: `ZKG\_LIB`. This is the
-directory some files required by zkg can be found, after building they will be
-found in `zig-cache/lib/zig/zkg`.
-
+This example can be found
+[here](https://github.com/mattnite/zkg/tree/master/tests/example).
 `zkg-example` is a program that uses
 [zig-clap](https://github.com/Hejsil/zig-clap) and
 [ctregex](https://github.com/alexnask/ctregex). Shout out to Hejsil for
 `zig-clap` and alexnask for `ctregex`!
 
-Here is the `imports.zig`:
+The manifest file format that zkg uses is
+[zzz](https://github.com/gruebite/zzz), it's a pared down yaml-like format.
 
-```zig
-const zkg = @import("zkg");
+```yaml
+clap:
+  root: /clap.zig
+  src:
+    github:
+      user: Hejsil
+      repo: zig-clap
+      ref: master
 
-pub const clap = zkg.import.git(
-    "https://github.com/Hejsil/zig-clap.git",
-    "master",
-    "clap.zig",
-);
-
-pub const regex = zkg.import.git(
-    "https://github.com/alexnask/ctregex.zig.git",
-    "master",
-    "ctregex.zig",
-);
+regex:
+  root: /ctregex.zig
+  src:
+    github:
+      user: alexnask
+      repo: ctregex.zig
+      ref: master
 ```
 
-The arguments for `zig.import.git()` are the url of the repo, the branch, and
-optionally you may tell zkg what the root file you want to include as the base
-of the package. If null is given zkg will look for a file called `exports.zig`
-in the root of the dependency.
-
-The name of the exported variable is important because it will be the string
-that you use in your application code to `@import` the package. Eg:
+The string used as the key for an import is important because it will be the
+string that you use in your application code to `@import` the package. Eg:
 
 ```zig
 const regex = @import("regex");
 ```
 
-Run `zkg fetch` in your project root to generate the `packages.zig` file (too
+Run `zkg fetch` in your project root to generate the `deps.zig` file (too
 simple to have arguments right now), the contents will look like this:
 
 ```zig
-const std = @import("std");
-const Pkg = std.build.Pkg;
-
-pub const list = [_]Pkg{
-    Pkg{
+pub const pkgs = .{
+    .clap = .{
         .name = "clap",
-        .path = "/home/mknight/.cache/zkg/github.com/Hejsil/zig-clap/master/clap.zig",
-        .dependencies = null,
+        .path = "zig-deps/c4b83c48d69c7c056164009b9c8b459a/clap.zig",
     },
-    Pkg{
+    .regex = .{
         .name = "regex",
-        .path = "/home/mknight/.cache/zkg/github.com/alexnast/ctregex.zig/master/exports.zig",
-        .dependencies = null,
+        .path = "zig-deps/3601c1a709d175ba663ba72ca5a463a4/ctregex.zig",
     },
 };
 ```
 
-And here is `build.zig` where we add the `Pkg`s to our project:
+And here is `build.zig` where we add the packages to our project:
 
 ```zig
-const Builder = @import("std").build.Builder;
-const packages = @import("zig-cache/packages.zig").list;
+const std = @import("std");
+const Builder = std.build.Builder;
+const pkgs = @import("deps.zig").pkgs;
 
 pub fn build(b: *Builder) void {
     const target = b.standardTargetOptions(.{});
     const mode = b.standardReleaseOptions();
 
-    const exe = b.addExecutable("zkg-example", "src/main.zig");
+    const exe = b.addExecutable("zag-example", "src/main.zig");
     exe.setTarget(target);
     exe.setBuildMode(mode);
-    for (packages) |pkg| {
-        exe.addPackage(pkg);
+    inline for (std.meta.fields(@TypeOf(pkgs))) |field| {
+        exe.addPackage(@field(pkgs, field.name));
     }
     exe.install();
 
@@ -129,18 +115,6 @@ queries the [zpm index](https://zpm.random-projects.net), but can point to
 different servers using the `--remote` argument. The following subsections
 demonstrate the different subcommands.
 
-### init
-
-`imports.zig` needs to be initialized correctly before `zkg` can do its magic
-and to do that we just need to run `zkg init`. It creates the file in the
-current directory with the following contents:
-
-```zig
-const zkg = @import("zkg");
-```
-
-Now we can start adding our packages.
-
 ### add
 
 To add a package from the `zpm` index all we need to do is `zkg add <name>`.
@@ -148,22 +122,22 @@ Let's say we need ssl, in that case we could grab the Zig bindings for
 [bearssl](https://github.com/MasterQ32/zig-bearssl) by running `zkg add
 bearssl`, and we'd see `imports.zig` would have the following contents:
 
-```zig
-const zkg = @import("zkg");
-
-pub const bearssl = zkg.import.git(
-    "https://github.com/MasterQ32/zig-bearssl",
-    "master",
-    "/bearssl.zig",
-);
+```yaml
+bearssl:
+  root: /bearssl.zig
+  src:
+    github:
+      user: MasterQ32
+      repo: zig-bearssl
+      ref: master
 ```
 
 It should also be noted that `zig-bearssl` contains a git submodule, git
-submodules are recursively checked out. `zkg` uses the declaration name (where
-it says `pub const bearssl`) as the string literal used when importing the
-package (Eg: `const my_lib = @import("bearssl")`. If you want to change what that
-string shows, you can easily edit `imports.zig` or you can invoke like so: `zkg
-add bearssl --alias ssl`. Now we can:
+submodules are recursively checked out. `zkg` uses the key string as the string
+literal used when importing the package (Eg: `const my_lib =
+@import("bearssl")`. If you want to change what that string shows, you can
+easily edit `imports.zzz` or you can invoke like so: `zkg add bearssl --alias
+ssl`. Now we can:
 
 ```zig
 const my_lib = @import("ssl");
@@ -195,13 +169,13 @@ network    xq          A smallest-common-subset of socket functions for crosspla
 ### fetch
 
 `zkg fetch` takes no additional arguments, it's invoked once you've declared
-your dependencies in `import.zig` and it will fetch/clone them into
-`zig-cache/deps` with an index file `zig-cache/packages.zig`. The index file can
-be directly imported into `build.zig` and then packages can be `addPackage()`'d
-to your executables and libraries.
+your dependencies in `imports.zzz` and it will fetch them into `zig-deps/` with
+an index file `deps.zig`. The index file can be directly imported into
+`build.zig` and then packages can be `addPackage()`'d to your executables and
+libraries. (or packages can be imported in the build script)
 
 Note that `zkg` recursively fetches dependencies if they also contain
-`imports.zig` in the package root.
+`imports.zzz` in the package root.
 
 ### tags
 
@@ -230,5 +204,4 @@ terminal              Packages that assist in dealing with terminal input, outpu
 
 ### remove
 
-This subcommand isn't implemented yet, you're going to have to remove packages
-from `imports.zig` manually for now.
+To remove an entry from `imports.zzz` just `zkg remove <key>`.

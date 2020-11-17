@@ -1,5 +1,6 @@
-const Builder = @import("std").build.Builder;
-const packages = @import("zig-cache/packages.zig").list;
+const std = @import("std");
+const Builder = std.build.Builder;
+const pkgs = @import("deps.zig").pkgs;
 
 pub fn build(b: *Builder) void {
     const target = b.standardTargetOptions(.{});
@@ -8,8 +9,8 @@ pub fn build(b: *Builder) void {
     const exe = b.addExecutable("zag-example", "src/main.zig");
     exe.setTarget(target);
     exe.setBuildMode(mode);
-    for (packages) |pkg| {
-        exe.addPackage(pkg);
+    inline for (std.meta.fields(@TypeOf(pkgs))) |field| {
+        exe.addPackage(@field(pkgs, field.name));
     }
     exe.install();
 
