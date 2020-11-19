@@ -31,8 +31,3 @@ test "self-centered" {
     const result = try zkgFetch("tests/self-centered");
     testing.expectEqual(Term{ .Exited = 1 }, result.term);
 }
-
-test "integrity" {
-    const result = try zkgFetch("tests/integrity");
-    testing.expectEqual(Term{ .Exited = 0 }, result.term);
-}

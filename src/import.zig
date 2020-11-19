@@ -118,7 +118,6 @@ pub const Import = struct {
 
             const digest = try getZNodeString(node.*.child orelse return error.MissingDigest);
 
-            std.debug.print("hash_type: {}, digest: {}\n", .{ hash_type, digest });
             return Integrity{
                 .hash_type = hash_type,
                 .digest = digest,
@@ -178,8 +177,6 @@ pub const Import = struct {
             engine.final(&out);
             var fixed_buffer = std.io.fixedBufferStream(&fmted);
             for (out) |i| try std.fmt.format(fixed_buffer.writer(), "{x:0>2}", .{i});
-
-            std.debug.print("expected: {}, got: {}\n", .{ digest, &fmted });
 
             return std.mem.eql(u8, &fmted, digest);
         }
