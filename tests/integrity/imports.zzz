@@ -1,0 +1,27 @@
+mbedtls_md5:
+  src: url: "https://github.com/ARMmbed/mbedtls/archive/v2.24.0.tar.gz"
+  integrity: md5: 9d1adcec4aa6729ae1dc56c3a24cb7d2
+
+mbedtls_sha1:
+  src: url: "https://github.com/ARMmbed/mbedtls/archive/v2.16.8.tar.gz"
+  integrity: sha1: 5234959b1d2a8cfc80f6896761efa40b93ef483b
+
+mbedtls_sha224:
+  src: url: "https://github.com/ARMmbed/mbedtls/archive/v2.23.0.tar.gz"
+  integrity: sha224: ce8f7f8625a670c8d404579a51e7c9ca4f960eb1dd6511259deb1a56
+
+mbedtls_sha256:
+  src: url: "https://github.com/ARMmbed/mbedtls/archive/v2.7.16.tar.gz"
+  integrity: sha256: 571420852b771a61d54dc61881ae744363f5fcd9c274f7d6874a5d2913107ad4
+
+sdl2_sha384:
+  src: url: "https://www.libsdl.org/release/SDL2-2.0.12.tar.gz"
+  integrity: sha384: 4b1b50d9ecfc1cc7b30ac7b925fabfcc79fb213837c05ff4b778958ba59554247e9834d972ad0ff84d202a9af8097a2f
+
+mbedtls_sha512:
+  src: url: "https://github.com/ARMmbed/mbedtls/archive/v2.7.17.tar.gz"
+  integrity: sha512: 251aac185fe12c2e0ed1d0204d7a62966c98f61f77465bed99a361ef28a29574c662453e7c37cc70f768443baf8a28c76091167f670b1f03a0c640d866473951
+
+zlib_blake2:
+  src: url: "https://zlib.net/zlib-1.2.11.tar.gz"
+  integrity: blake2b512: 6bfc4bca5dcadba8a0d4121a2b3ed0bfe440c261003521862c8e6381f1a6f0a72d3fc037351d30afd7ef321e8e8d2ec817c046ac749f2ca0c97fbdc2f7e840b7

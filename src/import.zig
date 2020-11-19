@@ -96,7 +96,7 @@ pub const Import = struct {
 
         const HashType = @TagType(HashEngine);
 
-        // TODO: compiler bug if there are multiple
+        // TODO: compiler bug if we try to do smart comptime stuff
         const HashEngine = union(enum) {
             md5: std.crypto.hash.Md5,
             sha1: std.crypto.hash.Sha1,
@@ -104,7 +104,7 @@ pub const Import = struct {
             sha256: std.crypto.hash.sha2.Sha256,
             sha384: std.crypto.hash.sha2.Sha384,
             sha512: std.crypto.hash.sha2.Sha512,
-            blake2: std.crypto.hash.blake2.Blake2b256,
+            blake2b512: std.crypto.hash.blake2.Blake2b512,
         };
 
         fn fromZNode(node: *const zzz.ZNode) !Integrity {
@@ -144,7 +144,7 @@ pub const Import = struct {
                     .sha256 => Integrity.HashEngine{ .sha256 = std.crypto.hash.sha2.Sha256.init(.{}) },
                     .sha384 => Integrity.HashEngine{ .sha384 = std.crypto.hash.sha2.Sha384.init(.{}) },
                     .sha512 => Integrity.HashEngine{ .sha512 = std.crypto.hash.sha2.Sha512.init(.{}) },
-                    .blake2 => Integrity.HashEngine{ .blake2 = std.crypto.hash.blake2.Blake2b256.init(.{}) },
+                    .blake2b512 => Integrity.HashEngine{ .blake2b512 = std.crypto.hash.blake2.Blake2b512.init(.{}) },
                 } else null,
             };
         }
@@ -160,7 +160,7 @@ pub const Import = struct {
                     .sha256 => self.engine.?.sha256.update(buf[0..n]),
                     .sha384 => self.engine.?.sha384.update(buf[0..n]),
                     .sha512 => self.engine.?.sha512.update(buf[0..n]),
-                    .blake2 => self.engine.?.blake2.update(buf[0..n]),
+                    .blake2b512 => self.engine.?.blake2b512.update(buf[0..n]),
                 }
             }
 
@@ -197,7 +197,7 @@ pub const Import = struct {
                     .sha256 => try compareDigest(&self.engine.?.sha256, digest.?),
                     .sha384 => try compareDigest(&self.engine.?.sha384, digest.?),
                     .sha512 => try compareDigest(&self.engine.?.sha512, digest.?),
-                    .blake2 => try compareDigest(&self.engine.?.blake2, digest.?),
+                    .blake2b512 => try compareDigest(&self.engine.?.blake2b512, digest.?),
                 }) return error.FailedHash;
             }
         }
