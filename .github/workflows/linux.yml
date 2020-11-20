@@ -16,6 +16,7 @@ jobs:
       uses: actions/checkout@v2
       with:
         submodules: recursive
+        fetch-depth: 0
 
     - name: Setup Zig
       uses: goto-bus-stop/setup-zig@v1.2.5

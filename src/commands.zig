@@ -349,7 +349,7 @@ fn httpsRequest(
 fn readHttpBody(allocator: *mem.Allocator, client: anytype) !std.ArrayList(u8) {
     var body = std.ArrayList(u8).init(allocator);
     errdefer body.deinit();
-    
+
     while (try client.next()) |event| {
         switch (event) {
             .status => |status| {
@@ -459,7 +459,11 @@ const Entry = struct {
         return Entry{
             .name = obj.Object.get("name").?.String,
             .git = obj.Object.get("git").?.String,
-            .root_file = obj.Object.get("root_file").?.String,
+            .root_file = switch (obj.Object.get("root_file").?) {
+                .String => |str| str,
+                .Null => "/src/main.zig",
+                else => unreachable,
+            },
             .author = obj.Object.get("author").?.String,
             .description = obj.Object.get("description").?.String,
         };

@@ -90,19 +90,113 @@ pub const Import = struct {
         }
     };
 
-    const Integrity = union(enum) {
-        sha256: []const u8,
+    const Integrity = struct {
+        hash_type: HashType,
+        digest: []const u8,
+
+        const HashType = @TagType(HashEngine);
+
+        // TODO: compiler bug if we try to do smart comptime stuff
+        const HashEngine = union(enum) {
+            md5: std.crypto.hash.Md5,
+            sha1: std.crypto.hash.Sha1,
+            sha224: std.crypto.hash.sha2.Sha224,
+            sha256: std.crypto.hash.sha2.Sha256,
+            sha384: std.crypto.hash.sha2.Sha384,
+            sha512: std.crypto.hash.sha2.Sha512,
+            blake2b512: std.crypto.hash.blake2.Blake2b512,
+        };
 
         fn fromZNode(node: *const zzz.ZNode) !Integrity {
             const key = try getZNodeString(node);
 
-            const hash_type = try getZNodeString(node.*.child orelse return error.MissingHash);
+            const hash_type_str = try getZNodeString(node);
+            const hash_type = inline for (std.meta.fields(HashType)) |field| {
+                if (std.mem.eql(u8, field.name, hash_type_str))
+                    break @field(HashType, field.name);
+            } else return error.UnknownHashType;
+
             const digest = try getZNodeString(node.*.child orelse return error.MissingDigest);
 
-            return if (std.mem.eql(u8, "sha256", hash_type))
-                Integrity{ .sha256 = digest }
-            else
-                error.UnknownHashType;
+            return Integrity{
+                .hash_type = hash_type,
+                .digest = digest,
+            };
+        }
+    };
+
+    const Checker = struct {
+        engine: ?Integrity.HashEngine,
+        connection: Connection.Reader,
+
+        const Self = @This();
+        const ReadError = Connection.Reader.Error;
+        pub const Reader = std.io.Reader(*Checker, ReadError, read);
+
+        fn init(integrity: ?Integrity, connection: Connection.Reader) !Checker {
+            return Checker{
+                .connection = connection,
+                .engine = if (integrity) |integ| switch (integ.hash_type) {
+                    .md5 => Integrity.HashEngine{ .md5 = std.crypto.hash.Md5.init(.{}) },
+                    .sha1 => Integrity.HashEngine{ .sha1 = std.crypto.hash.Sha1.init(.{}) },
+                    .sha224 => Integrity.HashEngine{ .sha224 = std.crypto.hash.sha2.Sha224.init(.{}) },
+                    .sha256 => Integrity.HashEngine{ .sha256 = std.crypto.hash.sha2.Sha256.init(.{}) },
+                    .sha384 => Integrity.HashEngine{ .sha384 = std.crypto.hash.sha2.Sha384.init(.{}) },
+                    .sha512 => Integrity.HashEngine{ .sha512 = std.crypto.hash.sha2.Sha512.init(.{}) },
+                    .blake2b512 => Integrity.HashEngine{ .blake2b512 = std.crypto.hash.blake2.Blake2b512.init(.{}) },
+                } else null,
+            };
+        }
+
+        fn read(self: *Checker, buf: []u8) ReadError!usize {
+            const n = try self.connection.read(buf);
+
+            if (self.engine) |engine| {
+                switch (engine) {
+                    .md5 => self.engine.?.md5.update(buf[0..n]),
+                    .sha1 => self.engine.?.sha1.update(buf[0..n]),
+                    .sha224 => self.engine.?.sha224.update(buf[0..n]),
+                    .sha256 => self.engine.?.sha256.update(buf[0..n]),
+                    .sha384 => self.engine.?.sha384.update(buf[0..n]),
+                    .sha512 => self.engine.?.sha512.update(buf[0..n]),
+                    .blake2b512 => self.engine.?.blake2b512.update(buf[0..n]),
+                }
+            }
+
+            return n;
+        }
+
+        fn reader(self: *Checker) Reader {
+            return .{ .context = self };
+        }
+
+        fn compareDigest(engine: anytype, digest: []const u8) !bool {
+            var out: [@TypeOf(engine.*).digest_length]u8 = undefined;
+            var fmted: [@TypeOf(engine.*).digest_length * 2]u8 = undefined;
+
+            engine.final(&out);
+            var fixed_buffer = std.io.fixedBufferStream(&fmted);
+            for (out) |i| try std.fmt.format(fixed_buffer.writer(), "{x:0>2}", .{i});
+
+            return std.mem.eql(u8, &fmted, digest);
+        }
+
+        fn check(self: *Checker, digest: ?[]const u8) !void {
+            // TODO: make generic for when there are more
+            var out: [std.crypto.hash.sha2.Sha256.digest_length]u8 = undefined;
+            var fmted: [std.crypto.hash.sha2.Sha256.digest_length * 2]u8 = undefined;
+            if (self.engine) |engine| {
+                if (digest == null) return error.MissingDigest;
+                if (!switch (engine) {
+                    .md5 => try compareDigest(&self.engine.?.md5, digest.?),
+                    .sha1 => try compareDigest(&self.engine.?.sha1, digest.?),
+                    .sha224 => try compareDigest(&self.engine.?.sha224, digest.?),
+                    .sha256 => try compareDigest(&self.engine.?.sha256, digest.?),
+                    .sha384 => try compareDigest(&self.engine.?.sha384, digest.?),
+                    .sha512 => try compareDigest(&self.engine.?.sha512, digest.?),
+                    .blake2b512 => try compareDigest(&self.engine.?.blake2b512, digest.?),
+                }) return error.FailedHash;
+            }
         }
     };
 
@@ -160,9 +254,12 @@ pub const Import = struct {
 
         if (self.integrity) |integrity| {
             const integ_node = try tree.addNode(import, .{ .String = "integrity" });
-            switch (integrity) {
-                .sha256 => |sha256| _ = try tree.addNode(integ_node, .{ .String = sha256 }),
-            }
+            const hash_type = try tree.addNode(integ_node, .{
+                .String = inline for (std.meta.fields(Integrity.HashType)) |field| {
+                    if (integrity.hash_type == @field(Integrity.HashType, field.name)) break field.name;
+                } else unreachable,
+            });
+            _ = try tree.addNode(hash_type, .{ .String = integrity.digest });
         }
     }
 
@@ -213,6 +310,7 @@ pub const Import = struct {
         try root.stringify(fixed_buffer.writer());
         Hasher.hash(fixed_buffer.getWritten(), &digest, .{});
 
+        // TODO: format properly
         const lookup = [_]u8{ '0', '1', '2', '3', '4', '5', '6', '7', '8', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f' };
         for (digest) |val, i| {
             ret[2 * i] = lookup[val >> 4];
@@ -226,9 +324,8 @@ pub const Import = struct {
         var source = try HttpsSource.init(allocator, self);
         defer source.deinit();
 
-        // TODO: integrity check here
-
-        var gzip = try gzipStream(allocator, source.reader());
+        var checker = try Checker.init(self.integrity, source.reader());
+        var gzip = try gzipStream(allocator, checker.reader());
         defer gzip.deinit();
 
         var deps_dir = try std.fs.cwd().makeOpenPath(deps_path, .{ .access_sub_paths = true });
@@ -236,9 +333,19 @@ pub const Import = struct {
 
         const digest = try self.hash();
         var dest_dir = try deps_dir.makeOpenPath(&digest, .{ .access_sub_paths = true });
-        defer dest_dir.close();
 
         try tar.instantiate(allocator, dest_dir, gzip.reader(), 1);
+        checker.check(if (self.integrity) |integ| integ.digest else null) catch |err| {
+            if (err == error.FailedHash) {
+                // delete dest_dir and its contents
+                dest_dir.close();
+                try deps_dir.deleteTree(&digest);
+            }
+
+            return err;
+        };
+
+        defer dest_dir.close();
     }
 };
 
