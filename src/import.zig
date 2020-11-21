@@ -293,8 +293,17 @@ pub const Import = struct {
     }
 
     pub fn path(self: Self, allocator: *Allocator, base_path: []const u8) ![]const u8 {
+        const file_proto = "file://";
+        switch (self.src) {
+            .url => |url| {
+                if (std.mem.startsWith(u8, url, file_proto))
+                    return url[file_proto.len..];
+            },
+            else => {},
+        }
+
         const digest = try self.hash();
-        return std.fs.path.join(allocator, &[_][]const u8{ base_path, &digest });
+        return try std.fs.path.join(allocator, &[_][]const u8{ base_path, &digest });
     }
 
     pub fn hash(self: Self) ![Hasher.digest_length * 2]u8 {
@@ -321,6 +330,18 @@ pub const Import = struct {
     }
 
     pub fn fetch(self: Self, allocator: *Allocator, deps_path: []const u8) !void {
+        // don't need to fetch if it's a file://
+        switch (self.src) {
+            .url => |url| {
+                if (std.mem.startsWith(u8, url, "file://")) {
+                    if (self.integrity != null)
+                        std.log.warn("integrity is not checked for '{}', importing directly through the filesystem", .{self.name});
+
+                    return;
+                }
+            },
+            else => {},
+        }
         var source = try HttpsSource.init(allocator, self);
         defer source.deinit();
 
