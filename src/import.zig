@@ -333,7 +333,12 @@ pub const Import = struct {
         // don't need to fetch if it's a file://
         switch (self.src) {
             .url => |url| {
-                if (std.mem.startsWith(u8, url, "file://")) return;
+                if (std.mem.startsWith(u8, url, "file://")) {
+                    if (self.integrity != null)
+                        std.log.warn("integrity is not checked for '{}', importing directly through the filesystem", .{self.name});
+
+                    return;
+                }
             },
             else => {},
         }
