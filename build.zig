@@ -30,7 +30,6 @@ const pkgs = .{
 };
 
 pub fn build(b: *Builder) !void {
-    b.setPreferredReleaseMode(.ReleaseFast);
     var target = b.standardTargetOptions(.{});
     if (target.abi == null) {
         target.abi = switch (std.builtin.os.tag) {

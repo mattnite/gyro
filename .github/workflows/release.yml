@@ -1,0 +1,132 @@
+name: release artifacts
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  create_release:
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: latest
+        release_name: Latest
+        draft: false
+        prerelease: false
+
+  linux:
+    runs-on: ubuntu-latest
+    needs: create_release
+    strategy:
+      matrix:
+        arch: [x86_64, aarch64, riscv64]
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
+        fetch-depth: 0
+
+    - name: Setup Zig
+      uses: goto-bus-stop/setup-zig@v1.2.5
+      with:
+        version: 0.7.0
+
+    - run: mkdir zkg-linux-${{ matrix.arch }}
+
+    - name: linux-${{ matrix.arch }}
+      run: zig build -Dtarget=${{ matrix.arch }}-linux -Drelease-safe --prefix zkg-linux-${{ matrix.arch }}
+
+    - name: Create Tarball
+      run: tar -czvf zkg-linux-${{ matrix.arch }}.tar.gz zkg-linux-${{ matrix.arch }}
+
+    - name: Upload Release Asset
+      id: upload-release-asset 
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create_release.outputs.upload_url }}
+        asset_path: ./zkg-linux-${{ matrix.arch }}.tar.gz
+        asset_name: zkg-linux-${{ matrix.arch }}.tar.gz
+        asset_content_type: application/tarball
+
+  windows:
+    runs-on: ubuntu-latest
+    needs: create_release
+    strategy:
+      matrix:
+        arch: [x86_64]
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
+        fetch-depth: 0
+
+    - name: Setup Zig
+      uses: goto-bus-stop/setup-zig@v1.2.5
+      with:
+        version: 0.7.0
+
+    - run: mkdir zkg-windows-${{ matrix.arch }}
+
+    - name: windows-${{ matrix.arch }}
+      run: zig build -Dtarget=${{ matrix.arch }}-windows-gnu -Drelease-safe --prefix zkg-windows-${{ matrix.arch }}
+
+    - name: Create Tarball
+      run: tar -czvf zkg-windows-${{ matrix.arch }}.tar.gz zkg-windows-${{ matrix.arch }}
+
+    - name: Upload Release Asset
+      id: upload-release-asset 
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create_release.outputs.upload_url }}
+        asset_path: ./zkg-windows-${{ matrix.arch }}.tar.gz
+        asset_name: zkg-windows-${{ matrix.arch }}.tar.gz
+        asset_content_type: application/tarball
+
+  macos:
+    runs-on: macos-latest
+    needs: create_release
+    strategy:
+      matrix:
+        arch: [x86_64]
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
+        fetch-depth: 0
+
+    - name: Setup Zig
+      uses: goto-bus-stop/setup-zig@v1.2.5
+      with:
+        version: 0.7.0
+
+    - run: mkdir zkg-macos-${{ matrix.arch }}
+
+    - name: macos-${{ matrix.arch }}
+      run: zig build -Drelease-safe --prefix zkg-macos-${{ matrix.arch }}
+
+    - name: Create Tarball
+      run: tar -czvf zkg-macos-${{ matrix.arch }}.tar.gz zkg-macos-${{ matrix.arch }}
+
+    - name: Upload Release Asset
+      id: upload-release-asset 
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create_release.outputs.upload_url }}
+        asset_path: ./zkg-macos-${{ matrix.arch }}.tar.gz
+        asset_name: zkg-macos-${{ matrix.arch }}.tar.gz
+        asset_content_type: application/tarball
