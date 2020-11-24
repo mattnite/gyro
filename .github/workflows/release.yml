@@ -1,4 +1,4 @@
-name: Release Artifacts
+name: release artifacts
 on:
   push:
     branches: [ master ]
@@ -6,9 +6,9 @@ on:
     branches: [ master ]
 
 jobs:
-  x86_64-linux:
+  setup:
     runs-on: ubuntu-latest
-    steps:
+
     - name: Checkout
       uses: actions/checkout@v2
       with:
@@ -20,6 +20,10 @@ jobs:
       with:
         version: 0.7.0
 
+  x86_64-linux:
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
     - run: mkdir zkg-x86_64-linux
 
     - name: x86_64-linux
