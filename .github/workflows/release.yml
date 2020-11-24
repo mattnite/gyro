@@ -58,3 +58,40 @@ jobs:
         asset_path: ./zkg-${{ matrix.arch }}-linux.tar.gz
         asset_name: zkg-${{ matrix.arch }}-linux.tar.gz
         asset_content_type: application/tarball
+
+  windows:
+    runs-on: ubuntu-latest
+    needs: create_release
+    strategy:
+      matrix:
+        arch: [x86_64]
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
+        fetch-depth: 0
+
+    - name: Setup Zig
+      uses: goto-bus-stop/setup-zig@v1.2.5
+      with:
+        version: 0.7.0
+
+    - run: mkdir zkg-${{ matrix.arch }}-windows
+
+    - name: ${{ matrix.arch }}-windows
+      run: zig build -Dtarget=${{ matrix.arch }}-windows -Drelease --prefix zkg-${{ matrix.arch }}-windows
+
+    - name: tarball
+      run: zip -r zkg-${{ matrix.arch }}-windows.zip zkg-${{ matrix.arch }}-windows
+
+    - name: Upload Release Asset
+      id: upload-release-asset 
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create_release.outputs.upload_url }}
+        asset_path: ./zkg-${{ matrix.arch }}-windows.zip
+        asset_name: zkg-${{ matrix.arch }}-windows.zip
+        asset_content_type: application/zip
