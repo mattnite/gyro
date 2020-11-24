@@ -118,7 +118,7 @@ jobs:
     - run: mkdir zkg-${{ matrix.arch }}-${{ matrix.os }}
 
     - name: ${{ matrix.arch }}-${{ matrix.os }}
-      run: zig build -Dtarget=${{ matrix.arch }}-${{ matrix.os }}-musl -Drelease-safe --prefix zkg-${{ matrix.arch }}-${{ matrix.os }}
+      run: zig build -Dtarget=${{ matrix.arch }}-${{ matrix.os }}-gnu -Drelease-safe --prefix zkg-${{ matrix.arch }}-${{ matrix.os }}
 
     - name: Create Tarball
       run: tar -czvf zkg-${{ matrix.arch }}-${{ matrix.os }}.tar.gz zkg-${{ matrix.arch }}-${{ matrix.os }}
