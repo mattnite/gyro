@@ -47,7 +47,7 @@ jobs:
     - run: mkdir zkg-${{ matrix.arch }}-${{ matrix.os }}
 
     - name: ${{ matrix.arch }}-${{ matrix.os }}
-      run: zig build -Dtarget=${{ matrix.arch }}-${{ matrix.os }} -Drelease --prefix zkg-${{ matrix.arch }}-${{ matrix.os }}
+      run: zig build -Dtarget=${{ matrix.arch }}-${{ matrix.os }} -Drelease-safe --prefix zkg-${{ matrix.arch }}-${{ matrix.os }}
 
     - name: tarball
       run: tar -czvf zkg-${{ matrix.arch }}-${{ matrix.os }}.tar.gz zkg-${{ matrix.arch }}-${{ matrix.os }}
