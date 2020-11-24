@@ -17,8 +17,8 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: ${{ github.ref }}
-        release_name: Release ${{ github.ref }}
+        tag_name: latest
+        release_name: Latest
         draft: false
         prerelease: false
 
@@ -40,13 +40,13 @@ jobs:
       with:
         version: 0.7.0
 
-    - run: mkdir zkg-${{ matrix.arch }}-linux
+    - run: mkdir zkg-linux-${{ matrix.arch }}
 
-    - name: ${{ matrix.arch }}-linux
-      run: zig build -Dtarget=${{ matrix.arch }}-linux -Drelease-safe --prefix zkg-${{ matrix.arch }}-linux
+    - name: linux-${{ matrix.arch }}
+      run: zig build -Dtarget=linux-${{ matrix.arch }} -Drelease-safe --prefix zkg-linux-${{ matrix.arch }}
 
     - name: Create Tarball
-      run: tar -czvf zkg-${{ matrix.arch }}-linux.tar.gz zkg-${{ matrix.arch }}-linux
+      run: tar -czvf zkg-linux-${{ matrix.arch }}.tar.gz zkg-linux-${{ matrix.arch }}
 
     - name: Upload Release Asset
       id: upload-release-asset 
@@ -55,8 +55,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ needs.create_release.outputs.upload_url }}
-        asset_path: ./zkg-${{ matrix.arch }}-linux.tar.gz
-        asset_name: zkg-${{ matrix.arch }}-linux.tar.gz
+        asset_path: ./zkg-linux-${{ matrix.arch }}.tar.gz
+        asset_name: zkg-linux-${{ matrix.arch }}.tar.gz
         asset_content_type: application/tarball
 
   windows:
@@ -77,13 +77,13 @@ jobs:
       with:
         version: 0.7.0
 
-    - run: mkdir zkg-${{ matrix.arch }}-windows
+    - run: mkdir zkg-windows-${{ matrix.arch }}
 
-    - name: ${{ matrix.arch }}-windows
-      run: zig build -Dtarget=${{ matrix.arch }}-windows-gnu -Drelease-safe --prefix zkg-${{ matrix.arch }}-windows
+    - name: windows-${{ matrix.arch }}
+      run: zig build -Dtarget=windows-${{ matrix.arch }}-gnu -Drelease-safe --prefix zkg-windows-${{ matrix.arch }}
 
     - name: Create Tarball
-      run: tar -czvf zkg-${{ matrix.arch }}-windows.tar.gz zkg-${{ matrix.arch }}-windows
+      run: tar -czvf zkg-windows-${{ matrix.arch }}.tar.gz zkg-windows-${{ matrix.arch }}
 
     - name: Upload Release Asset
       id: upload-release-asset 
@@ -92,8 +92,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ needs.create_release.outputs.upload_url }}
-        asset_path: ./zkg-${{ matrix.arch }}-windows.tar.gz
-        asset_name: zkg-${{ matrix.arch }}-windows.tar.gz
+        asset_path: ./zkg-windows-${{ matrix.arch }}.tar.gz
+        asset_name: zkg-windows-${{ matrix.arch }}.tar.gz
         asset_content_type: application/tarball
 
   macos:
@@ -114,13 +114,13 @@ jobs:
       with:
         version: 0.7.0
 
-    - run: mkdir zkg-${{ matrix.arch }}-macos
+    - run: mkdir zkg-macos-${{ matrix.arch }}
 
-    - name: ${{ matrix.arch }}-macos
-      run: zig build -Drelease-safe --prefix zkg-${{ matrix.arch }}-macos
+    - name: macos-${{ matrix.arch }}
+      run: zig build -Drelease-safe --prefix zkg-macos-${{ matrix.arch }}
 
     - name: Create Tarball
-      run: tar -czvf zkg-${{ matrix.arch }}-macos.tar.gz zkg-${{ matrix.arch }}-macos
+      run: tar -czvf zkg-macos${{ matrix.arch }}.tar.gz zkg-macos-${{ matrix.arch }}
 
     - name: Upload Release Asset
       id: upload-release-asset 
@@ -129,6 +129,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ needs.create_release.outputs.upload_url }}
-        asset_path: ./zkg-${{ matrix.arch }}-macos.tar.gz
-        asset_name: zkg-${{ matrix.arch }}-macos.tar.gz
+        asset_path: ./zkg-macos-${{ matrix.arch }}.tar.gz
+        asset_name: zkg-macos-${{ matrix.arch }}.tar.gz
         asset_content_type: application/tarball
