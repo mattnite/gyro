@@ -40,6 +40,9 @@ jobs:
       with:
         version: 0.7.0
 
+    - name: Test
+      run: zig build test -Dtarget=${{ matrix.arch }}-linux
+
     - run: mkdir zkg-linux-${{ matrix.arch }}
 
     - name: linux-${{ matrix.arch }}
