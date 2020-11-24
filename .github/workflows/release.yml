@@ -1,0 +1,47 @@
+name: Release Artifacts
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+runs-on: ubuntu-latest
+
+jobs:
+  x86_64-linux:
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
+        fetch-depth: 0
+
+    - name: Setup Zig
+      uses: goto-bus-stop/setup-zig@v1.2.5
+      with:
+        version: 0.7.0
+
+    - run: mkdir zkg-x86_64-linux
+
+    - name: x86_64-linux
+      run: zig build -Dtarget=x86_64-linux -Drelease --prefix zkg-x86_64-linux
+
+    - name: tarball
+      run: tar -czvf zkg-x86_64-linux.tar.gz zkg-x86_64-linux
+
+    - name: Get release
+      id: get_release
+      uses: bruceadams/get-release@v1.2.2
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+
+    - name: Upload Release Asset
+      id: upload-release-asset 
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.get_release.outputs.upload_url }}
+        asset_path: ./zkg-x86_64-linux.tar.gz
+        asset_name: zkg-x86_64-linux.tar.gz
+        asset_content_type: application/tarball
