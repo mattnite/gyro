@@ -43,7 +43,7 @@ jobs:
     - run: mkdir zkg-linux-${{ matrix.arch }}
 
     - name: linux-${{ matrix.arch }}
-      run: zig build -Dtarget=linux-${{ matrix.arch }} -Drelease-safe --prefix zkg-linux-${{ matrix.arch }}
+      run: zig build -Dtarget=${{ matrix.arch }}-linux -Drelease-safe --prefix zkg-linux-${{ matrix.arch }}
 
     - name: Create Tarball
       run: tar -czvf zkg-linux-${{ matrix.arch }}.tar.gz zkg-linux-${{ matrix.arch }}
@@ -80,7 +80,7 @@ jobs:
     - run: mkdir zkg-windows-${{ matrix.arch }}
 
     - name: windows-${{ matrix.arch }}
-      run: zig build -Dtarget=windows-${{ matrix.arch }}-gnu -Drelease-safe --prefix zkg-windows-${{ matrix.arch }}
+      run: zig build -Dtarget=${{ matrix.arch }}-windows-gnu -Drelease-safe --prefix zkg-windows-${{ matrix.arch }}
 
     - name: Create Tarball
       run: tar -czvf zkg-windows-${{ matrix.arch }}.tar.gz zkg-windows-${{ matrix.arch }}
@@ -101,7 +101,7 @@ jobs:
     needs: create_release
     strategy:
       matrix:
-        arch: [x86_64]
+        arch: [x86_64, aarch64]
     steps:
     - name: Checkout
       uses: actions/checkout@v2
@@ -120,7 +120,7 @@ jobs:
       run: zig build -Drelease-safe --prefix zkg-macos-${{ matrix.arch }}
 
     - name: Create Tarball
-      run: tar -czvf zkg-macos${{ matrix.arch }}.tar.gz zkg-macos-${{ matrix.arch }}
+      run: tar -czvf zkg-macos-${{ matrix.arch }}.tar.gz zkg-macos-${{ matrix.arch }}
 
     - name: Upload Release Asset
       id: upload-release-asset 
