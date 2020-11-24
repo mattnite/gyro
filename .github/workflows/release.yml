@@ -25,6 +25,9 @@ jobs:
   linux:
     runs-on: ubuntu-latest
     needs: create_release
+    strategy:
+      matrix:
+        arch: [x86_64, i386]
     steps:
     - name: Checkout
       uses: actions/checkout@v2
@@ -37,13 +40,13 @@ jobs:
       with:
         version: 0.7.0
 
-    - run: mkdir zkg-x86_64-linux
+    - run: mkdir zkg-${{ matrix.arch }}-linux
 
-    - name: x86_64-linux
-      run: zig build -Dtarget=x86_64-linux -Drelease --prefix zkg-x86_64-linux
+    - name: ${{ matrix.arch }}-linux
+      run: zig build -Dtarget=${{ matrix.arch }}-linux -Drelease --prefix zkg-${{ matrix.arch }}-linux
 
     - name: tarball
-      run: tar -czvf zkg-x86_64-linux.tar.gz zkg-x86_64-linux
+      run: tar -czvf zkg-${{ matrix.arch }}-linux.tar.gz zkg-${{ matrix.arch }}-linux
 
     - name: Upload Release Asset
       id: upload-release-asset 
@@ -52,6 +55,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ needs.create_release.outputs.upload_url }}
-        asset_path: ./zkg-x86_64-linux.tar.gz
-        asset_name: zkg-x86_64-linux.tar.gz
+        asset_path: ./zkg-${{ matrix.arch }}-linux.tar.gz
+        asset_name: zkg-${{ matrix.arch }}-linux.tar.gz
         asset_content_type: application/tarball
