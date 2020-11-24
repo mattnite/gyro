@@ -27,7 +27,7 @@ jobs:
     needs: create_release
     strategy:
       matrix:
-        arch: [x86_64, aarch64, riscv64]
+        arch: [x86_64, aarch64, riscv64, armv7a]
     steps:
     - name: Checkout
       uses: actions/checkout@v2
@@ -39,9 +39,6 @@ jobs:
       uses: goto-bus-stop/setup-zig@v1.2.5
       with:
         version: 0.7.0
-
-    - name: Test
-      run: zig build test -Dtarget=${{ matrix.arch }}-linux
 
     - run: mkdir zkg-linux-${{ matrix.arch }}
 
