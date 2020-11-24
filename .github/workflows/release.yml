@@ -27,7 +27,7 @@ jobs:
     needs: create_release
     strategy:
       matrix:
-        arch: [x86_64, i386]
+        arch: [x86_64, aarch64]
     steps:
     - name: Checkout
       uses: actions/checkout@v2
