@@ -5,10 +5,9 @@ on:
   pull_request:
     branches: [ master ]
 
-runs-on: ubuntu-latest
-
 jobs:
   x86_64-linux:
+    runs-on: ubuntu-latest
     steps:
     - name: Checkout
       uses: actions/checkout@v2
