@@ -96,8 +96,8 @@ jobs:
         asset_name: zkg-${{ matrix.arch }}-windows.tar.gz
         asset_content_type: application/tarball
 
-  macos:
-    runs-on: macos-latest
+  freebsd:
+    runs-on: ubuntu-latest
     needs: create_release
     strategy:
       matrix:
@@ -114,13 +114,13 @@ jobs:
       with:
         version: 0.7.0
 
-    - run: mkdir zkg-${{ matrix.arch }}-macos
+    - run: mkdir zkg-${{ matrix.arch }}-freebsd
 
-    - name: ${{ matrix.arch }}-macos
-      run: zig build -Dtarget=${{ matrix.arch }}-macos-gnu -Drelease-safe --prefix zkg-${{ matrix.arch }}-macos
+    - name: ${{ matrix.arch }}-freebsd
+      run: zig build -Dtarget=${{ matrix.arch }}-freebsd -Drelease-safe --prefix zkg-${{ matrix.arch }}-freebsd
 
     - name: Create Tarball
-      run: tar -czvf zkg-${{ matrix.arch }}-macos.tar.gz zkg-${{ matrix.arch }}-macos
+      run: tar -czvf zkg-${{ matrix.arch }}-freebsd.tar.gz zkg-${{ matrix.arch }}-freebsd
 
     - name: Upload Release Asset
       id: upload-release-asset 
@@ -129,6 +129,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ needs.create_release.outputs.upload_url }}
-        asset_path: ./zkg-${{ matrix.arch }}-macos.tar.gz
-        asset_name: zkg-${{ matrix.arch }}-macos.tar.gz
+        asset_path: ./zkg-${{ matrix.arch }}-freebsd.tar.gz
+        asset_name: zkg-${{ matrix.arch }}-freebsd.tar.gz
         asset_content_type: application/tarball
