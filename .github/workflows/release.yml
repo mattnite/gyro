@@ -95,3 +95,40 @@ jobs:
         asset_path: ./zkg-${{ matrix.arch }}-windows.tar.gz
         asset_name: zkg-${{ matrix.arch }}-windows.tar.gz
         asset_content_type: application/tarball
+
+  macos:
+    runs-on: macos-latest
+    needs: create_release
+    strategy:
+      matrix:
+        arch: [x86_64]
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        submodules: recursive
+        fetch-depth: 0
+
+    - name: Setup Zig
+      uses: goto-bus-stop/setup-zig@v1.2.5
+      with:
+        version: 0.7.0
+
+    - run: mkdir zkg-${{ matrix.arch }}-macos
+
+    - name: ${{ matrix.arch }}-macos
+      run: zig build -Dtarget=${{ matrix.arch }}-macos -Drelease-safe --prefix zkg-${{ matrix.arch }}-macos
+
+    - name: Create Tarball
+      run: tar -czvf zkg-${{ matrix.arch }}-macos.tar.gz zkg-${{ matrix.arch }}-macos
+
+    - name: Upload Release Asset
+      id: upload-release-asset 
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ needs.create_release.outputs.upload_url }}
+        asset_path: ./zkg-${{ matrix.arch }}-macos.tar.gz
+        asset_name: zkg-${{ matrix.arch }}-macos.tar.gz
+        asset_content_type: application/tarball
