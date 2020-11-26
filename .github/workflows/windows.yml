@@ -21,7 +21,7 @@ jobs:
     - name: Setup Zig
       uses: goto-bus-stop/setup-zig@v1.2.5
       with:
-        version: 0.7.0
+        version: master
 
     - name: Compile
       run: zig build
