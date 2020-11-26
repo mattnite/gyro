@@ -102,13 +102,13 @@ const DependencyGraph = struct {
     /// Naive check for circular dependencies
     fn validate(self: *Self) !void {
         for (self.nodes.items) |*node| {
-            for (node.dependencies.span()) |dep| {
+            for (node.dependencies.items) |dep| {
                 if (dep.node.depth <= node.depth) {
                     return error.CyclicalDependency;
                 }
             }
 
-            for (node.dependents.span()) |dep| {
+            for (node.dependents.items) |dep| {
                 if (dep.depth >= node.depth) {
                     return error.CyclicalDependency;
                 }
