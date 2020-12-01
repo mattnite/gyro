@@ -24,7 +24,7 @@ jobs:
         version: master
 
     - name: Compile
-      run: zig build
+      run: zig build test
 
     - name: Search
       run: ./zig-cache/bin/zkg search
