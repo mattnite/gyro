@@ -15,8 +15,24 @@ fn zkgFetch(components: []const []const u8) !ChildProcess.ExecResult {
     });
 }
 
+fn zigBuild(components: []const []const u8) !ChildProcess.ExecResult {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const cwd = try std.fs.path.join(&gpa.allocator, components);
+    defer gpa.allocator.free(cwd);
+
+    return ChildProcess.exec(.{
+        .allocator = &gpa.allocator,
+        .argv = &[_][]const u8{ "zig", "build" },
+        .cwd = cwd,
+    });
+}
+
 test "example" {
-    const result = try zkgFetch(&[_][]const u8{ "tests", "example" });
+    const dir = [_][]const u8{ "tests", "example" };
+    var result = try zkgFetch(&dir);
+    testing.expectEqual(Term{ .Exited = 0 }, result.term);
+
+    result = try zigBuild(&dir);
     testing.expectEqual(Term{ .Exited = 0 }, result.term);
 }
 
