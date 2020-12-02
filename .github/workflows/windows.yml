@@ -23,9 +23,7 @@ jobs:
       with:
         version: master
 
-#    - run: echo $(pwd)/zig-cache/bin >> $GITHUB_PATH
-    - run: echo $(pwd)/zig-cache/bin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-
+    - run: echo $(pwd)/zig-cache/bin >> $GITHUB_PATH
 
     - name: Compile
       run: zig build
