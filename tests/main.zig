@@ -8,12 +8,9 @@ fn zkgFetch(components: []const []const u8) !ChildProcess.ExecResult {
     const cwd = try std.fs.path.join(&gpa.allocator, components);
     defer gpa.allocator.free(cwd);
 
-    const path = try std.fs.path.join(&gpa.allocator, &[_][]const u8{ "zig-cache", "bin", "zkg" });
-    defer gpa.allocator.free(path);
-
     return ChildProcess.exec(.{
         .allocator = &gpa.allocator,
-        .argv = &[_][]const u8{ path, "fetch" },
+        .argv = &[_][]const u8{ "zkg", "fetch" },
         .cwd = cwd,
     });
 }
