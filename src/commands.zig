@@ -176,11 +176,20 @@ fn recusivePrint(
     edge: *DependencyGraph.DependencyEdge,
     depth: usize,
 ) anyerror!void {
-    const path = try fs.path.join(allocator, &[_][]const u8{
+    const root_file = try std.mem.replaceOwned(u8, allocator, edge.root, "/", &[_]u8{fs.path.sep});
+    defer allocator.free(root_file);
+
+    var path = try fs.path.join(allocator, &[_][]const u8{
         edge.node.base_path,
-        edge.root,
+        root_file,
     });
     defer allocator.free(path);
+
+    if (fs.path.sep == '\\') {
+        const tmp = try std.mem.replaceOwned(u8, allocator, path, "\\", "\\\\");
+        allocator.free(path);
+        path = tmp;
+    }
 
     try indent(stream, depth);
     if (depth == 1) {
