@@ -10,6 +10,9 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
 
     steps:
     - name: Checkout
@@ -23,14 +26,16 @@ jobs:
       with:
         version: master
 
+    - run: echo $(pwd)/zig-cache/bin >> $GITHUB_PATH
+
     - name: Compile
       run: zig build
 
     - name: Search
-      run: ./zig-cache/bin/zkg search
+      run: zkg search
 
     - name: Add
-      run: ./zig-cache/bin/zkg add bearssl
+      run: zkg add bearssl
 
     - name: Fetch
-      run: ./zig-cache/bin/zkg fetch
+      run: zkg fetch
