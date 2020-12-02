@@ -31,10 +31,10 @@ jobs:
       run: zig build
 
     - name: Search
-      run: zkg search
+      run: zkg.exe search
 
     - name: Add
-      run: zkg add bearssl
+      run: zkg.exe add bearssl
 
     - name: Fetch
-      run: zkg fetch
+      run: zkg.exe fetch
