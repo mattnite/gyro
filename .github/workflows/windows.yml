@@ -26,15 +26,11 @@ jobs:
     - name: Compile
       run: zig build test
 
-    - run: echo $WORKSPACE/zig-cache/bin >> $GITHUB_PATH
-      env:
-        WORKSPACE: ${{ GITHUB_WORKSPACE }}
-
     - name: Search
-      run: ./zig-cache/bin/zkg search
+      run: ./zig-cache/bin/zkg.exe search
 
     - name: Add
-      run: ./zig-cache/bin/zkg add bearssl
+      run: ./zig-cache/bin/zkg.exe add bearssl
 
     - name: Fetch
-      run: ./zig-cache/bin/zkg fetch
+      run: ./zig-cache/bin/zkg.exe fetch
