@@ -84,6 +84,8 @@ const DependencyGraph = struct {
                 const path = try dep.path(self.allocator, self.cache);
                 defer self.allocator.free(path);
 
+                std.log.debug("  got an import: {}", .{path});
+
                 for (self.nodes.items) |*node| {
                     if (mem.eql(u8, path, node.base_path)) {
                         try front.connect_dependency(node, dep.name, dep.root);
