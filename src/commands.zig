@@ -69,6 +69,8 @@ const DependencyGraph = struct {
                 });
             defer if (front.base_path.len != 0) self.allocator.free(import_path);
 
+            std.log.debug("import_path: {}", .{import_path});
+
             const file = std.fs.cwd().openFile(import_path, .{ .read = true }) catch |err| {
                 if (err == error.FileNotFound)
                     continue
