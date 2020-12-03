@@ -41,4 +41,8 @@ jobs:
       run: zkg fetch
 
     - name: Example Project
-      run: cd tests/example && zkg fetch && cat depz.zig && zig build
+      working-directory: ./tests/example
+      run: |
+        zkg fetch
+        cat depz.zig
+        zig build
