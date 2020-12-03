@@ -33,7 +33,11 @@ pub fn init(allocator: *Allocator, file: std.fs.File) !Self {
     var deps = std.ArrayList(Import).init(allocator);
     errdefer deps.deinit();
 
-    const text = try file.readToEndAlloc(allocator, 0x2000);
+    const raw_text = try file.readToEndAlloc(allocator, 0x2000);
+    defer allocator.free(raw_text);
+
+    // handle windows line endings
+    const text = try std.mem.replaceOwned(u8, allocator, raw_text, "\r\n", "\n");
     errdefer allocator.free(text);
 
     var tree = ZTree{};
