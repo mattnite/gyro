@@ -44,5 +44,5 @@ jobs:
       working-directory: ./tests/example
       run: |
         zkg fetch
-        cat depz.zig
+        cat deps.zig
         zig build
