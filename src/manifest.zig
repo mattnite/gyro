@@ -46,6 +46,7 @@ pub fn init(allocator: *Allocator, file: std.fs.File) !Self {
     // iterate and append to deps
     var import_it = ChildIterator.init(root);
     while (import_it.next()) |node| {
+        std.log.debug("got an import from the manifest", .{});
         try deps.append(try Import.fromZNode(node));
     }
 
