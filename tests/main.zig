@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const testing = std.testing;
 const ChildProcess = std.ChildProcess;
 const Term = ChildProcess.Term;
@@ -10,7 +11,7 @@ fn zkgFetch(components: []const []const u8) !ChildProcess.ExecResult {
 
     return ChildProcess.exec(.{
         .allocator = &gpa.allocator,
-        .argv = &[_][]const u8{ "zkg", "fetch" },
+        .argv = &[_][]const u8{ if (builtin.os.tag == .windows) "zkg.exe" else "zkg", "fetch" },
         .cwd = cwd,
     });
 }
