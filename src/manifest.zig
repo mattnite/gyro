@@ -40,6 +40,8 @@ pub fn init(allocator: *Allocator, file: std.fs.File) !Self {
     const text = try std.mem.replaceOwned(u8, allocator, raw_text, "\r\n", "\n");
     errdefer allocator.free(text);
 
+    std.log.debug("text contents: {}", .{text});
+
     var tree = ZTree{};
     var root = try tree.appendText(text);
 
