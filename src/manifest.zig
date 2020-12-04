@@ -36,13 +36,13 @@ pub fn init(allocator: *Allocator, file: std.fs.File) !Self {
     const raw_text = try file.readToEndAlloc(allocator, 0x2000);
     defer allocator.free(raw_text);
 
-    std.log.debug("raw_text contents: {}", .{raw_text});
+    std.debug.print("raw_text contents: {}\n", .{raw_text});
 
     // handle windows line endings
     const text = try std.mem.replaceOwned(u8, allocator, raw_text, "\r\n", "\n");
     errdefer allocator.free(text);
 
-    std.log.debug("text contents: {}", .{text});
+    std.debug.print("text contents: {}\n", .{text});
 
     var tree = ZTree{};
     var root = try tree.appendText(text);
