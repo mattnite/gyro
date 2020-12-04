@@ -469,6 +469,8 @@ const HttpsSource = struct {
             const uri = try Uri.parse(url, true);
             const port = uri.port orelse 443;
 
+            std.log.debug("trying to fetch: {}", .{url});
+
             if (!std.mem.eql(u8, uri.scheme, "https")) {
                 return if (uri.scheme.len == 0)
                     error.PutQuotesAroundUrl
@@ -493,7 +495,10 @@ const HttpsSource = struct {
                     .status => |status| switch (status.code) {
                         200 => {},
                         302 => redirect = true,
-                        else => return error.HttpFailed,
+                        else => {
+                            std.log.err("got an HTTP return code: {}", .{status.code});
+                            return error.HttpFailed;
+                        },
                     },
                     .header => |header| {
                         if (redirect and std.mem.eql(u8, "location", header.name)) {

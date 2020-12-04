@@ -34,9 +34,12 @@ pub fn init(allocator: *Allocator, file: std.fs.File) !Self {
     errdefer deps.deinit();
 
     const text = try file.readToEndAlloc(allocator, 0x2000);
-    defer allocator.free(text);
+    errdefer allocator.free(text);
 
-    std.debug.print("text contents: {}\n", .{text});
+    if (std.mem.indexOf(u8, text, "\r\n") != null) {
+        std.log.err("imports.zzz needs to use LF line endings, not CRLF", .{});
+        return error.LineEnding;
+    }
 
     var tree = ZTree{};
     var root = try tree.appendText(text);
@@ -44,7 +47,6 @@ pub fn init(allocator: *Allocator, file: std.fs.File) !Self {
     // iterate and append to deps
     var import_it = ChildIterator.init(root);
     while (import_it.next()) |node| {
-        std.log.debug("got an import from the manifest", .{});
         try deps.append(try Import.fromZNode(node));
     }
 
