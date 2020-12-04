@@ -44,7 +44,7 @@ const DependencyGraph = struct {
         };
 
         // TODO: get cwd of process
-        try ret.nodes.append(try Node.init(allocator, ".", 0));
+        try ret.nodes.append(try Node.init(allocator, "", 0));
         return ret;
     }
 
@@ -60,6 +60,7 @@ const DependencyGraph = struct {
         while (self.queue_start < self.nodes.items.len) : (self.queue_start += 1) {
             var front = &self.nodes.items[self.queue_start];
 
+            std.log.debug("front.base: {}", .{front.base_path});
             const import_path = if (front.base_path.len == 0)
                 imports_zzz
             else
