@@ -44,7 +44,7 @@ const DependencyGraph = struct {
         };
 
         // TODO: get cwd of process
-        try ret.nodes.append(try Node.init(allocator, ".", 0));
+        try ret.nodes.append(try Node.init(allocator, "", 0));
         return ret;
     }
 
@@ -59,12 +59,14 @@ const DependencyGraph = struct {
     fn process(self: *Self) !void {
         while (self.queue_start < self.nodes.items.len) : (self.queue_start += 1) {
             var front = &self.nodes.items[self.queue_start];
-
-            const import_path = try std.fs.path.join(self.allocator, &[_][]const u8{
-                front.base_path,
-                imports_zzz,
-            });
-            defer self.allocator.free(import_path);
+            const import_path = if (front.base_path.len == 0)
+                imports_zzz
+            else
+                try std.fs.path.join(self.allocator, &[_][]const u8{
+                    front.base_path,
+                    imports_zzz,
+                });
+            defer if (front.base_path.len != 0) self.allocator.free(import_path);
 
             const file = std.fs.cwd().openFile(import_path, .{ .read = true }) catch |err| {
                 if (err == error.FileNotFound)

@@ -36,6 +36,11 @@ pub fn init(allocator: *Allocator, file: std.fs.File) !Self {
     const text = try file.readToEndAlloc(allocator, 0x2000);
     errdefer allocator.free(text);
 
+    if (std.mem.indexOf(u8, text, "\r\n") != null) {
+        std.log.err("imports.zzz requires LF line endings, not CRLF", .{});
+        return error.LineEnding;
+    }
+
     var tree = ZTree{};
     var root = try tree.appendText(text);
 

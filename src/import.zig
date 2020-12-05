@@ -493,7 +493,10 @@ const HttpsSource = struct {
                     .status => |status| switch (status.code) {
                         200 => {},
                         302 => redirect = true,
-                        else => return error.HttpFailed,
+                        else => {
+                            std.log.err("got an HTTP return code: {}", .{status.code});
+                            return error.HttpFailed;
+                        },
                     },
                     .header => |header| {
                         if (redirect and std.mem.eql(u8, "location", header.name)) {

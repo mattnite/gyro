@@ -45,8 +45,9 @@ fn checkHelp(comptime summary: []const u8, comptime params: anytype, args: anyty
 pub fn main() anyerror!void {
     const stderr = std.io.getStdErr().writer();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = &gpa.allocator;
+    defer _ = gpa.deinit();
 
+    const allocator = &gpa.allocator;
     try net.init();
     defer net.deinit();
 
