@@ -33,18 +33,12 @@ pub fn init(allocator: *Allocator, file: std.fs.File) !Self {
     var deps = std.ArrayList(Import).init(allocator);
     errdefer deps.deinit();
 
-    const raw_text = try file.readToEndAlloc(allocator, 0x2000);
-    defer allocator.free(raw_text);
-
-    var text = try std.mem.replaceOwned(u8, allocator, raw_text, "\r\n", "\n");
+    const text = try file.readToEndAlloc(allocator, 0x2000);
     errdefer allocator.free(text);
 
-    if (!std.mem.endsWith(u8, text, "\n")) {
-        const tmp = try allocator.alloc(u8, text.len + 1);
-        std.mem.copy(u8, tmp, text);
-        tmp[tmp.len - 1] = '\n';
-        allocator.free(text);
-        text = tmp;
+    if (std.mem.indexOf(u8, text, "\r\n") != null) {
+        std.log.err("imports.zzz requires LF line endings, not CRLF", .{});
+        return error.LineEnding;
     }
 
     var tree = ZTree{};

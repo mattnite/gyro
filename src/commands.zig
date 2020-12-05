@@ -59,8 +59,6 @@ const DependencyGraph = struct {
     fn process(self: *Self) !void {
         while (self.queue_start < self.nodes.items.len) : (self.queue_start += 1) {
             var front = &self.nodes.items[self.queue_start];
-
-            std.log.debug("front.base: {}", .{front.base_path});
             const import_path = if (front.base_path.len == 0)
                 imports_zzz
             else
@@ -69,8 +67,6 @@ const DependencyGraph = struct {
                     imports_zzz,
                 });
             defer if (front.base_path.len != 0) self.allocator.free(import_path);
-
-            std.log.debug("import_path: {}", .{import_path});
 
             const file = std.fs.cwd().openFile(import_path, .{ .read = true }) catch |err| {
                 if (err == error.FileNotFound)
@@ -84,8 +80,6 @@ const DependencyGraph = struct {
             for (manifest.*.deps.items) |dep| {
                 const path = try dep.path(self.allocator, self.cache);
                 defer self.allocator.free(path);
-
-                std.log.debug("  got an import: {}", .{path});
 
                 for (self.nodes.items) |*node| {
                     if (mem.eql(u8, path, node.base_path)) {

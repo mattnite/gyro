@@ -469,8 +469,6 @@ const HttpsSource = struct {
             const uri = try Uri.parse(url, true);
             const port = uri.port orelse 443;
 
-            std.log.debug("trying to fetch: {}", .{url});
-
             if (!std.mem.eql(u8, uri.scheme, "https")) {
                 return if (uri.scheme.len == 0)
                     error.PutQuotesAroundUrl
