@@ -45,9 +45,8 @@ fn checkHelp(comptime summary: []const u8, comptime params: anytype, args: anyty
 pub fn main() anyerror!void {
     const stderr = std.io.getStdErr().writer();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-
     const allocator = &gpa.allocator;
+
     try net.init();
     defer net.deinit();
 
@@ -78,6 +77,8 @@ pub fn main() anyerror!void {
             };
 
             var args = try clap.ComptimeClap(clap.Help, &params).parse(allocator, clap.args.OsIterator, &iter);
+            defer args.deinit();
+
             checkHelp(summary, &params, args);
 
             try fetch(args.option("--cache-dir"));
