@@ -668,12 +668,24 @@ pub fn add(
     }
 
     const entry = try Entry.from_json(root.Array.items[0]);
-    try manifest.addImport(.{
+    var import = Import{
         .name = alias,
         .root = entry.root_file,
         .src = try Import.urlToSource(entry.git),
-    });
+    };
 
+    const head = try import.getBranchHead(allocator);
+    defer if (head) |h| allocator.free(h);
+    if (head) |commit| {
+        switch (import.src) {
+            .github => {
+                import.src.github.ref = commit;
+            },
+            else => unreachable,
+        }
+    }
+
+    try manifest.addImport(import);
     try manifest.commit();
 }
 
