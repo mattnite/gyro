@@ -368,6 +368,34 @@ pub const Import = struct {
 
         defer dest_dir.close();
     }
+
+    pub fn getBranchHead(self: Self, allocator: *Allocator) !?[]const u8 {
+        var source = try HttpsSource.init(allocator, self);
+        defer source.deinit();
+
+        var gzip = try gzipStream(allocator, source.reader());
+        defer gzip.deinit();
+
+        const header = try gzip.reader().readStruct(tar.Header);
+        if (header.typeflag != .pax_global) return null;
+        const body = try gzip.reader().readUntilDelimiterAlloc(
+            allocator,
+            0,
+            try std.fmt.parseUnsigned(usize, &header.size, 8),
+        );
+
+        const commit_key = "comment=";
+        const commit_idx = (std.mem.indexOf(u8, body, commit_key) orelse return null) + commit_key.len;
+
+        const end_idx = for (body[commit_idx..]) |c, i| {
+            switch (c) {
+                'A'...'F', 'a'...'f', '0'...'9' => continue,
+                else => break commit_idx + i,
+            }
+        } else body.len;
+
+        return try allocator.dupe(u8, body[commit_idx..end_idx]);
+    }
 };
 
 const Connection = struct {
