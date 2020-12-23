@@ -206,7 +206,7 @@ fn recusivePrint(
     try stream.print(".path = \"{}\",\n", .{path});
     if (edge.node.dependencies.items.len > 0) {
         try indent(stream, depth + 1);
-        try stream.print(".dependencies = .{{\n", .{});
+        try stream.print(".dependencies = &[_]Pkg{{\n", .{});
 
         for (edge.node.dependencies.items) |*dep| {
             try recusivePrint(allocator, stream, dep, depth + 2);
@@ -245,6 +245,7 @@ pub fn fetch(cache_path: ?[]const u8) !void {
 
     const file_stream = gen_file.outStream();
     try file_stream.writeAll(
+        \\const Pkg = @import("std").build.Pkg;
         \\pub const pkgs = .{
         \\
     );
