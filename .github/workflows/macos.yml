@@ -21,7 +21,7 @@ jobs:
     - name: Setup Zig
       uses: goto-bus-stop/setup-zig@v1.2.5
       with:
-        version: master
+        version: 0.7.1
 
     - run: echo "$(pwd)/zig-cache/bin" >> $GITHUB_PATH
 
