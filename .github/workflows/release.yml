@@ -75,7 +75,7 @@ jobs:
       with:
         version: 0.7.1
 
-    - run: apt install zip
+    - run: sudo apt install zip
     - run: mkdir zkg-windows-${{ matrix.arch }}
 
     - name: windows-${{ matrix.arch }}
