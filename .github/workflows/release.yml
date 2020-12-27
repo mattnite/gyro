@@ -100,7 +100,7 @@ jobs:
     needs: create_release
     strategy:
       matrix:
-        arch: [x86_64, aarch64]
+        arch: [x86_64]
     steps:
     - name: Checkout
       uses: actions/checkout@v2
@@ -116,7 +116,7 @@ jobs:
     - run: mkdir zkg-macos-${{ matrix.arch }}
 
     - name: macos-${{ matrix.arch }}
-      run: zig build -Dtarget=${{ matrix.arch }}-macos -Drelease-safe --prefix zkg-macos-${{ matrix.arch }}
+      run: zig build -Drelease-safe --prefix zkg-macos-${{ matrix.arch }}
 
     - name: Create Tarball
       run: tar -czvf zkg-macos-${{ matrix.arch }}.tar.gz zkg-macos-${{ matrix.arch }}
