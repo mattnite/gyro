@@ -116,7 +116,7 @@ jobs:
     - run: mkdir zkg-macos-${{ matrix.arch }}
 
     - name: macos-${{ matrix.arch }}
-      run: zig build -Dtarget=${{ matrix.arch }}-macos-musl -Drelease-safe --prefix zkg-macos-${{ matrix.arch }}
+      run: zig build -Dtarget=${{ matrix.arch }}-macos -Drelease-safe --prefix zkg-macos-${{ matrix.arch }}
 
     - name: Create Tarball
       run: tar -czvf zkg-macos-${{ matrix.arch }}.tar.gz zkg-macos-${{ matrix.arch }}
