@@ -82,7 +82,7 @@ jobs:
       run: zig build -Dtarget=${{ matrix.arch }}-windows-gnu -Drelease-safe --prefix zkg-windows-${{ matrix.arch }}
 
     - name: Create zip
-      run: zip zkg-windows-${{ matrix.arch }}.zip zkg-windows-${{ matrix.arch }}
+      run: zip -r zkg-windows-${{ matrix.arch }}.zip zkg-windows-${{ matrix.arch }}
 
     - name: Upload Release Asset
       id: upload-release-asset 
