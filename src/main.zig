@@ -76,7 +76,7 @@ pub fn main() anyerror!void {
                 clap.parseParam("-c, --cache-dir <DIR>  cache directory, default is zig-cache") catch unreachable,
             };
 
-            var args = try clap.ComptimeClap(clap.Help, &params).parse(allocator, clap.args.OsIterator, &iter);
+            var args = try clap.ComptimeClap(clap.Help, &params).parse(allocator, &iter, null);
             defer args.deinit();
 
             checkHelp(summary, &params, args);
@@ -94,7 +94,7 @@ pub fn main() anyerror!void {
                 clap.parseParam("-j, --json             Print raw JSON") catch unreachable,
             };
 
-            var args = try clap.ComptimeClap(clap.Help, &params).parse(allocator, clap.args.OsIterator, &iter);
+            var args = try clap.ComptimeClap(clap.Help, &params).parse(allocator, &iter, null);
             defer args.deinit();
 
             checkHelp(summary, &params, args);
@@ -132,7 +132,7 @@ pub fn main() anyerror!void {
                 clap.parseParam("-r, --remote <REMOTE>  Select which endpoint to query") catch unreachable,
             };
 
-            var args = try clap.ComptimeClap(clap.Help, &params).parse(allocator, clap.args.OsIterator, &iter);
+            var args = try clap.ComptimeClap(clap.Help, &params).parse(allocator, &iter, null);
             defer args.deinit();
 
             checkHelp(summary, &params, args);
@@ -150,7 +150,7 @@ pub fn main() anyerror!void {
                 },
             };
 
-            var args = try clap.ComptimeClap(clap.Help, &params).parse(allocator, clap.args.OsIterator, &iter);
+            var args = try clap.ComptimeClap(clap.Help, &params).parse(allocator, &iter, null);
             defer args.deinit();
 
             checkHelp(summary, &params, args);
@@ -173,7 +173,7 @@ pub fn main() anyerror!void {
                 },
             };
 
-            var args = try clap.ComptimeClap(clap.Help, &params).parse(allocator, clap.args.OsIterator, &iter);
+            var args = try clap.ComptimeClap(clap.Help, &params).parse(allocator, &iter, null);
             defer args.deinit();
 
             checkHelp(summary, &params, args);
