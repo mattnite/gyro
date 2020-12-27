@@ -75,13 +75,14 @@ jobs:
       with:
         version: 0.7.1
 
+    - run: apt install zip
     - run: mkdir zkg-windows-${{ matrix.arch }}
 
     - name: windows-${{ matrix.arch }}
       run: zig build -Dtarget=${{ matrix.arch }}-windows-gnu -Drelease-safe --prefix zkg-windows-${{ matrix.arch }}
 
-    - name: Create Tarball
-      run: tar -czvf zkg-windows-${{ matrix.arch }}.tar.gz zkg-windows-${{ matrix.arch }}
+    - name: Create zip
+      run: zip zkg-windows-${{ matrix.arch }}.zip zkg-windows-${{ matrix.arch }}
 
     - name: Upload Release Asset
       id: upload-release-asset 
@@ -90,9 +91,9 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ needs.create_release.outputs.upload_url }}
-        asset_path: ./zkg-windows-${{ matrix.arch }}.tar.gz
-        asset_name: zkg-windows-${{ matrix.arch }}.tar.gz
-        asset_content_type: application/tarball
+        asset_path: ./zkg-windows-${{ matrix.arch }}.zip
+        asset_name: zkg-windows-${{ matrix.arch }}.zip
+        asset_content_type: application/zip
 
   macos:
     runs-on: macos-latest
