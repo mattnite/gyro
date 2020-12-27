@@ -510,7 +510,7 @@ const HttpsSource = struct {
             conn = try Connection.init(allocator, hostname, port, &x509);
             try conn.http_client.writeStatusLine("GET", uri.path);
             try conn.http_client.writeHeaderValue("Host", hostname);
-            try conn.http_client.writeHeaderValue("User-Agent", "zkg");
+            try conn.http_client.writeHeaderValue("User-Agent", "gyro");
             try conn.http_client.writeHeaderValue("Accept", "*/*");
             try conn.http_client.finishHeaders();
             try conn.ssl_socket.flush();

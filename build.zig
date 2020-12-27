@@ -40,7 +40,7 @@ pub fn build(b: *Builder) !void {
 
     const mode = b.standardReleaseOptions();
 
-    const exe = b.addExecutable("zkg", "src/main.zig");
+    const exe = b.addExecutable("gyro", "src/main.zig");
     exe.setTarget(target);
     exe.setBuildMode(mode);
 
@@ -58,7 +58,7 @@ pub fn build(b: *Builder) !void {
         run_cmd.addArgs(args);
     }
 
-    const run_step = b.step("run", "Run zkg");
+    const run_step = b.step("run", "Run gyro");
     run_step.dependOn(&run_cmd.step);
 
     const tests = b.addTest("tests/main.zig");

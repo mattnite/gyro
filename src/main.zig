@@ -14,7 +14,7 @@ const Command = enum {
 fn printUsage() noreturn {
     const stderr = std.io.getStdErr().writer();
     _ = stderr.write(
-        \\zkg <cmd> [cmd specific options]
+        \\gyro <cmd> [cmd specific options]
         \\
         \\cmds:
         \\  search  List packages matching your query
@@ -24,7 +24,7 @@ fn printUsage() noreturn {
         \\  fetch   Download packages specified in your imports file into your
         \\          cache dir
         \\
-        \\for more information: zkg <cmd> --help
+        \\for more information: gyro <cmd> --help
         \\
         \\
     ) catch {};

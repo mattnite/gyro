@@ -288,7 +288,7 @@ fn httpRequest(
     try http_client.writeStatusLine("GET", params);
     try http_client.writeHeaderValue("Accept", "application/json");
     try http_client.writeHeaderValue("Host", hostname);
-    try http_client.writeHeaderValue("Agent", "zkg");
+    try http_client.writeHeaderValue("Agent", "gyro");
     try http_client.finishHeaders();
 
     return readHttpBody(allocator, &http_client);
