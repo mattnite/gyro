@@ -36,7 +36,7 @@ jobs:
     - name: Setup Zig
       uses: goto-bus-stop/setup-zig@v1.2.5
       with:
-        version: master
+        version: 0.7.1
 
     - run: mkdir zkg-linux-${{ matrix.arch }}
 
@@ -73,7 +73,7 @@ jobs:
     - name: Setup Zig
       uses: goto-bus-stop/setup-zig@v1.2.5
       with:
-        version: master
+        version: 0.7.1
 
     - run: mkdir zkg-windows-${{ matrix.arch }}
 
@@ -110,7 +110,7 @@ jobs:
     - name: Setup Zig
       uses: goto-bus-stop/setup-zig@v1.2.5
       with:
-        version: master
+        version: 0.7.1
 
     - run: mkdir zkg-macos-${{ matrix.arch }}
 
