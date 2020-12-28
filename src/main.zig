@@ -155,14 +155,13 @@ pub fn main() anyerror!void {
 
             checkHelp(summary, &params, args);
 
-            // there can only be one positional argument
-            if (args.positionals().len > 1) {
-                return error.TooManyPositionalArgs;
-            } else if (args.positionals().len != 1) {
-                return error.MissingName;
+            switch (args.positionals().len) {
+                0 => return error.MissingName,
+                1 => try add(allocator, args.positionals()[0], args.option("--alias"), args.option("--remote")),
+                else => for (args.positionals()) |pos| {
+                    try add(allocator, pos, null, args.option("--remote"));
+                },
             }
-
-            try add(allocator, args.positionals()[0], args.option("--alias"), args.option("--remote"));
         },
         .remove => {
             const summary = "Remove a package from your imports file";
