@@ -32,14 +32,35 @@ fn printUsage() noreturn {
     std.os.exit(1);
 }
 
-fn checkHelp(comptime summary: []const u8, comptime params: anytype, args: anytype) void {
+fn showHelp(comptime summary: []const u8, comptime params: anytype) void {
     const stderr = std.io.getStdErr().writer();
+    _ = stderr.write(summary ++ "\n\n") catch {};
+    clap.help(stderr, params) catch {};
+    _ = stderr.write("\n") catch {};
+}
+
+fn exitShowingError(comptime summary: []const u8, comptime params: anytype, diag: *clap.Diagnostic, err: anytype) void {
+    const stderr = std.io.getStdErr().writer();
+    diag.report(stderr, err) catch {};
+    showHelp(summary, params);
+    std.os.exit(1);
+}
+
+fn checkHelp(comptime summary: []const u8, comptime params: anytype, args: anytype) void {
     if (args.flag("--help")) {
-        _ = stderr.write(summary ++ "\n\n") catch {};
-        clap.help(stderr, params) catch {};
-        _ = stderr.write("\n") catch {};
+        showHelp(summary, params);
         std.os.exit(0);
     }
+}
+fn parseHandlingHelpAndErrors(allocator: *std.mem.Allocator, cclap: anytype, summary: []const u8, comptime params: anytype, iter: anytype) @TypeOf(clap.Args(clap.Help, params)) {
+    var diag: clap.Diagnostic = undefined;
+    var args = clap.ComptimeClap(clap.Help, params).parse(allocator, iter, &diag) catch |err| {
+        // Report useful error and exit
+        exitShowingError(summary, params, &diag, err);
+        unreachable;
+    };
+    checkHelp(summary, params, args);
+    return args;
 }
 
 pub fn main() anyerror!void {
@@ -94,10 +115,12 @@ pub fn main() anyerror!void {
                 clap.parseParam("-j, --json             Print raw JSON") catch unreachable,
             };
 
-            var args = try clap.ComptimeClap(clap.Help, &params).parse(allocator, &iter, null);
+            const cclap = clap.ComptimeClap(clap.Help, &params);
+            var args = parseHandlingHelpAndErrors(allocator, cclap, summary, &params, &iter);
             defer args.deinit();
 
             checkHelp(summary, &params, args);
+
             const name_opt = args.option("--name");
             const tag_opt = args.option("--tag");
             const author_opt = args.option("--author");
