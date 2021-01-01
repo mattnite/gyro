@@ -32,14 +32,28 @@ fn printUsage() noreturn {
     std.os.exit(1);
 }
 
-fn checkHelp(comptime summary: []const u8, comptime params: anytype, args: anytype) void {
+fn showHelp(comptime summary: []const u8, comptime params: anytype) void {
     const stderr = std.io.getStdErr().writer();
+    _ = stderr.write(summary ++ "\n\n") catch {};
+    clap.help(stderr, params) catch {};
+    _ = stderr.write("\n") catch {};
+}
+
+fn parseHandlingHelpAndErrors(allocator: *std.mem.Allocator, comptime summary: []const u8, comptime params: anytype, iter: anytype) clap.ComptimeClap(clap.Help, params) {
+    var diag: clap.Diagnostic = undefined;
+    var args = clap.ComptimeClap(clap.Help, params).parse(allocator, iter, &diag) catch |err| {
+        // Report useful error and exit
+        const stderr = std.io.getStdErr().writer();
+        diag.report(stderr, err) catch {};
+        showHelp(summary, params);
+        std.os.exit(1);
+    };
+    // formerly checkHelp(summary, params, args);
     if (args.flag("--help")) {
-        _ = stderr.write(summary ++ "\n\n") catch {};
-        clap.help(stderr, params) catch {};
-        _ = stderr.write("\n") catch {};
+        showHelp(summary, params);
         std.os.exit(0);
     }
+    return args;
 }
 
 pub fn main() anyerror!void {
@@ -76,10 +90,8 @@ pub fn main() anyerror!void {
                 clap.parseParam("-c, --cache-dir <DIR>  cache directory, default is zig-cache") catch unreachable,
             };
 
-            var args = try clap.ComptimeClap(clap.Help, &params).parse(allocator, &iter, null);
+            var args = parseHandlingHelpAndErrors(allocator, summary, &params, &iter);
             defer args.deinit();
-
-            checkHelp(summary, &params, args);
 
             try fetch(args.option("--cache-dir"));
         },
@@ -94,10 +106,9 @@ pub fn main() anyerror!void {
                 clap.parseParam("-j, --json             Print raw JSON") catch unreachable,
             };
 
-            var args = try clap.ComptimeClap(clap.Help, &params).parse(allocator, &iter, null);
+            var args = parseHandlingHelpAndErrors(allocator, summary, &params, &iter);
             defer args.deinit();
 
-            checkHelp(summary, &params, args);
             const name_opt = args.option("--name");
             const tag_opt = args.option("--tag");
             const author_opt = args.option("--author");
@@ -132,10 +143,8 @@ pub fn main() anyerror!void {
                 clap.parseParam("-r, --remote <REMOTE>  Select which endpoint to query") catch unreachable,
             };
 
-            var args = try clap.ComptimeClap(clap.Help, &params).parse(allocator, &iter, null);
+            var args = parseHandlingHelpAndErrors(allocator, summary, &params, &iter);
             defer args.deinit();
-
-            checkHelp(summary, &params, args);
 
             try tags(allocator, args.option("--remote"));
         },
@@ -150,10 +159,8 @@ pub fn main() anyerror!void {
                 },
             };
 
-            var args = try clap.ComptimeClap(clap.Help, &params).parse(allocator, &iter, null);
+            var args = parseHandlingHelpAndErrors(allocator, summary, &params, &iter);
             defer args.deinit();
-
-            checkHelp(summary, &params, args);
 
             switch (args.positionals().len) {
                 0 => return error.MissingName,
@@ -172,10 +179,8 @@ pub fn main() anyerror!void {
                 },
             };
 
-            var args = try clap.ComptimeClap(clap.Help, &params).parse(allocator, &iter, null);
+            var args = parseHandlingHelpAndErrors(allocator, summary, &params, &iter);
             defer args.deinit();
-
-            checkHelp(summary, &params, args);
 
             // there can only be one positional argument
             if (args.positionals().len > 1) {
