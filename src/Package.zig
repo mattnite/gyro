@@ -125,7 +125,7 @@ pub fn bundle(self: Self, root: std.fs.Dir, output_dir: std.fs.Dir) !void {
 
     var buf: [std.mem.page_size]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buf);
-    try stream.writer().print("{}-{}.tar.gz", .{
+    try stream.writer().print("{}-{}.tar", .{
         self.name,
         ver_str.getWritten(),
     });
@@ -136,7 +136,7 @@ pub fn bundle(self: Self, root: std.fs.Dir, output_dir: std.fs.Dir) !void {
     });
     defer file.close();
 
-    const tarball = tar.archive(file.writer());
+    var tarball = tar.archive(file.writer());
     var fifo = std.fifo.LinearFifo(u8, .Dynamic).init(self.allocator);
     defer fifo.deinit();
 
@@ -150,6 +150,6 @@ pub fn bundle(self: Self, root: std.fs.Dir, output_dir: std.fs.Dir) !void {
         var it = try glob.Iterator.init(self.allocator, root, pattern);
         defer it.deinit();
 
-        while (try it.next()) |subpath| try tarball.addFile(root, "pkg", subpath);
+        while (try it.next()) |subpath| try tarball.addFile(self.allocator, root, "pkg", subpath);
     }
 }
