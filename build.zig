@@ -2,31 +2,35 @@ usingnamespace std.build;
 const std = @import("std");
 const ssl = @import(pkgs.ssl.path);
 
-const pkgs = .{
-    .clap = .{
-        .name = "clap",
-        .path = "libs/zig-clap/clap.zig",
+const clap = .{
+    .name = "clap",
+    .path = "../zig-clap/clap.zig",
+};
+
+const version = .{
+    .name = "version",
+    .path = "../version/src/main.zig",
+    .dependencies = &[_]Pkg{
+        .{
+            .name = "mecha",
+            .path = "../mecha/mecha.zig",
+        },
     },
-    .http = .{
-        .name = "http",
-        .path = "libs/hzzp/src/main.zig",
-    },
-    .net = .{
-        .name = "net",
-        .path = "libs/zig-network/network.zig",
-    },
-    .ssl = .{
-        .name = "ssl",
-        .path = "libs/zig-bearssl/bearssl.zig",
-    },
-    .uri = .{
-        .name = "uri",
-        .path = "libs/zuri/src/zuri.zig",
-    },
-    .zzz = .{
-        .name = "zzz",
-        .path = "libs/zzz/src/main.zig",
-    },
+};
+
+const tar = .{
+    .name = "tar",
+    .path = "../tar/src/main.zig",
+};
+
+const zzz = .{
+    .name = "zzz",
+    .path = "../zzz/src/main.zig",
+};
+
+const glob = .{
+    .name = "glob",
+    .path = "../glob/src/main.zig",
 };
 
 pub fn build(b: *Builder) !void {
@@ -40,26 +44,15 @@ pub fn build(b: *Builder) !void {
 
     const mode = b.standardReleaseOptions();
 
-    const exe = b.addExecutable("gyro", "src/main.zig");
-    exe.setTarget(target);
-    exe.setBuildMode(mode);
-
-    inline for (std.meta.fields(@TypeOf(pkgs))) |field| {
-        exe.addPackage(@field(pkgs, field.name));
-    }
-
-    ssl.linkBearSSL("libs/zig-bearssl", exe, target);
-    exe.linkLibC();
-    exe.install();
-
-    const run_cmd = exe.run();
-    run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
-
-    const run_step = b.step("run", "Run gyro");
-    run_step.dependOn(&run_cmd.step);
+    const gyro = b.addExecutable("gyro", "src/main.zig");
+    gyro.setTarget(target);
+    gyro.setBuildMode(mode);
+    gyro.addPackage(clap);
+    gyro.addPackage(version);
+    gyro.addPackage(tar);
+    gyro.addPackage(zzz);
+    gyro.addPackage(glob);
+    gyro.install();
 
     const tests = b.addTest("tests/main.zig");
     tests.setBuildMode(mode);
