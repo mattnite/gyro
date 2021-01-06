@@ -1,9 +1,13 @@
 const std = @import("std");
-const version = @import("std");
+const version = @import("version");
+const Dependency = @import("Dependency.zig");
+
+const Self = @This();
+const Allocator = std.mem.Allocator;
 
 entries: std.ArrayList(Entry),
 
-const Entry = union(enum) {
+pub const Entry = union(enum) {
     ziglet: struct {
         repository: []const u8,
         name: []const u8,
@@ -14,4 +18,26 @@ const Entry = union(enum) {
         repo: []const u8,
         commit: []const u8,
     },
+
+    pub fn getDeps(self: Entry, allocator: *Allocator) !std.ArrayList(Dependency) {
+        return error.Todo;
+    }
+
+    pub fn fetch(self: Entry) !void {
+        return error.Todo;
+    }
 };
+
+pub fn fromFile(allocator: *Allocator, file: std.fs.File) !Self {
+    return error.Todo;
+}
+
+pub fn deinit(self: *Self) void {
+    self.entries.deinit();
+}
+
+pub fn fetchAll(self: Self) !void {
+    for (self.entries.items) |entry| {
+        try entry.fetch();
+    }
+}

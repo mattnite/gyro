@@ -4,6 +4,8 @@ usingnamespace @import("commands.zig");
 
 const Command = enum {
     package,
+    fetch,
+    update,
 };
 
 fn printUsage() noreturn {
@@ -75,6 +77,8 @@ pub fn main() !void {
     };
 
     switch (cmd) {
+        .fetch => try fetch(allocator),
+        .update => try update(allocator),
         .package => {
             const summary = "Bundle package(s) into a ziglet";
             const params = comptime [_]clap.Param(clap.Help){

@@ -15,8 +15,8 @@ name: []const u8,
 version: version.Semver,
 root: ?[]const u8,
 files: std.ArrayList([]const u8),
-deps: std.ArrayList(Dependency),
-build_deps: std.ArrayList(Dependency),
+deps: *const std.ArrayList(Dependency),
+build_deps: *const std.ArrayList(Dependency),
 
 // meta info
 author: ?[]const u8,
@@ -26,14 +26,20 @@ homepage_url: ?[]const u8,
 source_url: ?[]const u8,
 tags: std.ArrayList([]const u8),
 
-pub fn init(allocator: *Allocator, name: []const u8, ver: version.Semver) Self {
+pub fn init(
+    allocator: *Allocator,
+    name: []const u8,
+    ver: version.Semver,
+    deps: *const std.ArrayList(Dependency),
+    build_deps: *const std.ArrayList(Dependency),
+) Self {
     return Self{
         .allocator = allocator,
         .name = name,
         .version = ver,
+        .deps = deps,
+        .build_deps = build_deps,
         .files = std.ArrayList([]const u8).init(allocator),
-        .deps = std.ArrayList(Dependency).init(allocator),
-        .build_deps = std.ArrayList(Dependency).init(allocator),
         .tags = std.ArrayList([]const u8).init(allocator),
 
         .root = null,
@@ -48,26 +54,12 @@ pub fn init(allocator: *Allocator, name: []const u8, ver: version.Semver) Self {
 pub fn deinit(self: *Self) void {
     self.tags.deinit();
     self.files.deinit();
-    self.deps.deinit();
-    self.build_deps.deinit();
 }
 
 pub fn fillFromZNode(
     self: *Self,
     node: *const zzz.ZNode,
-    opt_deps: ?*const zzz.ZNode,
-    opt_build_deps: ?*const zzz.ZNode,
 ) !void {
-    if (opt_deps) |deps| {
-        var it = ZChildIterator.init(deps);
-        while (it.next()) |dep| try self.deps.append(try Dependency.fromZNode(dep));
-    }
-
-    if (opt_build_deps) |build_deps| {
-        var it = ZChildIterator.init(build_deps);
-        while (it.next()) |dep| try self.build_deps.append(try Dependency.fromZNode(dep));
-    }
-
     if (zFindChild(node, "files")) |files| {
         var it = ZChildIterator.init(files);
         while (it.next()) |path| try self.files.append(try zGetString(path));

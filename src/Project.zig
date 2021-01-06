@@ -2,6 +2,7 @@ const std = @import("std");
 const zzz = @import("zzz");
 const version = @import("version");
 const Package = @import("Package.zig");
+const Dependency = @import("Dependency.zig");
 
 usingnamespace @import("common.zig");
 
@@ -10,6 +11,8 @@ const Self = @This();
 allocator: *std.mem.Allocator,
 text: []const u8,
 packages: std.StringHashMap(Package),
+dependencies: std.ArrayList(Dependency),
+build_dependencies: std.ArrayList(Dependency),
 
 pub const Iterator = struct {
     inner: std.StringHashMap(Package).Iterator,
@@ -24,6 +27,8 @@ pub fn init(allocator: *std.mem.Allocator, file: std.fs.File) !Self {
         .allocator = allocator,
         .text = try file.readToEndAlloc(allocator, std.math.maxInt(usize)),
         .packages = std.StringHashMap(Package).init(allocator),
+        .dependencies = std.ArrayList(Dependency).init(allocator),
+        .build_dependencies = std.ArrayList(Dependency).init(allocator),
     };
 }
 
@@ -66,37 +71,48 @@ pub fn fromFile(allocator: *std.mem.Allocator, file: std.fs.File) !Self {
     var tree = zzz.ZTree(1, 100){};
     var root = try tree.appendText(ret.text);
 
-    // TODO: some sort of 'apps' or 'compiled' tag
-    const libs = zFindChild(root, "libs") orelse {
-        std.log.err("no libraries declared", .{});
-        return error.NoLibs;
-    };
+    if (zFindChild(root, "deps")) |deps| {
+        var it = ZChildIterator.init(deps);
+        while (it.next()) |dep|
+            try ret.dependencies.append(try Dependency.fromZNode(dep));
+    }
 
-    const opt_deps = zFindChild(root, "deps");
-    const opt_build_deps = zFindChild(root, "build_deps");
+    if (zFindChild(root, "build_deps")) |build_deps| {
+        var it = ZChildIterator.init(build_deps);
+        while (it.next()) |dep|
+            try ret.build_dependencies.append(try Dependency.fromZNode(dep));
+    }
 
-    var it = ZChildIterator.init(libs);
-    while (it.next()) |node| {
-        const name = try zGetString(node);
+    if (zFindChild(root, "libs")) |libs| {
+        var it = ZChildIterator.init(libs);
+        while (it.next()) |node| {
+            const name = try zGetString(node);
 
-        const ver_str = (try zFindString(node, "version")) orelse {
-            std.log.err("missing version string in package", .{});
-            return error.NoVersion;
-        };
+            const ver_str = (try zFindString(node, "version")) orelse {
+                std.log.err("missing version string in package", .{});
+                return error.NoVersion;
+            };
 
-        const ver = version.Semver.parse(ver_str) catch |err| {
-            std.log.err("failed to parse version string '{}', must be <major>.<minor>.<patch>: {}", .{ ver_str, err });
-            return err;
-        };
+            const ver = version.Semver.parse(ver_str) catch |err| {
+                std.log.err("failed to parse version string '{}', must be <major>.<minor>.<patch>: {}", .{ ver_str, err });
+                return err;
+            };
 
-        const res = try ret.packages.getOrPut(name);
-        if (res.found_existing) {
-            std.log.err("duplicate exported packages {}", .{name});
-            return error.DuplicatePackage;
+            const res = try ret.packages.getOrPut(name);
+            if (res.found_existing) {
+                std.log.err("duplicate exported packages {}", .{name});
+                return error.DuplicatePackage;
+            }
+
+            res.entry.value = Package.init(
+                allocator,
+                name,
+                ver,
+                &ret.dependencies,
+                &ret.build_dependencies,
+            );
+            try res.entry.value.fillFromZNode(node);
         }
-
-        res.entry.value = Package.init(allocator, name, ver);
-        try res.entry.value.fillFromZNode(node, opt_deps, opt_build_deps);
     }
 
     return ret;
