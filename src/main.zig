@@ -96,3 +96,7 @@ pub fn main() !void {
         },
     }
 }
+
+test "all" {
+    std.testing.refAllDecls(@import("Dependency.zig"));
+}

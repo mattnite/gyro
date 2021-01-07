@@ -94,7 +94,6 @@ fn createManifest(self: Self, tree: *zzz.ZTree(1, 100), ver_str: []const u8) !vo
         for (self.tags.items) |tag| _ = try tree.addNode(tags, .{ .String = tag });
     }
 
-    // TODO: serialize and add dependencies
     if (self.deps.items.len > 0) {
         var deps = try tree.addNode(root, .{ .String = "deps" });
         for (self.deps.items) |dep| try dep.addToZNode(tree, deps);

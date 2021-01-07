@@ -1,6 +1,8 @@
 const std = @import("std");
 const zzz = @import("zzz");
 
+pub const default_root = "src/main.zig";
+
 pub const ZChildIterator = struct {
     val: ?*const zzz.ZNode,
 

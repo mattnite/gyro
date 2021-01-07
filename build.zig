@@ -33,6 +33,13 @@ const glob = .{
     .path = "../glob/src/main.zig",
 };
 
+fn addAllPkgs(lib: *LibExeObjStep) void {
+    lib.addPackage(clap);
+    lib.addPackage(version);
+    lib.addPackage(tar);
+    lib.addPackage(zzz);
+    lib.addPackage(glob);
+}
 pub fn build(b: *Builder) !void {
     var target = b.standardTargetOptions(.{});
     if (target.abi == null) {
@@ -47,15 +54,12 @@ pub fn build(b: *Builder) !void {
     const gyro = b.addExecutable("gyro", "src/main.zig");
     gyro.setTarget(target);
     gyro.setBuildMode(mode);
-    gyro.addPackage(clap);
-    gyro.addPackage(version);
-    gyro.addPackage(tar);
-    gyro.addPackage(zzz);
-    gyro.addPackage(glob);
+    addAllPkgs(gyro);
     gyro.install();
 
-    const tests = b.addTest("tests/main.zig");
+    const tests = b.addTest("src/main.zig");
     tests.setBuildMode(mode);
+    addAllPkgs(tests);
     tests.step.dependOn(b.getInstallStep());
 
     const test_step = b.step("test", "Run tests");

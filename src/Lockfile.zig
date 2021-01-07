@@ -8,15 +8,20 @@ const Allocator = std.mem.Allocator;
 entries: std.ArrayList(Entry),
 
 pub const Entry = union(enum) {
-    ziglet: struct {
-        repository: []const u8,
+    pkg: struct {
         name: []const u8,
         version: version.Semver,
+        repository: []const u8,
     },
     github: struct {
-        name: []const u8,
+        user: []const u8,
         repo: []const u8,
         commit: []const u8,
+        root: []const u8,
+    },
+    url: struct {
+        str: []const u8,
+        root: []const u8,
     },
 
     pub fn getDeps(self: Entry, allocator: *Allocator) !std.ArrayList(Dependency) {
