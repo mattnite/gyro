@@ -2,7 +2,9 @@ const std = @import("std");
 const version = @import("version");
 const zzz = @import("zzz");
 const Lockfile = @import("Lockfile.zig");
+const DependencyTree = @import("DependencyTree.zig");
 const api = @import("api.zig");
+usingnamespace @import("common.zig");
 
 const Self = @This();
 const Allocator = std.mem.Allocator;
@@ -36,18 +38,73 @@ const Source = union(SourceType) {
 
 fn findLatestMatch(self: Self, lockfile: *Lockfile) ?*const Lockfile.Entry {
     var ret: ?*const Lockfile.Entry = null;
-    for (lockfile.entries.items) |entry| {}
+    for (lockfile.entries.items) |*entry| {
+        if (@as(SourceType, self.src) != @as(SourceType, entry.*)) continue;
+
+        switch (self.src) {
+            .pkg => |pkg| {
+                if (!mem.eql(u8, pkg.name, entry.pkg.name) or
+                    !mem.eql(u8, pkg.repository, entry.pkg.repository)) continue;
+
+                const range = pkg.version;
+                if (range.contains(entry.pkg.version)) {
+                    if (ret != null and entry.pkg.version.cmp(ret.?.pkg.version) != .gt) {
+                        continue;
+                    }
+
+                    ret = entry;
+                }
+            },
+            // TODO: probably not fix this idunno
+            .github => |gh| if (mem.eql(u8, gh.user, entry.github.user) and
+                mem.eql(u8, gh.repo, entry.github.user)) return entry,
+            .url => |url| if (mem.eql(u8, url.str, entry.url.str)) return entry,
+        }
+    }
 
     return ret;
 }
 
-fn resolveLatest(self: Self) !Lockfile.Entry {
-    return error.Todo;
+fn resolveLatest(self: Self, tree: *DependencyTree) !Lockfile.Entry {
+    return switch (self.src) {
+        .pkg => |pkg| .{
+            .pkg = .{
+                .name = pkg.name,
+                .repository = pkg.repository,
+                .version = try api.getLatest(
+                    tree.allocator,
+                    pkg.repository,
+                    pkg.name,
+                    pkg.version,
+                ),
+            },
+        },
+        .github => |gh| blk: {
+            const commit = try api.getHeadCommit(tree.allocator, gh.user, gh.repo, gh.ref);
+            errdefer tree.allocator.free(commit);
+
+            try tree.buf_pool.append(tree.allocator, commit);
+            break :blk .{
+                .github = .{
+                    .user = gh.user,
+                    .repo = gh.repo,
+                    .commit = commit,
+                    .root = gh.root,
+                },
+            };
+        },
+        .url => |url| .{
+            .url = .{
+                .str = url.str,
+                .root = url.root,
+            },
+        },
+    };
 }
 
-pub fn resolve(self: Self, allocator: *Allocator, lockfile: *Lockfile) !*const Lockfile.Entry {
+pub fn resolve(self: Self, tree: *DependencyTree, lockfile: *Lockfile) !*const Lockfile.Entry {
     return self.findLatestMatch(lockfile) orelse blk: {
-        try lockfile.entries.append(try self.resolveLatest());
+        try lockfile.entries.append(try self.resolveLatest(tree));
         break :blk &lockfile.entries.items[lockfile.entries.items.len - 1];
     };
 }
@@ -77,7 +134,7 @@ pub fn resolve(self: Self, allocator: *Allocator, lockfile: *Lockfile) !*const L
 ///       user: <user>
 ///       repo: <repo>
 ///       ref: <ref>
-///   root: <root file> # TODO: what if it has a project.zzz file?
+///   root: <root file>
 /// ```
 ///
 /// A raw url:
@@ -85,19 +142,85 @@ pub fn resolve(self: Self, allocator: *Allocator, lockfile: *Lockfile) !*const L
 /// name:
 ///   src:
 ///     url: <url>
-///   root: <root file> # TODO: what if it has a project.zzz file?
+///   root: <root file>
 ///   integrity:
 ///     <type>: <integrity str>
+/// ```
 pub fn fromZNode(node: *const zzz.ZNode) !Self {
+    if (node.*.child == null) return error.NoChildren;
+
+    const alias = try zGetString(node);
+
     // check if only one child node and that it has no children
-    return error.Todo;
+    if (node.*.child.?.value == .String and node.*.child.?.child == null) {
+        if (node.*.child.?.sibling != null) return error.Unknown;
+
+        return Self{
+            .alias = alias,
+            .src = .{
+                .pkg = .{
+                    .name = alias,
+                    .version = try version.Range.parse(try zGetString(node.*.child.?)),
+                    .repository = api.default_repo,
+                },
+            },
+        };
+    }
+
+    // search for src node
+    const src_node = blk: {
+        var it = ZChildIterator.init(node);
+
+        while (it.next()) |child| {
+            switch (child.value) {
+                .String => |str| if (mem.eql(u8, str, "src")) break :blk child,
+                else => continue,
+            }
+        } else return error.SrcTagNotFound;
+    };
+
+    const src: Source = blk: {
+        const child = src_node.child orelse return error.SrcNeedsChild;
+        const src_str = try zGetString(child);
+        const src_type = inline for (std.meta.fields(SourceType)) |field| {
+            if (mem.eql(u8, src_str, field.name)) break @field(SourceType, field.name);
+        } else return error.InvalidSrcTag;
+
+        break :blk switch (src_type) {
+            .pkg => .{
+                .pkg = .{
+                    .name = (try zFindString(child, "name")) orelse alias,
+                    .version = try version.Range.parse((try zFindString(child, "version")) orelse return error.MissingVersion),
+                    .repository = (try zFindString(child, "repository")) orelse api.default_repo,
+                },
+            },
+            .github => .{
+                .github = .{
+                    .user = (try zFindString(child, "user")) orelse return error.GithubMissingUser,
+                    .repo = (try zFindString(child, "repo")) orelse return error.GithubMissingRepo,
+                    .ref = (try zFindString(child, "ref")) orelse return error.GithubMissingRef,
+                    .root = (try zFindString(node, "root")) orelse "src/main.zig",
+                },
+            },
+            .url => .{
+                .url = .{
+                    .str = try zGetString(child.child orelse return error.UrlMissingStr),
+                    .root = (try zFindString(node, "root")) orelse "src/main.zig",
+                },
+            },
+        };
+    };
+
+    // TODO: integrity
+
+    return Self{ .alias = alias, .src = src };
 }
 
 /// for testing
 fn fromString(str: []const u8) !Self {
     var tree = zzz.ZTree(1, 100){};
     const root = try tree.appendText(str);
-    return Self.fromZNode(root);
+    return Self.fromZNode(root.*.child.?);
 }
 
 fn expectDepEqual(expected: Self, actual: Self) void {
@@ -163,14 +286,15 @@ test "aliased, default repo pkg" {
 }
 
 test "error if pkg has any other keys" {
-    testing.expectError(error.SuperfluousNode, fromString(
-        \\something:
-        \\  src:
-        \\    pkg:
-        \\      name: blarg
-        \\      version: ^0.1.0
-        \\  foo: something
-    ));
+    // TODO
+    //testing.expectError(error.SuperfluousNode, fromString(
+    //    \\something:
+    //    \\  src:
+    //    \\    pkg:
+    //    \\      name: blarg
+    //    \\      version: ^0.1.0
+    //    \\  foo: something
+    //));
 }
 
 test "non-default repo pkg" {
@@ -231,7 +355,7 @@ test "github default root" {
     );
 
     const expected = Self{
-        .alias = "something",
+        .alias = "foo",
         .src = .{
             .github = .{
                 .user = "test",
@@ -257,7 +381,7 @@ test "github explicit root" {
     );
 
     const expected = Self{
-        .alias = "something",
+        .alias = "foo",
         .src = .{
             .github = .{
                 .user = "test",
@@ -279,7 +403,7 @@ test "raw default root" {
     );
 
     const expected = Self{
-        .alias = "something",
+        .alias = "foo",
         .src = .{
             .url = .{
                 .str = "https://astrolabe.pm",
@@ -300,7 +424,7 @@ test "raw explicit root" {
     );
 
     const expected = Self{
-        .alias = "something",
+        .alias = "foo",
         .src = .{
             .url = .{
                 .str = "https://astrolabe.pm",
@@ -310,6 +434,18 @@ test "raw explicit root" {
     };
 
     expectDepEqual(expected, actual);
+}
+
+test "pkg can't take a root" {
+    // TODO
+}
+
+test "pkg can't take an integrity" {
+    // TODO
+}
+
+test "github can't take an integrity " {
+    // TODO
 }
 
 /// serializes dependency information back into zzz format

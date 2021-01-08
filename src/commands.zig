@@ -15,6 +15,8 @@ const FetchContext = struct {
     build_dep_tree: *DependencyTree,
 
     fn deinit(self: *FetchContext) void {
+        self.lockfile.save(self.lock_file) catch {};
+
         self.build_dep_tree.deinit();
         self.dep_tree.deinit();
         self.lockfile.deinit();
@@ -26,7 +28,7 @@ const FetchContext = struct {
 
 pub fn fetchImpl(allocator: *Allocator) !FetchContext {
     const project_file = try std.fs.cwd().openFile(
-        "project.zzz",
+        "gyro.zzz",
         .{ .read = true },
     );
     errdefer project_file.close();
@@ -92,7 +94,7 @@ pub fn package(
     output_dir: ?[]const u8,
     names: []const []const u8,
 ) !void {
-    const file = try std.fs.cwd().openFile("project.zzz", .{ .read = true });
+    const file = try std.fs.cwd().openFile("gyro.zzz", .{ .read = true });
     defer file.close();
 
     var project = try Project.fromFile(allocator, file);

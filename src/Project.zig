@@ -64,7 +64,7 @@ pub fn fromFile(allocator: *std.mem.Allocator, file: std.fs.File) !Self {
     errdefer ret.deinit();
 
     if (std.mem.indexOf(u8, ret.text, "\r\n") != null) {
-        std.log.err("project.zzz requires LF line endings, not CRLF", .{});
+        std.log.err("gyro.zzz requires LF line endings, not CRLF", .{});
         return error.LineEnding;
     }
 

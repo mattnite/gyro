@@ -13,6 +13,7 @@ allocator: *Allocator,
 dep_pool: std.ArrayListUnmanaged(Dependency),
 edge_pool: std.ArrayListUnmanaged(Edge),
 node_pool: std.ArrayListUnmanaged(Node),
+buf_pool: std.ArrayListUnmanaged([]const u8),
 root: Node,
 
 const Node = struct {
@@ -38,6 +39,7 @@ pub fn generate(
         .dep_pool = std.ArrayListUnmanaged(Dependency){},
         .edge_pool = std.ArrayListUnmanaged(Edge){},
         .node_pool = std.ArrayListUnmanaged(Node){},
+        .buf_pool = std.ArrayListUnmanaged([]const u8){},
         .root = .{
             .entry = undefined,
             .depth = 0,
@@ -64,7 +66,7 @@ pub fn generate(
     }
 
     while (queue.popFirst()) |q_node| {
-        const entry = try q_node.data.dep.resolve(allocator, lockfile);
+        const entry = try q_node.data.dep.resolve(ret, lockfile);
         var node = for (ret.node_pool.items) |*node| {
             if (node.entry == entry) {
                 node.depth = std.math.max(node.depth, q_node.data.from.depth + 1);
@@ -78,7 +80,7 @@ pub fn generate(
             });
             const ptr = &ret.node_pool.items[ret.node_pool.items.len];
 
-            const dependencies = try entry.getDeps(allocator);
+            const dependencies = try entry.getDeps(ret);
             defer dependencies.deinit();
 
             try ret.dep_pool.appendSlice(allocator, dependencies.items);
