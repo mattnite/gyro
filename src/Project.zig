@@ -39,6 +39,8 @@ pub fn deinit(self: *Self) void {
         self.packages.removeAssertDiscard(entry.key);
     }
 
+    self.dependencies.deinit();
+    self.build_dependencies.deinit();
     self.packages.deinit();
     self.allocator.free(self.text);
 }
@@ -108,8 +110,8 @@ pub fn fromFile(allocator: *std.mem.Allocator, file: std.fs.File) !Self {
                 allocator,
                 name,
                 ver,
-                &ret.dependencies,
-                &ret.build_dependencies,
+                ret.dependencies.items,
+                ret.build_dependencies.items,
             );
             try res.entry.value.fillFromZNode(node);
         }

@@ -1,5 +1,6 @@
 const std = @import("std");
 const clap = @import("clap");
+const zfetch = @import("zfetch");
 usingnamespace @import("commands.zig");
 
 const Command = enum {
@@ -54,6 +55,9 @@ fn parseHandlingHelpAndErrors(
 }
 
 pub fn main() !void {
+    try zfetch.init();
+    defer zfetch.deinit();
+
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 

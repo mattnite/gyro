@@ -52,7 +52,7 @@ pub fn generate(
     }
 
     var queue = DepQueue{};
-    defer while (queue.pop()) |node| allocator.destroy(node);
+    defer while (queue.popFirst()) |node| allocator.destroy(node);
 
     try ret.dep_pool.appendSlice(allocator, deps.items);
     for (ret.dep_pool.items) |*dep| {
@@ -66,6 +66,8 @@ pub fn generate(
     }
 
     while (queue.popFirst()) |q_node| {
+        defer allocator.destroy(q_node);
+
         const entry = try q_node.data.dep.resolve(ret, lockfile);
         var node = for (ret.node_pool.items) |*node| {
             if (node.entry == entry) {
@@ -78,7 +80,7 @@ pub fn generate(
                 .depth = q_node.data.from.depth + 1,
                 .edges = std.ArrayListUnmanaged(*Edge){},
             });
-            const ptr = &ret.node_pool.items[ret.node_pool.items.len];
+            const ptr = &ret.node_pool.items[ret.node_pool.items.len - 1];
 
             const dependencies = try entry.getDeps(ret);
             defer dependencies.deinit();

@@ -33,12 +33,39 @@ const glob = .{
     .path = "../glob/src/main.zig",
 };
 
+const hzzp = .{
+    .name = "hzzp",
+    .path = "../hzzp/src/main.zig",
+};
+
+const zfetch = .{
+    .name = "zfetch",
+    .path = "../zfetch/src/main.zig",
+    .dependencies = &[_]std.build.Pkg{
+        hzzp,
+        .{
+            .name = "network",
+            .path = "../zig-network/network.zig",
+        },
+        .{
+            .name = "iguanatls",
+            .path = "../iguanaTLS/src/main.zig",
+            .dependencies = &[_]std.build.Pkg{.{
+                .name = "peertype",
+                .path = "../PeerType/PeerType.zig",
+            }},
+        },
+    },
+};
+
 fn addAllPkgs(lib: *LibExeObjStep) void {
     lib.addPackage(clap);
     lib.addPackage(version);
     lib.addPackage(tar);
     lib.addPackage(zzz);
     lib.addPackage(glob);
+    lib.addPackage(hzzp);
+    lib.addPackage(zfetch);
 }
 pub fn build(b: *Builder) !void {
     var target = b.standardTargetOptions(.{});

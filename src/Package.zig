@@ -15,8 +15,8 @@ name: []const u8,
 version: version.Semver,
 root: ?[]const u8,
 files: std.ArrayList([]const u8),
-deps: *const std.ArrayList(Dependency),
-build_deps: *const std.ArrayList(Dependency),
+deps: []Dependency,
+build_deps: []Dependency,
 
 // meta info
 author: ?[]const u8,
@@ -30,8 +30,8 @@ pub fn init(
     allocator: *Allocator,
     name: []const u8,
     ver: version.Semver,
-    deps: *const std.ArrayList(Dependency),
-    build_deps: *const std.ArrayList(Dependency),
+    deps: []Dependency,
+    build_deps: []Dependency,
 ) Self {
     return Self{
         .allocator = allocator,
@@ -94,14 +94,14 @@ fn createManifest(self: Self, tree: *zzz.ZTree(1, 100), ver_str: []const u8) !vo
         for (self.tags.items) |tag| _ = try tree.addNode(tags, .{ .String = tag });
     }
 
-    if (self.deps.items.len > 0) {
+    if (self.deps.len > 0) {
         var deps = try tree.addNode(root, .{ .String = "deps" });
-        for (self.deps.items) |dep| try dep.addToZNode(tree, deps);
+        for (self.deps) |dep| try dep.addToZNode(tree, deps);
     }
 
-    if (self.build_deps.items.len > 0) {
+    if (self.build_deps.len > 0) {
         var build_deps = try tree.addNode(root, .{ .String = "build_deps" });
-        for (self.build_deps.items) |dep| try dep.addToZNode(tree, build_deps);
+        for (self.build_deps) |dep| try dep.addToZNode(tree, build_deps);
     }
 }
 
@@ -116,7 +116,7 @@ pub fn bundle(self: Self, root: std.fs.Dir, output_dir: std.fs.Dir) !void {
 
     var buf: [std.mem.page_size]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buf);
-    try stream.writer().print("{}-{}.tar", .{
+    try stream.writer().print("{s}-{s}.tar", .{
         self.name,
         ver_str.getWritten(),
     });
@@ -128,14 +128,22 @@ pub fn bundle(self: Self, root: std.fs.Dir, output_dir: std.fs.Dir) !void {
     defer file.close();
 
     var tarball = tar.archive(file.writer());
+    defer tarball.finish() catch {};
+
     var fifo = std.fifo.LinearFifo(u8, .Dynamic).init(self.allocator);
     defer fifo.deinit();
 
     var manifest = zzz.ZTree(1, 100){};
     try self.createManifest(&manifest, ver_str.getWritten());
-    try manifest.rootSlice()[0].stringifyPretty(fifo.writer());
+    try manifest.rootSlice()[0].stringify(fifo.writer());
     std.log.debug("generated manifest:\n{}", .{fifo.readableSlice(0)});
     try tarball.addSlice(fifo.readableSlice(0), "manifest.zzz");
+
+    if (self.root) |root_file| {
+        try tarball.addFile(self.allocator, root, "pkg", root_file);
+    } else {
+        try tarball.addFile(self.allocator, root, "pkg", "src/main.zig");
+    }
 
     for (self.files.items) |pattern| {
         var it = try glob.Iterator.init(self.allocator, root, pattern);

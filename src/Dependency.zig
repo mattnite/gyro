@@ -65,7 +65,11 @@ fn findLatestMatch(self: Self, lockfile: *Lockfile) ?*const Lockfile.Entry {
     return ret;
 }
 
-fn resolveLatest(self: Self, tree: *DependencyTree) !Lockfile.Entry {
+fn getLocation(self: Self, tree: *DependencyTree) ![]const u8 {
+    return error.Todo;
+}
+
+fn resolveLatest(self: Self, tree: *DependencyTree, lockfile: *Lockfile) !Lockfile.Entry {
     return switch (self.src) {
         .pkg => |pkg| .{
             .pkg = .{
@@ -83,15 +87,24 @@ fn resolveLatest(self: Self, tree: *DependencyTree) !Lockfile.Entry {
             const commit = try api.getHeadCommit(tree.allocator, gh.user, gh.repo, gh.ref);
             errdefer tree.allocator.free(commit);
 
+            const location = try self.getLocation(tree);
+            errdefer tree.allocator.free(location);
+
             try tree.buf_pool.append(tree.allocator, commit);
-            break :blk .{
+            errdefer _ = tree.buf_pool.pop();
+
+            var entry = Lockfile.Entry{
                 .github = .{
                     .user = gh.user,
                     .repo = gh.repo,
                     .commit = commit,
                     .root = gh.root,
+                    .locations = std.ArrayListUnmanaged([]const u8){},
                 },
             };
+
+            try entry.github.locations.append(lockfile.allocator, location);
+            break :blk entry;
         },
         .url => |url| .{
             .url = .{
@@ -104,7 +117,7 @@ fn resolveLatest(self: Self, tree: *DependencyTree) !Lockfile.Entry {
 
 pub fn resolve(self: Self, tree: *DependencyTree, lockfile: *Lockfile) !*const Lockfile.Entry {
     return self.findLatestMatch(lockfile) orelse blk: {
-        try lockfile.entries.append(try self.resolveLatest(tree));
+        try lockfile.entries.append(try self.resolveLatest(tree, lockfile));
         break :blk &lockfile.entries.items[lockfile.entries.items.len - 1];
     };
 }
