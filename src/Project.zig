@@ -57,10 +57,6 @@ pub fn iterator(self: Self) Iterator {
     return Iterator{ .inner = self.packages.iterator() };
 }
 
-fn fromZNode(node: *const zzz.ZNode) !Self {
-    return error.Todo;
-}
-
 pub fn fromFile(allocator: *std.mem.Allocator, file: std.fs.File) !Self {
     var ret = try Self.init(allocator, file);
     errdefer ret.deinit();

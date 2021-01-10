@@ -96,12 +96,12 @@ fn createManifest(self: Self, tree: *zzz.ZTree(1, 100), ver_str: []const u8) !vo
 
     if (self.deps.len > 0) {
         var deps = try tree.addNode(root, .{ .String = "deps" });
-        for (self.deps) |dep| try dep.addToZNode(tree, deps);
+        for (self.deps) |dep| try dep.addToZNode(tree, deps, true);
     }
 
     if (self.build_deps.len > 0) {
         var build_deps = try tree.addNode(root, .{ .String = "build_deps" });
-        for (self.build_deps) |dep| try dep.addToZNode(tree, build_deps);
+        for (self.build_deps) |dep| try dep.addToZNode(tree, build_deps, true);
     }
 }
 
@@ -127,7 +127,7 @@ pub fn bundle(self: Self, root: std.fs.Dir, output_dir: std.fs.Dir) !void {
     });
     defer file.close();
 
-    var tarball = tar.archive(file.writer());
+    var tarball = tar.builder(file.writer());
     defer tarball.finish() catch {};
 
     var fifo = std.fifo.LinearFifo(u8, .Dynamic).init(self.allocator);
@@ -136,7 +136,7 @@ pub fn bundle(self: Self, root: std.fs.Dir, output_dir: std.fs.Dir) !void {
     var manifest = zzz.ZTree(1, 100){};
     try self.createManifest(&manifest, ver_str.getWritten());
     try manifest.rootSlice()[0].stringify(fifo.writer());
-    std.log.debug("generated manifest:\n{}", .{fifo.readableSlice(0)});
+    std.log.debug("generated manifest:\n{s}", .{fifo.readableSlice(0)});
     try tarball.addSlice(fifo.readableSlice(0), "manifest.zzz");
 
     if (self.root) |root_file| {

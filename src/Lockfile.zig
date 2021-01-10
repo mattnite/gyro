@@ -8,7 +8,9 @@ usingnamespace @import("common.zig");
 
 const Self = @This();
 const Allocator = std.mem.Allocator;
+const Hasher = std.crypto.hash.blake2.Blake2b128;
 const testing = std.testing;
+const file_protocol = "file://";
 
 allocator: *Allocator,
 text: []const u8,
@@ -23,19 +25,16 @@ pub const Entry = union(enum) {
     github: struct {
         user: []const u8,
         repo: []const u8,
+        ref: []const u8,
         commit: []const u8,
         root: []const u8,
-        locations: std.ArrayListUnmanaged([]const u8),
     },
     url: struct {
         str: []const u8,
         root: []const u8,
     },
 
-    pub fn fromChunk(allocator: *Allocator, chunk: []const u8) !Entry {
-        std.log.info("parsing chunk:\n{}\n------------", .{chunk});
-        var line_it = std.mem.tokenize(chunk, "\n");
-        var line = line_it.next() orelse return error.EmptyLine;
+    pub fn fromLine(line: []const u8) !Entry {
         var it = std.mem.tokenize(line, " ");
         const first = it.next() orelse return error.EmptyLine;
 
@@ -46,21 +45,17 @@ pub const Entry = union(enum) {
                     .str = it.next() orelse return error.NoUrl,
                 },
             }
-        else if (std.mem.eql(u8, first, "github")) blk: {
-            var entry = Entry{
+        else if (std.mem.eql(u8, first, "github"))
+            Entry{
                 .github = .{
                     .user = it.next() orelse return error.NoUser,
                     .repo = it.next() orelse return error.NoRepo,
+                    .ref = it.next() orelse return error.NoRef,
                     .root = it.next() orelse return error.NoRoot,
                     .commit = it.next() orelse return error.NoCommit,
-                    .locations = std.ArrayListUnmanaged([]const u8){},
                 },
-            };
-            errdefer entry.deinit(allocator);
-
-            while (line_it.next()) |l| try entry.github.locations.append(allocator, l);
-            break :blk entry;
-        } else blk: {
+            }
+        else blk: {
             const repo = if (std.mem.eql(u8, first, "default")) api.default_repo else first;
             break :blk Entry{
                 .pkg = .{
@@ -72,63 +67,125 @@ pub const Entry = union(enum) {
         };
     }
 
-    fn deinit(self: *Entry, allocator: *Allocator) void {
-        if (self.* == .github) {
-            self.github.locations.deinit(allocator);
-        }
-    }
-
-    pub fn packagePath(self: Entry, allocator: *Allocator) ![]const u8 {
-        return error.Todo;
-    }
-
-    pub fn getDeps(self: Entry, tree: *DependencyTree) !std.ArrayList(Dependency) {
-        switch (self) {
-            .pkg => |pkg| {
-                const text = try api.getDependencies(
+    pub fn getDeps(self: Entry, tree: *DependencyTree) ![]Dependency {
+        return switch (self) {
+            .pkg => |pkg| blk: {
+                const resp = try api.getDependencies(
                     tree.allocator,
                     pkg.repository,
                     pkg.name,
                     pkg.version,
                 );
-                errdefer tree.allocator.free(text);
+                errdefer {
+                    tree.allocator.free(resp.text);
+                    tree.allocator.free(resp.deps);
+                }
 
-                var ret = std.ArrayList(Dependency).init(tree.allocator);
-                errdefer ret.deinit();
+                try tree.buf_pool.append(tree.allocator, resp.text);
+                break :blk resp.deps;
+            },
+            .github => |gh| &[_]Dependency{},
+            .url => |url| &[_]Dependency{},
+        };
+    }
 
-                var ztree = zzz.ZTree(1, 100){};
-                var root = try ztree.appendText(text);
-                var it = ZChildIterator.init(root);
-                while (it.next()) |node| try ret.append(try Dependency.fromZNode(node));
+    pub fn packagePath(self: Entry, allocator: *Allocator) ![]const u8 {
+        var tree = zzz.ZTree(1, 100){};
+        var root = try tree.addNode(null, .{ .Null = {} });
+        var ver_buf: [8]u8 = undefined;
 
-                try tree.buf_pool.append(tree.allocator, text);
+        switch (self) {
+            .pkg => |pkg| {
+                var ver_stream = std.io.fixedBufferStream(&ver_buf);
+                try ver_stream.writer().print("{}.{}.{}", .{
+                    pkg.version.major,
+                    pkg.version.minor,
+                    pkg.version.patch,
+                });
 
-                return ret;
+                var node = try tree.addNode(root, .{ .String = "pkg" });
+                try zPutKeyString(&tree, node, "name", pkg.name);
+                try zPutKeyString(&tree, node, "version", ver_stream.getWritten());
+                try zPutKeyString(&tree, node, "repository", pkg.repository);
             },
             .github => |gh| {
-                // fetch tarball
-                // read gyro.zzz and deserialize deps
-                return error.Todo;
+                var node = try tree.addNode(root, .{ .String = "github" });
+                try zPutKeyString(&tree, node, "user", gh.user);
+                try zPutKeyString(&tree, node, "repo", gh.repo);
+                try zPutKeyString(&tree, node, "commit", gh.commit);
             },
             .url => |url| {
-                // fetch tarball
-                // read gyro.zzz and deserialize deps
-                return error.Todo;
+                try zPutKeyString(&tree, root, "url", url.str);
             },
         }
-    }
 
-    pub fn fetch(self: Entry) !void {
-        switch (self) {
-            .pkg => |pkg| {},
-            .github => |gh| {},
-            .url => |url| {},
+        var buf: [std.mem.page_size]u8 = undefined;
+        var digest: [Hasher.digest_length]u8 = undefined;
+        var ret: [Hasher.digest_length * 2]u8 = undefined;
+        var stream = std.io.fixedBufferStream(&buf);
+
+        try root.stringify(stream.writer());
+        Hasher.hash(stream.getWritten(), &digest, .{});
+
+        // TODO: format properly
+        const lookup = [_]u8{ '0', '1', '2', '3', '4', '5', '6', '7', '8', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f' };
+        for (digest) |val, i| {
+            ret[2 * i] = lookup[val >> 4];
+            ret[(2 * i) + 1] = lookup[@truncate(u4, val)];
         }
 
-        return error.Todo;
+        return std.fs.path.join(allocator, &[_][]const u8{
+            ".gyro",
+            &ret,
+        });
     }
 
-    pub fn write(self: Self, writer: anytype) !void {
+    pub fn fetch(self: Entry, allocator: *Allocator) !void {
+        switch (self) {
+            .url => |url| if (std.mem.startsWith(u8, url.str, "file://"))
+                return,
+            else => {},
+        }
+
+        const base_path = try self.packagePath(allocator);
+        defer allocator.free(base_path);
+
+        // here: check for ok file and return if it exists
+        var base_dir = try std.fs.cwd().makeOpenPath(base_path, .{
+            .access_sub_paths = true,
+        });
+        defer base_dir.close();
+
+        var found = true;
+        base_dir.access("ok", .{ .read = true }) catch |err| {
+            if (err == error.FileNotFound)
+                found = false
+            else
+                return err;
+        };
+
+        if (found) return;
+        switch (self) {
+            .pkg => |pkg| try api.getPkg(allocator, pkg.repository, pkg.name, pkg.version, base_dir),
+            .github => |gh| {
+                var pkg_dir = try base_dir.openDir("pkg", .{ .access_sub_paths = true });
+                defer pkg_dir.close();
+
+                try api.getGithubTarGz(allocator, gh.user, gh.repo, gh.commit, pkg_dir);
+            },
+            .url => |url| {
+                var pkg_dir = try base_dir.openDir("pkg", .{ .access_sub_paths = true });
+                defer pkg_dir.close();
+
+                try api.getTarGz(allocator, url.str, pkg_dir);
+            },
+        }
+
+        const ok = try base_dir.createFile("ok", .{ .read = true });
+        defer ok.close();
+    }
+
+    pub fn write(self: Entry, writer: anytype) !void {
         switch (self) {
             .pkg => |pkg| {
                 const repo = if (std.mem.eql(u8, pkg.repository, api.default_repo))
@@ -140,20 +197,21 @@ pub const Entry = union(enum) {
                     repo,
                     pkg.name,
                     pkg.version.major,
-                    pkg.verion.minor,
-                    pkg.verion.patch,
+                    pkg.version.minor,
+                    pkg.version.patch,
                 });
             },
-            .github => |gh| try writer.print("github {s} {s} {s} {s}", .{
+            .github => |gh| try writer.print("github {s} {s} {s} {s} {s}", .{
                 gh.user,
                 gh.repo,
+                gh.ref,
                 gh.root,
                 gh.commit,
             }),
             .url => |url| try writer.print("url {s} {s}", .{ url.root, url.str }),
         }
 
-        try writer.writeAll("\n\n");
+        try writer.writeAll("\n");
     }
 };
 
@@ -164,14 +222,8 @@ fn fromReader(allocator: *Allocator, reader: anytype) !Self {
         .text = try reader.readAllAlloc(allocator, std.math.maxInt(usize)),
     };
 
-    var pos: usize = 0;
-    while (std.mem.indexOf(u8, ret.text[pos..], "\n\n")) |i| : (pos += i + 2) {
-        try ret.entries.append(try Entry.fromChunk(allocator, ret.text[pos .. pos + i]));
-    }
-
-    if (pos > 0) {
-        try ret.entries.append(try Entry.fromChunk(allocator, ret.text[pos..]));
-    }
+    var it = std.mem.tokenize(ret.text, "\n");
+    while (it.next()) |line| try ret.entries.append(try Entry.fromLine(line));
 
     return ret;
 }
@@ -181,19 +233,18 @@ pub fn fromFile(allocator: *Allocator, file: std.fs.File) !Self {
 }
 
 pub fn deinit(self: *Self) void {
-    for (self.entries.items) |*entry| entry.deinit(self.allocator);
     self.entries.deinit();
     self.allocator.free(self.text);
 }
 
 pub fn save(self: Self, file: std.fs.File) !void {
     try file.setEndPos(0);
-    for (self.entries.items) |entry| try file.writer().print("{}\n", .{entry});
+    for (self.entries.items) |entry| try entry.write(file.writer());
 }
 
 pub fn fetchAll(self: Self) !void {
     for (self.entries.items) |entry|
-        try entry.fetch();
+        try entry.fetch(self.allocator);
 }
 
 fn expectEntryEqual(expected: Entry, actual: Entry) void {
@@ -209,12 +260,9 @@ fn expectEntryEqual(expected: Entry, actual: Entry) void {
         .github => |gh| {
             testing.expectEqualStrings(gh.user, actual.github.user);
             testing.expectEqualStrings(gh.repo, actual.github.repo);
+            testing.expectEqualStrings(gh.ref, actual.github.ref);
             testing.expectEqualStrings(gh.commit, actual.github.commit);
             testing.expectEqualStrings(gh.root, actual.github.root);
-
-            for (gh.locations.items) |loc, i| {
-                testing.expectEqualStrings(loc, actual.github.locations.items[i]);
-            }
         },
         .url => |url| {
             testing.expectEqualStrings(url.str, actual.url.str);
@@ -224,7 +272,7 @@ fn expectEntryEqual(expected: Entry, actual: Entry) void {
 }
 
 test "entry from pkg: default repository" {
-    const actual = try Entry.fromChunk(testing.allocator, "default something 0.1.0");
+    const actual = try Entry.fromLine("default something 0.1.0");
     const expected = Entry{
         .pkg = .{
             .name = "something",
@@ -241,7 +289,7 @@ test "entry from pkg: default repository" {
 }
 
 test "entry from pkg: non-default repository" {
-    const actual = try Entry.fromChunk(testing.allocator, "my_own_repository foo 0.2.0");
+    const actual = try Entry.fromLine("my_own_repository foo 0.2.0");
     const expected = Entry{
         .pkg = .{
             .name = "foo",
@@ -258,32 +306,22 @@ test "entry from pkg: non-default repository" {
 }
 
 test "entry from github" {
-    var actual = try Entry.fromChunk(testing.allocator,
-        \\github my_user my_repo src/foo.zig 30d004329543603f76bd9d7daca054878a04fdb5
-        \\this.is.in.the.tree
-        \\another.thing.in.the.tree
-    );
-    defer actual.deinit(std.testing.allocator);
-
+    var actual = try Entry.fromLine("github my_user my_repo master src/foo.zig 30d004329543603f76bd9d7daca054878a04fdb5");
     var expected = Entry{
         .github = .{
             .user = "my_user",
             .repo = "my_repo",
+            .ref = "master",
             .root = "src/foo.zig",
             .commit = "30d004329543603f76bd9d7daca054878a04fdb5",
-            .locations = std.ArrayListUnmanaged([]const u8){},
         },
     };
-    defer expected.deinit(std.testing.allocator);
-
-    try expected.github.locations.append(std.testing.allocator, "this.is.in.the.tree");
-    try expected.github.locations.append(std.testing.allocator, "another.thing.in.the.tree");
 
     expectEntryEqual(expected, actual);
 }
 
 test "entry from url" {
-    const actual = try Entry.fromChunk(testing.allocator, "url src/foo.zig https://example.com/something.tar.gz");
+    const actual = try Entry.fromLine("url src/foo.zig https://example.com/something.tar.gz");
     const expected = Entry{
         .url = .{
             .root = "src/foo.zig",
@@ -297,13 +335,8 @@ test "entry from url" {
 test "lockfile with example of all" {
     const text =
         \\default something 0.1.0
-        \\
         \\my_repository foo 0.4.5
-        \\
-        \\github my_user my_repo src/foo.zig 30d004329543603f76bd9d7daca054878a04fdb5
-        \\this.is.in.the.tree
-        \\another.thing.in.the.tree
-        \\
+        \\github my_user my_repo master src/foo.zig 30d004329543603f76bd9d7daca054878a04fdb5
         \\url src/foo.zig https://example.com/something.tar.gz
     ;
     var stream = std.io.fixedBufferStream(text);
@@ -337,9 +370,9 @@ test "lockfile with example of all" {
             .github = .{
                 .user = "my_user",
                 .repo = "my_repo",
+                .ref = "master",
                 .root = "src/foo.zig",
                 .commit = "30d004329543603f76bd9d7daca054878a04fdb5",
-                .locations = std.ArrayListUnmanaged([]const u8){},
             },
         },
         .{
@@ -349,10 +382,6 @@ test "lockfile with example of all" {
             },
         },
     };
-    defer for (expected) |*exp| exp.deinit(std.testing.allocator);
-
-    try expected[2].github.locations.append(std.testing.allocator, "this.is.in.the.tree");
-    try expected[2].github.locations.append(std.testing.allocator, "another.thing.in.the.tree");
 
     for (expected) |exp, i| {
         expectEntryEqual(exp, actual.entries.items[i]);

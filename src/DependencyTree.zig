@@ -46,10 +46,7 @@ pub fn generate(
             .edges = std.ArrayListUnmanaged(*Edge){},
         },
     };
-    errdefer {
-        ret.deinit();
-        allocator.destroy(ret);
-    }
+    errdefer ret.destroy();
 
     var queue = DepQueue{};
     defer while (queue.popFirst()) |node| allocator.destroy(node);
@@ -80,19 +77,19 @@ pub fn generate(
                 .depth = q_node.data.from.depth + 1,
                 .edges = std.ArrayListUnmanaged(*Edge){},
             });
+
             const ptr = &ret.node_pool.items[ret.node_pool.items.len - 1];
-
             const dependencies = try entry.getDeps(ret);
-            defer dependencies.deinit();
+            defer ret.allocator.free(dependencies);
 
-            try ret.dep_pool.appendSlice(allocator, dependencies.items);
+            try ret.dep_pool.appendSlice(allocator, dependencies);
             var i: usize = 0;
-            while (i < dependencies.items.len) : (i += 1) {
+            while (i < dependencies.len) : (i += 1) {
                 var new_node = try allocator.create(DepQueue.Node);
                 new_node.data = .{
                     .from = ptr,
                     .dep = &ret.dep_pool.items[ret.dep_pool.items.len -
-                            dependencies.items.len + i],
+                            dependencies.len + i],
                 };
                 queue.append(new_node);
             }
@@ -105,10 +102,12 @@ pub fn generate(
             .to = node,
             .dep = q_node.data.dep,
         });
+
         try q_node.data.from.edges.append(
             allocator,
-            &ret.edge_pool.items[ret.edge_pool.items.len],
+            &ret.edge_pool.items[ret.edge_pool.items.len - 1],
         );
+
         try ret.validate();
     }
 
@@ -123,11 +122,19 @@ fn validate(self: Self) !void {
     }
 }
 
-pub fn deinit(self: *Self) void {
+pub fn destroy(self: *Self) void {
+    self.root.edges.deinit(self.allocator);
+
     for (self.node_pool.items) |*node| node.edges.deinit(self.allocator);
     self.node_pool.deinit(self.allocator);
+
     self.dep_pool.deinit(self.allocator);
     self.edge_pool.deinit(self.allocator);
+
+    for (self.buf_pool.items) |buf| self.allocator.free(buf);
+    self.buf_pool.deinit(self.allocator);
+
+    self.allocator.destroy(self);
 }
 
 pub fn printZig(self: Self, writer: anytype) !void {

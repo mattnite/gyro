@@ -15,7 +15,9 @@ fn printUsage() noreturn {
         \\gyro <cmd> [cmd specific options]
         \\
         \\cmds:
+        \\  fetch    Download any undownloaded dependencies
         \\  package  Bundle package(s) into a ziglet 
+        \\  update   Delete lock file and fetch new package versions
         \\
         \\for more information: gyro <cmd> --help
         \\
@@ -76,7 +78,7 @@ pub fn main() !void {
             break @field(Command, field.name);
         }
     } else {
-        try stderr.print("{} is not a valid command\n", .{cmd_str});
+        try stderr.print("{s} is not a valid command\n", .{cmd_str});
         printUsage();
     };
 

@@ -17,8 +17,8 @@ const FetchContext = struct {
     fn deinit(self: *FetchContext) void {
         self.lockfile.save(self.lock_file) catch {};
 
-        self.build_dep_tree.deinit();
-        self.dep_tree.deinit();
+        self.build_dep_tree.destroy();
+        self.dep_tree.destroy();
         self.lockfile.deinit();
         self.project.deinit();
         self.lock_file.close();
@@ -50,14 +50,14 @@ pub fn fetchImpl(allocator: *Allocator) !FetchContext {
         &lockfile,
         project.dependencies,
     );
-    errdefer dep_tree.deinit();
+    errdefer dep_tree.destroy();
 
     const build_dep_tree = try DependencyTree.generate(
         allocator,
         &lockfile,
         project.build_dependencies,
     );
-    errdefer build_dep_tree.deinit();
+    errdefer build_dep_tree.destroy();
 
     try lockfile.fetchAll();
     return FetchContext{
@@ -100,17 +100,23 @@ pub fn package(
     var project = try Project.fromFile(allocator, file);
     defer project.deinit();
 
+    if (project.packages.count() == 0) {
+        std.log.err("there are no packages to package!", .{});
+        return error.NoPackages;
+    }
+
     for (names) |name| if (!project.contains(name)) {
         std.log.err("{} is not a package", .{name});
     };
 
-    const dir = if (output_dir) |output|
+    var dir = if (output_dir) |output|
         try std.fs.cwd().openDir(
             output,
             .{ .iterate = true, .access_sub_paths = true },
         )
     else
         std.fs.cwd();
+    defer dir.close();
 
     if (names.len > 0) {
         for (names) |name| try project.get(name).?.bundle(std.fs.cwd(), dir);

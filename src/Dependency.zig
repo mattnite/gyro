@@ -20,6 +20,7 @@ const Source = union(SourceType) {
         name: []const u8,
         version: version.Range,
         repository: []const u8,
+        ver_str: []const u8,
     },
 
     github: struct {
@@ -55,18 +56,14 @@ fn findLatestMatch(self: Self, lockfile: *Lockfile) ?*const Lockfile.Entry {
                     ret = entry;
                 }
             },
-            // TODO: probably not fix this idunno
             .github => |gh| if (mem.eql(u8, gh.user, entry.github.user) and
-                mem.eql(u8, gh.repo, entry.github.user)) return entry,
+                mem.eql(u8, gh.repo, entry.github.repo) and
+                mem.eql(u8, gh.ref, entry.github.ref)) return entry,
             .url => |url| if (mem.eql(u8, url.str, entry.url.str)) return entry,
         }
     }
 
     return ret;
-}
-
-fn getLocation(self: Self, tree: *DependencyTree) ![]const u8 {
-    return error.Todo;
 }
 
 fn resolveLatest(self: Self, tree: *DependencyTree, lockfile: *Lockfile) !Lockfile.Entry {
@@ -87,8 +84,7 @@ fn resolveLatest(self: Self, tree: *DependencyTree, lockfile: *Lockfile) !Lockfi
             const commit = try api.getHeadCommit(tree.allocator, gh.user, gh.repo, gh.ref);
             errdefer tree.allocator.free(commit);
 
-            const location = try self.getLocation(tree);
-            errdefer tree.allocator.free(location);
+            std.log.info("commit for {s}/{s} {s}: {s}", .{ gh.user, gh.repo, gh.ref, commit });
 
             try tree.buf_pool.append(tree.allocator, commit);
             errdefer _ = tree.buf_pool.pop();
@@ -97,13 +93,12 @@ fn resolveLatest(self: Self, tree: *DependencyTree, lockfile: *Lockfile) !Lockfi
                 .github = .{
                     .user = gh.user,
                     .repo = gh.repo,
+                    .ref = gh.ref,
                     .commit = commit,
                     .root = gh.root,
-                    .locations = std.ArrayListUnmanaged([]const u8){},
                 },
             };
 
-            try entry.github.locations.append(lockfile.allocator, location);
             break :blk entry;
         },
         .url => |url| .{
@@ -168,12 +163,14 @@ pub fn fromZNode(node: *const zzz.ZNode) !Self {
     if (node.*.child.?.value == .String and node.*.child.?.child == null) {
         if (node.*.child.?.sibling != null) return error.Unknown;
 
+        const ver_str = try zGetString(node.*.child.?);
         return Self{
             .alias = alias,
             .src = .{
                 .pkg = .{
                     .name = alias,
-                    .version = try version.Range.parse(try zGetString(node.*.child.?)),
+                    .ver_str = ver_str,
+                    .version = try version.Range.parse(ver_str),
                     .repository = api.default_repo,
                 },
             },
@@ -203,6 +200,7 @@ pub fn fromZNode(node: *const zzz.ZNode) !Self {
             .pkg => .{
                 .pkg = .{
                     .name = (try zFindString(child, "name")) orelse alias,
+                    .ver_str = (try zFindString(child, "version")) orelse return error.MissingVersion,
                     .version = try version.Range.parse((try zFindString(child, "version")) orelse return error.MissingVersion),
                     .repository = (try zFindString(child, "repository")) orelse api.default_repo,
                 },
@@ -244,6 +242,7 @@ fn expectDepEqual(expected: Self, actual: Self) void {
         .pkg => |pkg| {
             testing.expectEqualStrings(pkg.name, actual.src.pkg.name);
             testing.expectEqualStrings(pkg.repository, actual.src.pkg.repository);
+            testing.expectEqualStrings(pkg.ver_str, actual.src.pkg.ver_str);
             testing.expectEqual(pkg.version, actual.src.pkg.version);
         },
         .github => |gh| {
@@ -266,6 +265,7 @@ test "default repo pkg" {
         .src = .{
             .pkg = .{
                 .name = "something",
+                .ver_str = "^0.1.0",
                 .version = try version.Range.parse("^0.1.0"),
                 .repository = api.default_repo,
             },
@@ -289,6 +289,7 @@ test "aliased, default repo pkg" {
         .src = .{
             .pkg = .{
                 .name = "blarg",
+                .ver_str = "^0.1.0",
                 .version = try version.Range.parse("^0.1.0"),
                 .repository = api.default_repo,
             },
@@ -324,6 +325,7 @@ test "non-default repo pkg" {
         .src = .{
             .pkg = .{
                 .name = "something",
+                .ver_str = "^0.1.0",
                 .version = try version.Range.parse("^0.1.0"),
                 .repository = "example.com",
             },
@@ -348,6 +350,7 @@ test "aliased, non-default repo pkg" {
         .src = .{
             .pkg = .{
                 .name = "real_name",
+                .ver_str = "^0.1.0",
                 .version = try version.Range.parse("^0.1.0"),
                 .repository = "example.com",
             },
@@ -466,6 +469,205 @@ pub fn addToZNode(
     self: Self,
     tree: *zzz.ZTree(1, 100),
     parent: *zzz.ZNode,
+    explicit: bool,
 ) !void {
-    return error.Todo;
+    var alias = try tree.addNode(parent, .{ .String = self.alias });
+
+    switch (self.src) {
+        .pkg => |pkg| if (!explicit and
+            std.mem.eql(u8, pkg.name, self.alias) and
+            std.mem.eql(u8, pkg.repository, api.default_repo))
+        {
+            _ = try tree.addNode(alias, .{ .String = pkg.ver_str });
+        } else {
+            var src = try tree.addNode(alias, .{ .String = "src" });
+            var node = try tree.addNode(src, .{ .String = "pkg" });
+
+            if (explicit or !std.mem.eql(u8, pkg.name, self.alias)) {
+                try zPutKeyString(tree, node, "name", pkg.name);
+            }
+
+            try zPutKeyString(tree, node, "version", pkg.ver_str);
+            if (explicit or !std.mem.eql(u8, pkg.repository, api.default_repo)) {
+                try zPutKeyString(tree, node, "repository", pkg.repository);
+            }
+        },
+        .github => |gh| {
+            var src = try tree.addNode(alias, .{ .String = "src" });
+            var github = try tree.addNode(src, .{ .String = "github" });
+            try zPutKeyString(tree, github, "user", gh.user);
+            try zPutKeyString(tree, github, "repo", gh.repo);
+            try zPutKeyString(tree, github, "ref", gh.ref);
+
+            if (explicit or !std.mem.eql(u8, gh.root, "src/main.zig")) {
+                try zPutKeyString(tree, alias, "root", gh.root);
+            }
+        },
+        .url => |url| {
+            var src = try tree.addNode(alias, .{ .String = "src" });
+            try zPutKeyString(tree, src, "url", url.str);
+
+            if (explicit or !std.mem.eql(u8, url.root, "src/main.zig")) {
+                try zPutKeyString(tree, alias, "root", url.root);
+            }
+        },
+    }
+}
+
+fn expectZzzEqual(expected: *zzz.ZNode, actual: *zzz.ZNode) void {
+    var expected_it: *zzz.ZNode = expected;
+    var actual_it: *zzz.ZNode = actual;
+
+    var expected_depth: isize = 0;
+    var actual_depth: isize = 0;
+
+    while (expected_it.next(&expected_depth)) |exp| : (expected_it = exp) {
+        if (actual_it.next(&actual_depth)) |act| {
+            defer actual_it = act;
+
+            testing.expectEqual(expected_depth, actual_depth);
+            switch (exp.value) {
+                .String => |str| testing.expectEqualStrings(str, act.value.String),
+                .Int => |int| testing.expectEqual(int, act.value.Int),
+                .Float => |float| testing.expectEqual(float, act.value.Float),
+                .Bool => |b| testing.expectEqual(b, act.value.Bool),
+                else => {},
+            }
+        } else {
+            testing.expect(false);
+        }
+    }
+
+    testing.expectEqual(
+        expected_it.next(&expected_depth),
+        actual_it.next(&actual_depth),
+    );
+}
+
+fn serializeTest(from: []const u8, to: []const u8, explicit: bool) !void {
+    const dep = try fromString(from);
+    var actual = zzz.ZTree(1, 100){};
+    var actual_root = try actual.addNode(null, .{ .Null = {} });
+    try dep.addToZNode(&actual, actual_root, explicit);
+    var expected = zzz.ZTree(1, 100){};
+    const expected_root = try expected.appendText(to);
+
+    expectZzzEqual(expected_root, actual_root);
+}
+
+test "serialize pkg non-explicit" {
+    const str = "something: ^0.1.0";
+    try serializeTest(str, str, false);
+}
+
+test "serialize pkg explicit" {
+    try serializeTest("something: ^0.1.0",
+        \\something:
+        \\  src:
+        \\    pkg:
+        \\      name: something
+        \\      version: ^0.1.0
+        \\      repository: astrolabe.pm
+        \\
+    , true);
+}
+
+test "serialize github non-explicit" {
+    const str =
+        \\something:
+        \\  src:
+        \\    github:
+        \\      user: test
+        \\      repo: my_repo
+        \\      ref: master
+        \\  root: main.zig
+        \\
+    ;
+
+    try serializeTest(str, str, false);
+}
+
+test "serialize github non-explicit, default root" {
+    const str =
+        \\something:
+        \\  src:
+        \\    github:
+        \\      user: test
+        \\      repo: my_repo
+        \\      ref: master
+        \\
+    ;
+
+    try serializeTest(str, str, false);
+}
+
+test "serialize github explicit, default root" {
+    const str =
+        \\something:
+        \\  src:
+        \\    github:
+        \\      user: test
+        \\      repo: my_repo
+        \\      ref: master
+        \\  root: src/main.zig
+        \\
+    ;
+
+    try serializeTest(str, str, true);
+}
+
+test "serialize github explicit" {
+    const from =
+        \\something:
+        \\  src:
+        \\    github:
+        \\      user: test
+        \\      repo: my_repo
+        \\      ref: master
+        \\
+    ;
+
+    const to =
+        \\something:
+        \\  src:
+        \\    github:
+        \\      user: test
+        \\      repo: my_repo
+        \\      ref: master
+        \\  root: src/main.zig
+        \\
+    ;
+
+    try serializeTest(from, to, true);
+}
+
+test "serialize url non-explicit" {
+    const str =
+        \\something:
+        \\  src:
+        \\    url: "https://github.com"
+        \\  root: main.zig
+        \\
+    ;
+
+    try serializeTest(str, str, false);
+}
+
+test "serialize url explicit" {
+    const from =
+        \\something:
+        \\  src:
+        \\    url: "https://github.com"
+        \\
+    ;
+
+    const to =
+        \\something:
+        \\  src:
+        \\    url: "https://github.com"
+        \\  root: src/main.zig
+        \\
+    ;
+
+    try serializeTest(from, to, true);
 }

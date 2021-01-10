@@ -58,6 +58,11 @@ const zfetch = .{
     },
 };
 
+const zuri = .{
+    .name = "zuri",
+    .path = "../zuri/src/zuri.zig",
+};
+
 fn addAllPkgs(lib: *LibExeObjStep) void {
     lib.addPackage(clap);
     lib.addPackage(version);
@@ -66,6 +71,7 @@ fn addAllPkgs(lib: *LibExeObjStep) void {
     lib.addPackage(glob);
     lib.addPackage(hzzp);
     lib.addPackage(zfetch);
+    lib.addPackage(zuri);
 }
 pub fn build(b: *Builder) !void {
     var target = b.standardTargetOptions(.{});
