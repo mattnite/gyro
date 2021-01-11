@@ -4,7 +4,7 @@ const zfetch = @import("zfetch");
 const http = @import("hzzp");
 const tar = @import("tar");
 const zzz = @import("zzz");
-const zuri = @import("zuri");
+const zuri = @import("uri");
 const Dependency = @import("Dependency.zig");
 usingnamespace @import("common.zig");
 
@@ -20,16 +20,11 @@ pub fn getLatest(
 ) !version.Semver {
     const url = try std.fmt.allocPrint(
         allocator,
-        "https://{s}/pkgs/{s}/latest?min={}.{}.{}&less_than={}.{}.{}",
+        "https://{s}/pkgs/{s}/latest?v={}",
         .{
             repository,
             package,
-            range.min.major,
-            range.min.minor,
-            range.min.patch,
-            range.less_than.major,
-            range.less_than.minor,
-            range.less_than.patch,
+            range,
         },
     );
     defer allocator.free(url);
@@ -108,12 +103,10 @@ fn getManifest(
     package: []const u8,
     semver: version.Semver,
 ) ![]const u8 {
-    const url = try std.fmt.allocPrint(allocator, "https://{s}/pkgs/{s}/{}.{}.{}/manifest", .{
+    const url = try std.fmt.allocPrint(allocator, "https://{s}/pkgs/{s}/{}/manifest", .{
         repository,
         package,
-        semver.major,
-        semver.minor,
-        semver.patch,
+        semver,
     });
     defer allocator.free(url);
 
@@ -169,7 +162,20 @@ pub fn getPkg(
     package: []const u8,
     semver: version.Semver,
     dir: std.fs.Dir,
-) !void {}
+) !void {
+    const url = try std.fmt.allocPrint(
+        allocator,
+        "https://{s}/archive/{s}/{}",
+        .{
+            repository,
+            package,
+            version,
+        },
+    );
+    defer allocator.free(url);
+
+    try getTarGz(allocator, url, dir);
+}
 
 fn getTarGzImpl(
     allocator: *std.mem.Allocator,

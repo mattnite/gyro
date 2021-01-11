@@ -3,6 +3,8 @@ const clap = @import("clap");
 const zfetch = @import("zfetch");
 usingnamespace @import("commands.zig");
 
+//pub const io_mode = .evented;
+
 const Command = enum {
     package,
     fetch,
@@ -64,6 +66,15 @@ pub fn main() !void {
     defer _ = gpa.deinit();
 
     const allocator = &gpa.allocator;
+    runCommands(allocator) catch |err| {
+        switch (err) {
+            error.Explained => std.process.exit(1),
+            else => return err,
+        }
+    };
+}
+
+fn runCommands(allocator: *std.mem.Allocator) !void {
     var iter = try clap.args.OsIterator.init(allocator);
     defer iter.deinit();
 

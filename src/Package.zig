@@ -108,11 +108,7 @@ fn createManifest(self: Self, tree: *zzz.ZTree(1, 100), ver_str: []const u8) !vo
 pub fn bundle(self: Self, root: std.fs.Dir, output_dir: std.fs.Dir) !void {
     var ver_buf: [1024]u8 = undefined;
     var ver_str = std.io.fixedBufferStream(&ver_buf);
-    try ver_str.writer().print("{}.{}.{}", .{
-        self.version.major,
-        self.version.minor,
-        self.version.patch,
-    });
+    try ver_str.writer().print("{}", .{self.version});
 
     var buf: [std.mem.page_size]u8 = undefined;
     var stream = std.io.fixedBufferStream(&buf);
@@ -127,8 +123,12 @@ pub fn bundle(self: Self, root: std.fs.Dir, output_dir: std.fs.Dir) !void {
     });
     defer file.close();
 
-    var tarball = tar.builder(file.writer());
-    defer tarball.finish() catch {};
+    // TODO: delete tarball on error
+    var tarball = tar.builder(self.allocator, file.writer());
+    defer {
+        tarball.finish() catch {};
+        tarball.deinit();
+    }
 
     var fifo = std.fifo.LinearFifo(u8, .Dynamic).init(self.allocator);
     defer fifo.deinit();
@@ -136,19 +136,29 @@ pub fn bundle(self: Self, root: std.fs.Dir, output_dir: std.fs.Dir) !void {
     var manifest = zzz.ZTree(1, 100){};
     try self.createManifest(&manifest, ver_str.getWritten());
     try manifest.rootSlice()[0].stringify(fifo.writer());
+    try fifo.writer().writeByte('\n');
     std.log.debug("generated manifest:\n{s}", .{fifo.readableSlice(0)});
     try tarball.addSlice(fifo.readableSlice(0), "manifest.zzz");
 
     if (self.root) |root_file| {
-        try tarball.addFile(self.allocator, root, "pkg", root_file);
+        try tarball.addFile(root, "pkg", root_file);
     } else {
-        try tarball.addFile(self.allocator, root, "pkg", "src/main.zig");
+        tarball.addFile(root, "pkg", "src/main.zig") catch |err| {
+            if (err == error.FileNotFound) {
+                std.log.err("there's no src/main.zig, did you forget to declare a package's root file in gyro.zzz?", .{});
+                return error.Explained;
+            } else return err;
+        };
     }
 
+    // TODO: fail if there are missing exact matches (ones with no *)
     for (self.files.items) |pattern| {
-        var it = try glob.Iterator.init(self.allocator, root, pattern);
+        var dir = try root.openDir(".", .{ .iterate = true, .access_sub_paths = true });
+        defer dir.close();
+
+        var it = try glob.Iterator.init(self.allocator, dir, pattern);
         defer it.deinit();
 
-        while (try it.next()) |subpath| try tarball.addFile(self.allocator, root, "pkg", subpath);
+        while (try it.next()) |subpath| try tarball.addFile(dir, "pkg", subpath);
     }
 }

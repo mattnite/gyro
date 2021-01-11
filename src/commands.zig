@@ -21,6 +21,9 @@ const FetchContext = struct {
         self.dep_tree.destroy();
         self.lockfile.deinit();
         self.project.deinit();
+
+        // TODO: delete lockfile if it doesn't have anything in it
+
         self.lock_file.close();
         self.project_file.close();
     }
@@ -71,7 +74,8 @@ pub fn fetchImpl(allocator: *Allocator) !FetchContext {
 }
 
 pub fn fetch(allocator: *Allocator) !void {
-    (try fetchImpl(allocator)).deinit();
+    var ctx = try fetchImpl(allocator);
+    defer ctx.deinit();
 }
 
 pub fn update(allocator: *Allocator) !void {
@@ -85,6 +89,8 @@ pub fn build(allocator: *Allocator) !void {
 
     const pkgs = ctx.build_dep_tree.createPkgs(allocator);
     defer pkgs.deinit();
+
+    // get env from zig
 
     // TODO: build build_runner, run it with args
 }
@@ -102,26 +108,29 @@ pub fn package(
 
     if (project.packages.count() == 0) {
         std.log.err("there are no packages to package!", .{});
-        return error.NoPackages;
+        return error.Explained;
     }
 
+    var found_not_pkg = false;
     for (names) |name| if (!project.contains(name)) {
-        std.log.err("{} is not a package", .{name});
+        std.log.err("{s} is not a package", .{name});
+        found_not_pkg = true;
     };
 
-    var dir = if (output_dir) |output|
-        try std.fs.cwd().openDir(
-            output,
-            .{ .iterate = true, .access_sub_paths = true },
-        )
-    else
-        std.fs.cwd();
-    defer dir.close();
+    if (found_not_pkg) return error.Explained;
+    var write_dir = try std.fs.cwd().openDir(
+        if (output_dir) |output| output else ".",
+        .{ .iterate = true, .access_sub_paths = true },
+    );
+    defer write_dir.close();
+
+    var read_dir = try std.fs.cwd().openDir(".", .{ .iterate = true });
+    defer read_dir.close();
 
     if (names.len > 0) {
-        for (names) |name| try project.get(name).?.bundle(std.fs.cwd(), dir);
+        for (names) |name| try project.get(name).?.bundle(read_dir, write_dir);
     } else {
         var it = project.iterator();
-        while (it.next()) |pkg| try pkg.bundle(std.fs.cwd(), dir);
+        while (it.next()) |pkg| try pkg.bundle(read_dir, write_dir);
     }
 }

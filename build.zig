@@ -43,6 +43,7 @@ const zfetch = .{
     .path = "../zfetch/src/main.zig",
     .dependencies = &[_]std.build.Pkg{
         hzzp,
+        zuri,
         .{
             .name = "network",
             .path = "../zig-network/network.zig",
@@ -50,16 +51,12 @@ const zfetch = .{
         .{
             .name = "iguanatls",
             .path = "../iguanaTLS/src/main.zig",
-            .dependencies = &[_]std.build.Pkg{.{
-                .name = "peertype",
-                .path = "../PeerType/PeerType.zig",
-            }},
         },
     },
 };
 
 const zuri = .{
-    .name = "zuri",
+    .name = "uri",
     .path = "../zuri/src/zuri.zig",
 };
 

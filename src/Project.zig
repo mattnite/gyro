@@ -63,7 +63,7 @@ pub fn fromFile(allocator: *std.mem.Allocator, file: std.fs.File) !Self {
 
     if (std.mem.indexOf(u8, ret.text, "\r\n") != null) {
         std.log.err("gyro.zzz requires LF line endings, not CRLF", .{});
-        return error.LineEnding;
+        return error.Explained;
     }
 
     var tree = zzz.ZTree(1, 100){};
@@ -81,25 +81,25 @@ pub fn fromFile(allocator: *std.mem.Allocator, file: std.fs.File) !Self {
             try ret.build_dependencies.append(try Dependency.fromZNode(dep));
     }
 
-    if (zFindChild(root, "libs")) |libs| {
-        var it = ZChildIterator.init(libs);
+    if (zFindChild(root, "pkgs")) |pkgs| {
+        var it = ZChildIterator.init(pkgs);
         while (it.next()) |node| {
             const name = try zGetString(node);
 
             const ver_str = (try zFindString(node, "version")) orelse {
                 std.log.err("missing version string in package", .{});
-                return error.NoVersion;
+                return error.Explained;
             };
 
             const ver = version.Semver.parse(ver_str) catch |err| {
                 std.log.err("failed to parse version string '{}', must be <major>.<minor>.<patch>: {}", .{ ver_str, err });
-                return err;
+                return error.Explained;
             };
 
             const res = try ret.packages.getOrPut(name);
             if (res.found_existing) {
                 std.log.err("duplicate exported packages {}", .{name});
-                return error.DuplicatePackage;
+                return error.Explained;
             }
 
             res.entry.value = Package.init(

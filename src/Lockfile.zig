@@ -97,11 +97,7 @@ pub const Entry = union(enum) {
         switch (self) {
             .pkg => |pkg| {
                 var ver_stream = std.io.fixedBufferStream(&ver_buf);
-                try ver_stream.writer().print("{}.{}.{}", .{
-                    pkg.version.major,
-                    pkg.version.minor,
-                    pkg.version.patch,
-                });
+                try ver_stream.writer().print("{}", .{pkg.version});
 
                 var node = try tree.addNode(root, .{ .String = "pkg" });
                 try zPutKeyString(&tree, node, "name", pkg.name);
@@ -168,13 +164,13 @@ pub const Entry = union(enum) {
         switch (self) {
             .pkg => |pkg| try api.getPkg(allocator, pkg.repository, pkg.name, pkg.version, base_dir),
             .github => |gh| {
-                var pkg_dir = try base_dir.openDir("pkg", .{ .access_sub_paths = true });
+                var pkg_dir = try base_dir.makeOpenPath("pkg", .{ .access_sub_paths = true });
                 defer pkg_dir.close();
 
                 try api.getGithubTarGz(allocator, gh.user, gh.repo, gh.commit, pkg_dir);
             },
             .url => |url| {
-                var pkg_dir = try base_dir.openDir("pkg", .{ .access_sub_paths = true });
+                var pkg_dir = try base_dir.makeOpenPath("pkg", .{ .access_sub_paths = true });
                 defer pkg_dir.close();
 
                 try api.getTarGz(allocator, url.str, pkg_dir);
@@ -193,13 +189,7 @@ pub const Entry = union(enum) {
                 else
                     pkg.repository;
 
-                try writer.print("{s} {s} {}.{}.{}", .{
-                    repo,
-                    pkg.name,
-                    pkg.version.major,
-                    pkg.version.minor,
-                    pkg.version.patch,
-                });
+                try writer.print("{s} {s} {}", .{ repo, pkg.name, pkg.version });
             },
             .github => |gh| try writer.print("github {s} {s} {s} {s} {s}", .{
                 gh.user,
