@@ -9,6 +9,7 @@ const Command = enum {
     package,
     fetch,
     update,
+    build,
 };
 
 fn printUsage() noreturn {
@@ -17,6 +18,7 @@ fn printUsage() noreturn {
         \\gyro <cmd> [cmd specific options]
         \\
         \\cmds:
+        \\  build    Build your project with build dependencies
         \\  fetch    Download any undownloaded dependencies
         \\  package  Bundle package(s) into a ziglet 
         \\  update   Delete lock file and fetch new package versions
@@ -94,6 +96,8 @@ fn runCommands(allocator: *std.mem.Allocator) !void {
     };
 
     switch (cmd) {
+        // TODO: pass down arguments
+        .build => try build(allocator, &iter),
         .fetch => try fetch(allocator),
         .update => try update(allocator),
         .package => {

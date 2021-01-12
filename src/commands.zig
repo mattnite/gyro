@@ -1,4 +1,5 @@
 const std = @import("std");
+const clap = @import("clap");
 const Project = @import("Project.zig");
 const Lockfile = @import("Lockfile.zig");
 const DependencyTree = @import("DependencyTree.zig");
@@ -83,16 +84,116 @@ pub fn update(allocator: *Allocator) !void {
     try fetch(allocator);
 }
 
-pub fn build(allocator: *Allocator) !void {
-    const ctx = fetchImpl(allocator);
-    defer ctx.deinit();
+pub fn build(allocator: *Allocator, it: *clap.args.OsIterator) !void {
+    //var ctx = try fetchImpl(allocator);
+    //defer ctx.deinit();
+    std.fs.cwd().access("build.zig", .{ .read = true }) catch |err| {
+        return if (err == error.FileNotFound) blk: {
+            std.log.err("no build.zig in current working directory", .{});
+            break :blk error.Explained;
+        } else err;
+    };
 
-    const pkgs = ctx.build_dep_tree.createPkgs(allocator);
-    defer pkgs.deinit();
+    var fifo = std.fifo.LinearFifo(u8, .{ .Dynamic = {} }).init(allocator);
+    defer fifo.deinit();
 
     // get env from zig
+    const result = try std.ChildProcess.exec(.{
+        .allocator = allocator,
+        .argv = &[_][]const u8{ "zig", "env" },
+    });
+    defer {
+        allocator.free(result.stdout);
+        allocator.free(result.stderr);
+    }
 
-    // TODO: build build_runner, run it with args
+    switch (result.term) {
+        .Exited => |val| {
+            if (val != 0) {
+                std.log.err("zig compiler returned error code: {}", .{val});
+                return error.Explained;
+            }
+        },
+        .Signal => |sig| {
+            std.log.err("zig compiler interrupted by signal: {}", .{sig});
+            return error.Explained;
+        },
+        else => return error.UnknownTerm,
+    }
+
+    var parser = std.json.Parser.init(allocator, false);
+    defer parser.deinit();
+
+    var value_tree = try parser.parse(result.stdout);
+    defer value_tree.deinit();
+
+    const std_path = try switch (value_tree.root) {
+        .Object => |obj| if (obj.get("std_dir")) |key| switch (key) {
+            .String => |str| str,
+            else => error.InvalidJson,
+        } else error.InvalidJson,
+        else => return error.InvalidJson,
+    };
+
+    const path = try std.fs.path.join(
+        allocator,
+        &[_][]const u8{ std_path, "special" },
+    );
+    defer allocator.free(path);
+
+    var special_dir = try std.fs.openDirAbsolute(
+        path,
+        .{ .access_sub_paths = true },
+    );
+    defer special_dir.close();
+
+    try special_dir.copyFile(
+        "build_runner.zig",
+        std.fs.cwd(),
+        "build_runner.zig",
+        .{},
+    );
+    defer std.fs.cwd().deleteFile("build_runner.zig") catch {};
+
+    //const pkgs = try ctx.build_dep_tree.createPkgs(allocator);
+    //defer pkgs.deinit();
+
+    const b = try std.build.Builder.create(
+        allocator,
+        "/usr/local/bin/zig",
+        ".",
+        "zig-cache",
+        "/home/mknight/.cache/zig",
+    );
+    defer b.destroy();
+
+    b.resolveInstallPrefix();
+
+    // build script here
+    const runner = b.addExecutable("build", "build_runner.zig");
+    runner.addPackage(std.build.Pkg{
+        .name = "@build",
+        .path = "build.zig",
+    });
+
+    const run_cmd = runner.run();
+    b.default_step.dependOn(&run_cmd.step);
+
+    // add positionals here
+
+    if (b.validateUserInputDidItFail()) {
+        return error.UserInputFailed;
+    }
+
+    b.make(&[_][]const u8{"install"}) catch |err| {
+        switch (err) {
+            error.UncleanExit => {
+                std.log.err("Compiler had an unclean exit", .{});
+                return error.Explained;
+            },
+            else => return err,
+        }
+    };
 }
 
 pub fn package(

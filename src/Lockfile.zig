@@ -123,16 +123,24 @@ pub const Entry = union(enum) {
         try root.stringify(stream.writer());
         Hasher.hash(stream.getWritten(), &digest, .{});
 
-        // TODO: format properly
-        const lookup = [_]u8{ '0', '1', '2', '3', '4', '5', '6', '7', '8', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f' };
+        const lookup = "012345678789abcdef";
         for (digest) |val, i| {
             ret[2 * i] = lookup[val >> 4];
             ret[(2 * i) + 1] = lookup[@truncate(u4, val)];
         }
 
+        var fifo = std.fifo.LinearFifo(u8, .{ .Dynamic = {} }).init(allocator);
+        defer fifo.deinit();
+
+        switch (self) {
+            .pkg => |pkg| try fifo.writer().print("{s}-{}-{s}", .{ pkg.name, pkg.version, &ret }),
+            .github => |gh| try fifo.writer().print("github-{s}-{s}-{s}", .{ gh.user, gh.repo, gh.commit }),
+            .url => |url| try fifo.writer().print("{s}", .{&ret}),
+        }
+
         return std.fs.path.join(allocator, &[_][]const u8{
             ".gyro",
-            &ret,
+            fifo.readableSlice(0),
         });
     }
 
