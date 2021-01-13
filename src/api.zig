@@ -156,6 +156,21 @@ pub fn getDependencies(
     };
 }
 
+pub fn getRoot(
+    allocator: *std.mem.Allocator,
+    repository: []const u8,
+    package: []const u8,
+    semver: version.Semver,
+) ![]const u8 {
+    var text = try getManifest(allocator, repository, package, semver);
+    defer allocator.free(text);
+
+    var tree = zzz.ZTree(1, 100){};
+    var root = try tree.appendText(text);
+    const root_path = (try zFindString(root, "root")) orelse return error.NoRoot;
+    return try allocator.dupe(u8, root_path);
+}
+
 pub fn getPkg(
     allocator: *std.mem.Allocator,
     repository: []const u8,

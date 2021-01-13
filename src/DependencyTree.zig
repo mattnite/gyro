@@ -137,13 +137,81 @@ pub fn destroy(self: *Self) void {
     self.allocator.destroy(self);
 }
 
-pub fn printZig(self: Self, writer: anytype) !void {
-    return error.Todo;
-}
-
 pub fn createArgs(
     self: Self,
     allocator: *Allocator,
 ) !std.ArrayList([]const u8) {
     return error.Todo;
+}
+
+pub fn printZig(self: *Self, writer: anytype) !void {
+    try writer.print(
+        \\pub const pkgs = struct {{
+        \\    const std = @import("std");
+        \\
+    , .{});
+
+    for (self.root.edges.items) |edge| {
+        try writer.print("    pub const {s} = std.build.Pkg{{\n", .{
+            edge.dep.alias,
+        });
+
+        try self.recursivePrintZig(0, edge, writer);
+        try writer.print(
+            \\    }};
+            \\
+        , .{});
+    }
+
+    try writer.print(
+        \\
+        \\    pub fn addAllTo(artifact: *std.build.LibExeObjStep) void {{
+        \\        inline for (std.meta.declarations(@This())) |decl| {{
+        \\            if (decl.is_pub and decl.data == .Var) {{
+        \\               artifact.addPackage(@field(@This(), decl.name));
+        \\            }}
+        \\        }}
+        \\    }}
+        \\}};
+        \\
+    , .{});
+}
+
+fn indent(depth: usize, writer: anytype) !void {
+    try writer.writeByteNTimes(' ', 4 * (depth + 1));
+}
+
+fn recursivePrintZig(
+    self: *Self,
+    depth: usize,
+    edge: *const Edge,
+    writer: anytype,
+) anyerror!void {
+    if (depth != 0) {
+        try indent(depth, writer);
+        try writer.print("std.build.Pkg{{\n", .{});
+    }
+
+    try indent(depth + 1, writer);
+    try writer.print(".name = \"{s}\",\n", .{edge.dep.alias});
+
+    try indent(depth + 1, writer);
+    try writer.print(".path = \"{s}\",\n", .{try edge.to.entry.rootPath(self)});
+
+    if (edge.to.edges.items.len > 0) {
+        try indent(depth + 1, writer);
+        try writer.print(".dependencies = &[_]std.build.Pkg{{\n", .{});
+
+        for (edge.to.edges.items) |e| {
+            try self.recursivePrintZig(depth + 2, e, writer);
+        }
+
+        try indent(depth + 1, writer);
+        try writer.print("}},\n", .{});
+    }
+
+    if (depth != 0) {
+        try indent(depth, writer);
+        try writer.print("}},\n", .{});
+    }
 }

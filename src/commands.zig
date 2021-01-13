@@ -16,8 +16,8 @@ const FetchContext = struct {
     build_dep_tree: *DependencyTree,
 
     fn deinit(self: *FetchContext) void {
+        // TODO: turn back on when the file clear is figured out
         self.lockfile.save(self.lock_file) catch {};
-
         self.build_dep_tree.destroy();
         self.dep_tree.destroy();
         self.lockfile.deinit();
@@ -31,10 +31,15 @@ const FetchContext = struct {
 };
 
 pub fn fetchImpl(allocator: *Allocator) !FetchContext {
-    const project_file = try std.fs.cwd().openFile(
+    const project_file = std.fs.cwd().openFile(
         "gyro.zzz",
         .{ .read = true },
-    );
+    ) catch |err| {
+        return if (err == error.FileNotFound) blk: {
+            std.log.err("Missing gyro.zzz project file", .{});
+            break :blk error.Explained;
+        } else err;
+    };
     errdefer project_file.close();
 
     const lock_file = try std.fs.cwd().createFile(
@@ -84,9 +89,18 @@ pub fn update(allocator: *Allocator) !void {
     try fetch(allocator);
 }
 
-pub fn build(allocator: *Allocator, it: *clap.args.OsIterator) !void {
-    //var ctx = try fetchImpl(allocator);
-    //defer ctx.deinit();
+const EnvInfo = struct {
+    zig_exe: []const u8,
+    lib_dir: []const u8,
+    std_dir: []const u8,
+    global_cache_dir: []const u8,
+    version: []const u8,
+};
+
+pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
+    var ctx = try fetchImpl(allocator);
+    defer ctx.deinit();
+
     std.fs.cwd().access("build.zig", .{ .read = true }) catch |err| {
         return if (err == error.FileNotFound) blk: {
             std.log.err("no build.zig in current working directory", .{});
@@ -97,7 +111,6 @@ pub fn build(allocator: *Allocator, it: *clap.args.OsIterator) !void {
     var fifo = std.fifo.LinearFifo(u8, .{ .Dynamic = {} }).init(allocator);
     defer fifo.deinit();
 
-    // get env from zig
     const result = try std.ChildProcess.exec(.{
         .allocator = allocator,
         .argv = &[_][]const u8{ "zig", "env" },
@@ -121,23 +134,17 @@ pub fn build(allocator: *Allocator, it: *clap.args.OsIterator) !void {
         else => return error.UnknownTerm,
     }
 
-    var parser = std.json.Parser.init(allocator, false);
-    defer parser.deinit();
-
-    var value_tree = try parser.parse(result.stdout);
-    defer value_tree.deinit();
-
-    const std_path = try switch (value_tree.root) {
-        .Object => |obj| if (obj.get("std_dir")) |key| switch (key) {
-            .String => |str| str,
-            else => error.InvalidJson,
-        } else error.InvalidJson,
-        else => return error.InvalidJson,
-    };
+    const parse_opts = std.json.ParseOptions{ .allocator = allocator };
+    const env = try std.json.parse(
+        EnvInfo,
+        &std.json.TokenStream.init(result.stdout),
+        parse_opts,
+    );
+    defer std.json.parseFree(EnvInfo, env, parse_opts);
 
     const path = try std.fs.path.join(
         allocator,
-        &[_][]const u8{ std_path, "special" },
+        &[_][]const u8{ env.std_dir, "special" },
     );
     defer allocator.free(path);
 
@@ -147,40 +154,54 @@ pub fn build(allocator: *Allocator, it: *clap.args.OsIterator) !void {
     );
     defer special_dir.close();
 
-    try special_dir.copyFile(
-        "build_runner.zig",
-        std.fs.cwd(),
-        "build_runner.zig",
-        .{},
-    );
+    const runner_lib_file = try special_dir.openFile("build_runner.zig", .{ .read = true });
+    defer runner_lib_file.close();
+
+    const runner_lib_text = try runner_lib_file.readToEndAlloc(allocator, std.math.maxInt(usize));
+    defer allocator.free(runner_lib_text);
+
+    const runner_text = try std.mem.replaceOwned(u8, allocator, runner_lib_text, "@build", "build.zig");
+    defer allocator.free(runner_text);
+
+    const runner_file = try std.fs.cwd().createFile("build_runner.zig", .{ .truncate = true });
+    defer runner_file.close();
+    try runner_file.writer().writeAll(runner_text);
     defer std.fs.cwd().deleteFile("build_runner.zig") catch {};
 
-    //const pkgs = try ctx.build_dep_tree.createPkgs(allocator);
+    //const build_pkgs = try ctx.build_dep_tree.createPkgs(allocator);
     //defer pkgs.deinit();
 
+    // TODO: configurable local cache
+    var arena = std.heap.ArenaAllocator.init(allocator);
     const b = try std.build.Builder.create(
-        allocator,
-        "/usr/local/bin/zig",
+        &arena.allocator,
+        env.zig_exe,
         ".",
         "zig-cache",
-        "/home/mknight/.cache/zig",
+        env.global_cache_dir,
     );
     defer b.destroy();
 
     b.resolveInstallPrefix();
 
-    // build script here
     const runner = b.addExecutable("build", "build_runner.zig");
-    runner.addPackage(std.build.Pkg{
-        .name = "@build",
-        .path = "build.zig",
-    });
+
+    // // add build_deps here
+    // try pkgs.addAllTo(runner)
+    //
+    // // add normal deps as build_option
+    try ctx.dep_tree.printZig(runner.build_options_contents.writer());
 
     const run_cmd = runner.run();
+    run_cmd.addArgs(&[_][]const u8{
+        env.zig_exe,
+        ".",
+        "zig-cache",
+        env.global_cache_dir,
+    });
+
+    while (try args.next()) |arg| run_cmd.addArg(arg);
     b.default_step.dependOn(&run_cmd.step);
-
-    // add positionals here
-
     if (b.validateUserInputDidItFail()) {
         return error.UserInputFailed;
     }

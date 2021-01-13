@@ -10,7 +10,7 @@ const Self = @This();
 const Allocator = std.mem.Allocator;
 const Hasher = std.crypto.hash.blake2.Blake2b128;
 const testing = std.testing;
-const file_protocol = "file://";
+const file_proto = "file://";
 
 allocator: *Allocator,
 text: []const u8,
@@ -84,9 +84,108 @@ pub const Entry = union(enum) {
                 try tree.buf_pool.append(tree.allocator, resp.text);
                 break :blk resp.deps;
             },
-            .github => |gh| &[_]Dependency{},
-            .url => |url| &[_]Dependency{},
+            .url, .github => blk: {
+                try self.fetch(tree.allocator);
+                const base_path = try self.basePath(tree);
+                var base_dir = try std.fs.cwd().openDir(
+                    base_path,
+                    .{ .access_sub_paths = true },
+                );
+                defer base_dir.close();
+
+                const file = base_dir.openFile(
+                    "gyro.zzz",
+                    .{ .read = true },
+                ) catch |err| {
+                    if (err == error.FileNotFound)
+                        break :blk &[_]Dependency{}
+                    else
+                        return err;
+                };
+                defer file.close();
+
+                const text = try file.reader().readAllAlloc(
+                    tree.allocator,
+                    std.math.maxInt(usize),
+                );
+                errdefer tree.allocator.free(text);
+
+                var deps = std.ArrayListUnmanaged(Dependency){};
+
+                var ztree = zzz.ZTree(1, 100){};
+                var root = try ztree.appendText(text);
+                if (zFindChild(root, "deps")) |deps_node| {
+                    var it = ZChildIterator.init(deps_node);
+                    while (it.next()) |node|
+                        try deps.append(
+                            tree.allocator,
+                            try Dependency.fromZNode(node),
+                        );
+                }
+
+                try tree.buf_pool.append(tree.allocator, text);
+                break :blk deps.items;
+            },
         };
+    }
+
+    fn basePath(self: Entry, tree: *DependencyTree) ![]const u8 {
+        return if (self == .url and std.mem.startsWith(u8, self.url.str, file_proto))
+            self.url.str[file_proto.len..]
+        else blk: {
+            const package_path = try self.packagePath(tree.allocator);
+            defer tree.allocator.free(package_path);
+
+            const ret = try std.fs.path.join(tree.allocator, &[_][]const u8{
+                package_path,
+                "pkg",
+            });
+            errdefer tree.allocator.free(ret);
+
+            try tree.buf_pool.append(tree.allocator, ret);
+            break :blk ret;
+        };
+    }
+
+    pub fn rootPath(self: Entry, tree: *DependencyTree) ![]const u8 {
+        const root_path = switch (self) {
+            .pkg => |pkg| blk: {
+                const resp = try api.getRoot(
+                    tree.allocator,
+                    pkg.repository,
+                    pkg.name,
+                    pkg.version,
+                );
+                errdefer tree.allocator.free(resp);
+
+                try tree.buf_pool.append(tree.allocator, resp);
+                break :blk resp;
+            },
+            .github => |gh| gh.root,
+            .url => |url| if (std.mem.startsWith(u8, url.str, file_proto)) {
+                const ret = try std.fs.path.join(tree.allocator, &[_][]const u8{
+                    url.str[file_proto.len..],
+                    url.root,
+                });
+                errdefer tree.allocator.free(ret);
+
+                try tree.buf_pool.append(tree.allocator, ret);
+                return ret;
+            } else url.root,
+        };
+
+        const package_path = try self.packagePath(tree.allocator);
+        defer tree.allocator.free(package_path);
+
+        const ret = try std.fs.path.join(tree.allocator, &[_][]const u8{
+            package_path,
+            "pkg",
+            root_path,
+        });
+        errdefer tree.allocator.free(ret);
+
+        try tree.buf_pool.append(tree.allocator, ret);
+        return ret;
     }
 
     pub fn packagePath(self: Entry, allocator: *Allocator) ![]const u8 {
@@ -134,7 +233,7 @@ pub const Entry = union(enum) {
 
         switch (self) {
             .pkg => |pkg| try fifo.writer().print("{s}-{}-{s}", .{ pkg.name, pkg.version, &ret }),
-            .github => |gh| try fifo.writer().print("github-{s}-{s}-{s}", .{ gh.user, gh.repo, gh.commit }),
+            .github => |gh| try fifo.writer().print("{s}-{s}-{s}", .{ gh.repo, gh.user, gh.commit }),
             .url => |url| try fifo.writer().print("{s}", .{&ret}),
         }
 
