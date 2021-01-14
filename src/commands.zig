@@ -16,7 +16,6 @@ const FetchContext = struct {
     build_dep_tree: *DependencyTree,
 
     fn deinit(self: *FetchContext) void {
-        // TODO: turn back on when the file clear is figured out
         self.lockfile.save(self.lock_file) catch {};
         self.build_dep_tree.destroy();
         self.dep_tree.destroy();
@@ -24,7 +23,6 @@ const FetchContext = struct {
         self.project.deinit();
 
         // TODO: delete lockfile if it doesn't have anything in it
-
         self.lock_file.close();
         self.project_file.close();
     }
@@ -154,18 +152,12 @@ pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
     );
     defer special_dir.close();
 
-    const runner_lib_file = try special_dir.openFile("build_runner.zig", .{ .read = true });
-    defer runner_lib_file.close();
-
-    const runner_lib_text = try runner_lib_file.readToEndAlloc(allocator, std.math.maxInt(usize));
-    defer allocator.free(runner_lib_text);
-
-    const runner_text = try std.mem.replaceOwned(u8, allocator, runner_lib_text, "@build", "build.zig");
-    defer allocator.free(runner_text);
-
-    const runner_file = try std.fs.cwd().createFile("build_runner.zig", .{ .truncate = true });
-    defer runner_file.close();
-    try runner_file.writer().writeAll(runner_text);
+    try special_dir.copyFile(
+        "build_runner.zig",
+        std.fs.cwd(),
+        "build_runner.zig",
+        .{},
+    );
     defer std.fs.cwd().deleteFile("build_runner.zig") catch {};
 
     //const build_pkgs = try ctx.build_dep_tree.createPkgs(allocator);
@@ -173,6 +165,8 @@ pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
 
     // TODO: configurable local cache
     var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
     const b = try std.build.Builder.create(
         &arena.allocator,
         env.zig_exe,
@@ -182,15 +176,28 @@ pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
     );
     defer b.destroy();
 
-    b.resolveInstallPrefix();
+    const deps_file = try std.fs.cwd().createFile("deps.zig", .{ .truncate = true });
+    defer deps_file.close();
 
+    try ctx.dep_tree.printZig(deps_file.writer());
+
+    b.resolveInstallPrefix();
     const runner = b.addExecutable("build", "build_runner.zig");
+    runner.addPackage(std.build.Pkg{
+        .name = "@build",
+        .path = "build.zig",
+        .dependencies = &[_]std.build.Pkg{
+            std.build.Pkg{
+                .name = "gyro",
+                .path = "deps.zig",
+            },
+        },
+    });
 
     // // add build_deps here
     // try pkgs.addAllTo(runner)
     //
     // // add normal deps as build_option
-    try ctx.dep_tree.printZig(runner.build_options_contents.writer());
 
     const run_cmd = runner.run();
     run_cmd.addArgs(&[_][]const u8{

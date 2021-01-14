@@ -335,7 +335,7 @@ pub fn deinit(self: *Self) void {
 }
 
 pub fn save(self: Self, file: std.fs.File) !void {
-    try file.setEndPos(0);
+    try file.seekTo(0);
     for (self.entries.items) |entry| try entry.write(file.writer());
 }
 
