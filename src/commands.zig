@@ -4,6 +4,7 @@ const api = @import("api.zig");
 const Project = @import("Project.zig");
 const Lockfile = @import("Lockfile.zig");
 const DependencyTree = @import("DependencyTree.zig");
+usingnamespace @import("common.zig");
 
 const Allocator = std.mem.Allocator;
 
@@ -292,36 +293,12 @@ pub fn init(
     errdefer std.fs.cwd().deleteFile("gyro.zzz") catch {};
     defer file.close();
 
-    const info = blk: {
-        const gh_url = "github.com";
-        const begin = if (std.mem.indexOf(u8, link, gh_url)) |i|
-            if (link.len >= i + gh_url.len + 1) i + gh_url.len + 1 else {
-                std.log.err("couldn't parse link", .{});
-                return error.Explained;
-            }
-        else
-            0;
-        const end = if (std.mem.endsWith(u8, link, ".git")) link.len - 4 else link.len;
+    const info = try parseUserRepo(link);
 
-        const ret = link[begin..end];
-        if (std.mem.count(u8, ret, "/") != 1) {
-            std.log.err(
-                "got '{s}' from '{s}', it needs to have a single '/' so I can figure out the user/repo",
-                .{ ret, link },
-            );
-            return error.Explained;
-        }
-
-        break :blk ret;
-    };
-
-    var it = std.mem.tokenize(info, "/");
-    const user = it.next().?;
-    const repo = it.next().?;
-    var repo_tree = try api.getGithubRepo(allocator, user, repo);
+    var repo_tree = try api.getGithubRepo(allocator, info.user, info.repo);
     defer repo_tree.deinit();
 
-    var topics_tree = try api.getGithubTopics(allocator, user, repo);
+    var topics_tree = try api.getGithubTopics(allocator, info.user, info.repo);
     defer topics_tree.deinit();
 
     if (repo_tree.root != .Object or topics_tree.root != .Object) {
@@ -338,7 +315,7 @@ pub fn init(
         \\    version: 0.0.0
         \\    author: {s}
         \\
-    , .{ repo, user });
+    , .{ try normalizeName(info.repo), info.user });
 
     try maybePrintKey("description", "description", repo_root, writer);
 
