@@ -1,8 +1,11 @@
 const std = @import("std");
 const clap = @import("clap");
+const version = @import("version");
+const zzz = @import("zzz");
 const api = @import("api.zig");
 const Project = @import("Project.zig");
 const Lockfile = @import("Lockfile.zig");
+const Dependency = @import("Dependency.zig");
 const DependencyTree = @import("DependencyTree.zig");
 usingnamespace @import("common.zig");
 
@@ -363,4 +366,74 @@ pub fn init(
         \\      LICENSE
         \\
     , .{});
+}
+
+pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool) !void {
+    const repository = api.default_repo;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const file = try std.fs.cwd().openFile("gyro.zzz", .{ .write = true });
+    defer file.close();
+
+    const text = try file.reader().readAllAlloc(&arena.allocator, std.math.maxInt(usize));
+    var tree = zzz.ZTree(1, 100){};
+    var root = try tree.appendText(text);
+    const deps_key = if (build_deps) "build_deps" else "deps";
+    var deps = zFindChild(root, deps_key) orelse try tree.addNode(root, .{ .String = deps_key });
+
+    // TODO: error if alias already exists
+    for (targets) |target| {
+        const dep = if (std.mem.containsAtLeast(u8, target, 1, "/")) blk: {
+            const info = try parseUserRepo(target);
+            var value_tree = try api.getGithubRepo(&arena.allocator, info.user, info.repo);
+            if (value_tree.root != .Object) {
+                std.log.err("Invalid JSON response from Github", .{});
+                return error.Explained;
+            }
+
+            const root_json = value_tree.root.Object;
+            const default_branch = if (root_json.get("default_branch")) |val| switch (val) {
+                .String => |str| str,
+                else => "main",
+            } else "main";
+            std.log.debug("default_branch: {s}", .{default_branch});
+
+            break :blk Dependency{
+                .alias = try normalizeName(info.repo),
+                .src = .{
+                    .github = .{
+                        .user = info.user,
+                        .repo = info.repo,
+                        .ref = default_branch,
+                        .root = default_root,
+                    },
+                },
+            };
+        } else blk: {
+            const latest = try api.getLatest(&arena.allocator, target, repository, null);
+            var buf = try arena.allocator.alloc(u8, 80);
+            var stream = std.io.fixedBufferStream(buf);
+            try stream.writer().print("^{}", .{latest});
+            break :blk Dependency{
+                .alias = target,
+                .src = .{
+                    .pkg = .{
+                        .name = target,
+                        .version = version.Range{
+                            .min = latest,
+                            .kind = .caret,
+                        },
+                        .repository = api.default_repo,
+                        .ver_str = stream.getWritten(),
+                    },
+                },
+            };
+        };
+
+        try dep.addToZNode(&tree, deps, false);
+    }
+
+    try file.seekTo(0);
+    try root.stringifyPretty(file.writer());
 }

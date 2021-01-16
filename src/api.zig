@@ -17,17 +17,20 @@ pub fn getLatest(
     allocator: *Allocator,
     repository: []const u8,
     package: []const u8,
-    range: version.Range,
+    range: ?version.Range,
 ) !version.Semver {
-    const url = try std.fmt.allocPrint(
-        allocator,
-        "https://{s}/pkgs/{s}/latest?v={}",
-        .{
+    const url = if (range) |r|
+        try std.fmt.allocPrint(allocator, "https://{s}/pkgs/{s}/latest?v={}", .{
             repository,
             package,
-            range,
-        },
-    );
+            r,
+        })
+    else
+        try std.fmt.allocPrint(allocator, "https://{s}/pkgs/{s}/latest", .{
+            repository,
+            package,
+        });
+
     defer allocator.free(url);
 
     var headers = http.Headers.init(allocator);
@@ -285,13 +288,13 @@ pub fn getGithubRepo(
     try req.commit(.GET, headers, null);
     try req.fulfill();
 
-    if (req.status.code != 200) {
-        std.log.err("got http status code: {}", .{req.status.code});
-        return error.Explained;
-    }
-
     var text = try req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
     defer allocator.free(text);
+
+    if (req.status.code != 200) {
+        std.log.err("got http status code: {}\n{s}", .{ req.status.code, text });
+        return error.Explained;
+    }
 
     var parser = std.json.Parser.init(allocator, true);
     defer parser.deinit();

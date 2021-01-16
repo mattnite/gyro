@@ -8,6 +8,7 @@ pub const zfetch_use_buffered_io = false;
 
 const Command = enum {
     init,
+    add,
     package,
     fetch,
     update,
@@ -21,6 +22,7 @@ fn printUsage() noreturn {
         \\
         \\cmds:
         \\  init     Initialize a gyro.zzz with a link to a github repo
+        \\  add      Add dependencies to the project
         \\  build    Build your project with build dependencies
         \\  fetch    Download any undownloaded dependencies
         \\  package  Bundle package(s) into a ziglet 
@@ -124,6 +126,21 @@ fn runCommands(allocator: *std.mem.Allocator) !void {
             }
 
             try init(allocator, args.positionals()[0]);
+        },
+        .add => {
+            // TODO: add more arguments
+            const summary = "Add dependencies to the project";
+            const params = comptime [_]clap.Param(clap.Help){
+                clap.parseParam("-h, --help              Display help") catch unreachable,
+                clap.Param(clap.Help){
+                    .takes_value = .Many,
+                },
+            };
+
+            var args = parseHandlingHelpAndErrors(allocator, summary, &params, &iter);
+            defer args.deinit();
+
+            try add(allocator, args.positionals(), false);
         },
         .package => {
             const summary = "Bundle package(s) into a ziglet";

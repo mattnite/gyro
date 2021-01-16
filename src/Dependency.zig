@@ -154,7 +154,7 @@ pub fn resolve(self: Self, tree: *DependencyTree, lockfile: *Lockfile) !*const L
 ///   integrity:
 ///     <type>: <integrity str>
 /// ```
-pub fn fromZNode(node: *const zzz.ZNode) !Self {
+pub fn fromZNode(node: *zzz.ZNode) !Self {
     if (node.*.child == null) return error.NoChildren;
 
     const alias = try zGetString(node);

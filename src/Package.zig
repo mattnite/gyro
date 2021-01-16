@@ -58,7 +58,7 @@ pub fn deinit(self: *Self) void {
 
 pub fn fillFromZNode(
     self: *Self,
-    node: *const zzz.ZNode,
+    node: *zzz.ZNode,
 ) !void {
     if (zFindChild(node, "files")) |files| {
         var it = ZChildIterator.init(files);

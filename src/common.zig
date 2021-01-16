@@ -4,23 +4,23 @@ const zzz = @import("zzz");
 pub const default_root = "src/main.zig";
 
 pub const ZChildIterator = struct {
-    val: ?*const zzz.ZNode,
+    val: ?*zzz.ZNode,
 
-    pub fn next(self: *ZChildIterator) ?*const zzz.ZNode {
+    pub fn next(self: *ZChildIterator) ?*zzz.ZNode {
         return if (self.val) |node| blk: {
             self.val = node.sibling;
             break :blk node;
         } else null;
     }
 
-    pub fn init(node: *const zzz.ZNode) ZChildIterator {
+    pub fn init(node: *zzz.ZNode) ZChildIterator {
         return ZChildIterator{
             .val = node.child,
         };
     }
 };
 
-pub fn zFindChild(node: *const zzz.ZNode, key: []const u8) ?*const zzz.ZNode {
+pub fn zFindChild(node: *zzz.ZNode, key: []const u8) ?*zzz.ZNode {
     var it = ZChildIterator.init(node);
     return while (it.next()) |child| {
         switch (child.value) {
@@ -40,7 +40,7 @@ pub fn zGetString(node: *const zzz.ZNode) ![]const u8 {
     };
 }
 
-pub fn zFindString(parent: *const zzz.ZNode, key: []const u8) !?[]const u8 {
+pub fn zFindString(parent: *zzz.ZNode, key: []const u8) !?[]const u8 {
     return if (zFindChild(parent, key)) |node|
         if (node.child) |child|
             try zGetString(child)
