@@ -4,6 +4,7 @@ const zfetch = @import("zfetch");
 usingnamespace @import("commands.zig");
 
 //pub const io_mode = .evented;
+pub const zfetch_use_buffered_io = false;
 
 const Command = enum {
     init,
