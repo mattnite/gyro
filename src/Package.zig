@@ -81,6 +81,7 @@ fn createManifest(self: Self, tree: *zzz.ZTree(1, 100), ver_str: []const u8) !vo
     var root = try tree.addNode(null, .Null);
     try zPutKeyString(tree, root, "name", self.name);
     try zPutKeyString(tree, root, "version", ver_str);
+    try zPutKeyString(tree, root, "root", self.root orelse "src/main.zig");
     inline for (std.meta.fields(Self)) |field| {
         if (@TypeOf(@field(self, field.name)) == ?[]const u8) {
             if (@field(self, field.name)) |value| {
@@ -121,9 +122,9 @@ pub fn bundle(self: Self, root: std.fs.Dir, output_dir: std.fs.Dir) !void {
         .truncate = true,
         .read = true,
     });
+    errdefer output_dir.deleteFile(stream.getWritten()) catch {};
     defer file.close();
 
-    // TODO: delete tarball on error
     var tarball = tar.builder(self.allocator, file.writer());
     defer {
         tarball.finish() catch {};
@@ -137,21 +138,29 @@ pub fn bundle(self: Self, root: std.fs.Dir, output_dir: std.fs.Dir) !void {
     try self.createManifest(&manifest, ver_str.getWritten());
     try manifest.rootSlice()[0].stringify(fifo.writer());
     try fifo.writer().writeByte('\n');
-    std.log.debug("generated manifest:\n{s}", .{fifo.readableSlice(0)});
     try tarball.addSlice(fifo.readableSlice(0), "manifest.zzz");
 
     if (self.root) |root_file| {
-        try tarball.addFile(root, "pkg", root_file);
+        tarball.addFile(root, "pkg", root_file) catch |err| {
+            if (err == error.FileNotFound) {
+                std.log.err("{s}'s root is declared as {s}, but it does not exist", .{
+                    self.name,
+                    root_file,
+                });
+                return error.Explained;
+            } else return err;
+        };
     } else {
         tarball.addFile(root, "pkg", "src/main.zig") catch |err| {
             if (err == error.FileNotFound) {
-                std.log.err("there's no src/main.zig, did you forget to declare a package's root file in gyro.zzz?", .{});
+                std.log.err("there's no src/main.zig, did you forget to declare a {s}'s root file in gyro.zzz?", .{
+                    self.name,
+                });
                 return error.Explained;
             } else return err;
         };
     }
 
-    // TODO: fail if there are missing exact matches (ones with no *)
     for (self.files.items) |pattern| {
         var dir = try root.openDir(".", .{ .iterate = true, .access_sub_paths = true });
         defer dir.close();
@@ -159,6 +168,15 @@ pub fn bundle(self: Self, root: std.fs.Dir, output_dir: std.fs.Dir) !void {
         var it = try glob.Iterator.init(self.allocator, dir, pattern);
         defer it.deinit();
 
-        while (try it.next()) |subpath| try tarball.addFile(dir, "pkg", subpath);
+        while (try it.next()) |subpath|
+            tarball.addFile(dir, "pkg", subpath) catch |err| {
+                return if (err == error.FileNotFound) blk: {
+                    std.log.err("file pattern '{s}' wants path '{s}', but it doesn't exist", .{
+                        pattern,
+                        subpath,
+                    });
+                    break :blk error.Explained;
+                } else err;
+            };
     }
 }

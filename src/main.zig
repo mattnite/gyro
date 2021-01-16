@@ -6,6 +6,7 @@ usingnamespace @import("commands.zig");
 //pub const io_mode = .evented;
 
 const Command = enum {
+    init,
     package,
     fetch,
     update,
@@ -18,6 +19,7 @@ fn printUsage() noreturn {
         \\gyro <cmd> [cmd specific options]
         \\
         \\cmds:
+        \\  init     Initialize a gyro.zzz with a link to a github repo
         \\  build    Build your project with build dependencies
         \\  fetch    Download any undownloaded dependencies
         \\  package  Bundle package(s) into a ziglet 
@@ -96,10 +98,32 @@ fn runCommands(allocator: *std.mem.Allocator) !void {
     };
 
     switch (cmd) {
-        // TODO: pass down arguments
         .build => try build(allocator, &iter),
         .fetch => try fetch(allocator),
         .update => try update(allocator),
+        .init => {
+            const summary = "Initialize a gyro.zzz with a link to a github repo";
+            const params = comptime [_]clap.Param(clap.Help){
+                clap.parseParam("-h, --help              Display help") catch unreachable,
+                clap.Param(clap.Help){
+                    .takes_value = .One,
+                },
+            };
+
+            var args = parseHandlingHelpAndErrors(allocator, summary, &params, &iter);
+            defer args.deinit();
+
+            const num = args.positionals().len;
+            if (num < 1) {
+                std.log.err("please give me a link to your github repo or just '<user>/<repo>'", .{});
+                return error.Explained;
+            } else if (num > 1) {
+                std.log.err("that's too many args, please just give me one in the form of a link to your github repo or just '<user>/<repo>'", .{});
+                return error.Explained;
+            }
+
+            try init(allocator, args.positionals()[0]);
+        },
         .package => {
             const summary = "Bundle package(s) into a ziglet";
             const params = comptime [_]clap.Param(clap.Help){

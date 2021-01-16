@@ -8,12 +8,13 @@ const zuri = @import("uri");
 const Dependency = @import("Dependency.zig");
 usingnamespace @import("common.zig");
 
+const Allocator = std.mem.Allocator;
 pub const default_repo = "astrolabe.pm";
 
 // TODO: clean up duplicated code in this file
 
 pub fn getLatest(
-    allocator: *std.mem.Allocator,
+    allocator: *Allocator,
     repository: []const u8,
     package: []const u8,
     range: version.Range,
@@ -33,9 +34,16 @@ pub fn getLatest(
     defer headers.deinit();
 
     const uri = try zuri.Uri.parse(url, true);
-    if (@as(zuri.Uri.Host, uri.host) == .ip) return error.NotSupportedYet;
+    var ip_buf: [80]u8 = undefined;
+    var stream = std.io.fixedBufferStream(&ip_buf);
 
-    try headers.set("Host", uri.host.name);
+    try headers.set("Host", switch (uri.host) {
+        .name => |name| name,
+        .ip => |ip| blk: {
+            try stream.writer().print("{}", .{ip});
+            break :blk stream.getWritten();
+        },
+    });
     var req = try zfetch.Request.init(allocator, url);
     defer req.deinit();
 
@@ -52,7 +60,7 @@ pub fn getLatest(
 }
 
 pub fn getHeadCommit(
-    allocator: *std.mem.Allocator,
+    allocator: *Allocator,
     user: []const u8,
     repo: []const u8,
     ref: []const u8,
@@ -98,7 +106,7 @@ pub fn getHeadCommit(
 }
 
 fn getManifest(
-    allocator: *std.mem.Allocator,
+    allocator: *Allocator,
     repository: []const u8,
     package: []const u8,
     semver: version.Semver,
@@ -133,7 +141,7 @@ pub const DependencyResult = struct {
 };
 
 pub fn getDependencies(
-    allocator: *std.mem.Allocator,
+    allocator: *Allocator,
     repository: []const u8,
     package: []const u8,
     semver: version.Semver,
@@ -157,7 +165,7 @@ pub fn getDependencies(
 }
 
 pub fn getRoot(
-    allocator: *std.mem.Allocator,
+    allocator: *Allocator,
     repository: []const u8,
     package: []const u8,
     semver: version.Semver,
@@ -172,7 +180,7 @@ pub fn getRoot(
 }
 
 pub fn getPkg(
-    allocator: *std.mem.Allocator,
+    allocator: *Allocator,
     repository: []const u8,
     package: []const u8,
     semver: version.Semver,
@@ -193,7 +201,7 @@ pub fn getPkg(
 }
 
 fn getTarGzImpl(
-    allocator: *std.mem.Allocator,
+    allocator: *Allocator,
     url: []const u8,
     dir: std.fs.Dir,
     skip_depth: usize,
@@ -226,7 +234,7 @@ fn getTarGzImpl(
 }
 
 pub fn getTarGz(
-    allocator: *std.mem.Allocator,
+    allocator: *Allocator,
     url: []const u8,
     dir: std.fs.Dir,
 ) !void {
@@ -234,7 +242,7 @@ pub fn getTarGz(
 }
 
 pub fn getGithubTarGz(
-    allocator: *std.mem.Allocator,
+    allocator: *Allocator,
     user: []const u8,
     repo: []const u8,
     commit: []const u8,
@@ -254,4 +262,74 @@ pub fn getGithubTarGz(
     defer allocator.free(url);
 
     try getTarGzImpl(allocator, url, dir, 1);
+}
+
+pub fn getGithubRepo(
+    allocator: *Allocator,
+    user: []const u8,
+    repo: []const u8,
+) !std.json.ValueTree {
+    const url = try std.fmt.allocPrint(allocator, "https://api.github.com/repos/{s}/{s}", .{ user, repo });
+    defer allocator.free(url);
+
+    var headers = http.Headers.init(allocator);
+    defer headers.deinit();
+
+    var req = try zfetch.Request.init(allocator, url);
+    defer req.deinit();
+
+    try headers.set("Host", "api.github.com");
+    try headers.set("Accept", "application/vnd.github.v3+json");
+    try headers.set("User-Agent", "gyro");
+
+    try req.commit(.GET, headers, null);
+    try req.fulfill();
+
+    if (req.status.code != 200) {
+        std.log.err("got http status code: {}", .{req.status.code});
+        return error.Explained;
+    }
+
+    var text = try req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
+    defer allocator.free(text);
+
+    var parser = std.json.Parser.init(allocator, true);
+    defer parser.deinit();
+
+    return try parser.parse(text);
+}
+
+pub fn getGithubTopics(
+    allocator: *Allocator,
+    user: []const u8,
+    repo: []const u8,
+) !std.json.ValueTree {
+    const url = try std.fmt.allocPrint(allocator, "https://api.github.com/repos/{s}/{s}/topics", .{ user, repo });
+    defer allocator.free(url);
+
+    var headers = http.Headers.init(allocator);
+    defer headers.deinit();
+
+    var req = try zfetch.Request.init(allocator, url);
+    defer req.deinit();
+
+    try headers.set("Host", "api.github.com");
+    try headers.set("Accept", "application/vnd.github.mercy-preview+json");
+    try headers.set("User-Agent", "gyro");
+
+    try req.commit(.GET, headers, null);
+    try req.fulfill();
+
+    if (req.status.code != 200) {
+        std.log.err("got http status code: {}", .{req.status.code});
+        return error.Explained;
+    }
+
+    var text = try req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
+    defer allocator.free(text);
+
+    var parser = std.json.Parser.init(allocator, true);
+    defer parser.deinit();
+
+    return try parser.parse(text);
 }

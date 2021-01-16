@@ -1,5 +1,6 @@
 const std = @import("std");
 const clap = @import("clap");
+const api = @import("api.zig");
 const Project = @import("Project.zig");
 const Lockfile = @import("Lockfile.zig");
 const DependencyTree = @import("DependencyTree.zig");
@@ -262,4 +263,127 @@ pub fn package(
         var it = project.iterator();
         while (it.next()) |pkg| try pkg.bundle(read_dir, write_dir);
     }
+}
+
+fn maybePrintKey(
+    json_key: []const u8,
+    zzz_key: []const u8,
+    root: anytype,
+    writer: anytype,
+) !void {
+    if (root.get(json_key)) |val| {
+        switch (val) {
+            .String => |str| try writer.print("    {s}: \"{s}\"\n", .{ zzz_key, str }),
+            else => {},
+        }
+    }
+}
+
+pub fn init(
+    allocator: *Allocator,
+    link: []const u8,
+) !void {
+    const file = std.fs.cwd().createFile("gyro.zzz", .{ .exclusive = true }) catch |err| {
+        return if (err == error.PathAlreadyExists) blk: {
+            std.log.err("gyro.zzz already exists", .{});
+            break :blk error.Explained;
+        } else err;
+    };
+    errdefer std.fs.cwd().deleteFile("gyro.zzz") catch {};
+    defer file.close();
+
+    const info = blk: {
+        const gh_url = "github.com";
+        const begin = if (std.mem.indexOf(u8, link, gh_url)) |i|
+            if (link.len >= i + gh_url.len + 1) i + gh_url.len + 1 else {
+                std.log.err("couldn't parse link", .{});
+                return error.Explained;
+            }
+        else
+            0;
+        const end = if (std.mem.endsWith(u8, link, ".git")) link.len - 4 else link.len;
+
+        const ret = link[begin..end];
+        if (std.mem.count(u8, ret, "/") != 1) {
+            std.log.err(
+                "got '{s}' from '{s}', it needs to have a single '/' so I can figure out the user/repo",
+                .{ ret, link },
+            );
+            return error.Explained;
+        }
+
+        break :blk ret;
+    };
+
+    var it = std.mem.tokenize(info, "/");
+    const user = it.next().?;
+    const repo = it.next().?;
+    var repo_tree = try api.getGithubRepo(allocator, user, repo);
+    defer repo_tree.deinit();
+
+    var topics_tree = try api.getGithubTopics(allocator, user, repo);
+    defer topics_tree.deinit();
+
+    if (repo_tree.root != .Object or topics_tree.root != .Object) {
+        std.log.err("Invalid JSON response from Github", .{});
+        return error.Explained;
+    }
+
+    const repo_root = repo_tree.root.Object;
+    const topics_root = topics_tree.root.Object;
+    const writer = file.writer();
+    try writer.print(
+        \\pkgs:
+        \\  {s}:
+        \\    version: 0.0.0
+        \\    author: {s}
+        \\
+    , .{ repo, user });
+
+    try maybePrintKey("description", "description", repo_root, writer);
+
+    // pretty gross ngl
+    if (repo_root.get("license")) |license| {
+        switch (license) {
+            .Object => |obj| {
+                if (obj.get("spdx_id")) |spdx| {
+                    switch (spdx) {
+                        .String => |id| {
+                            try writer.print("    license: {s}\n", .{id});
+                        },
+                        else => {},
+                    }
+                }
+            },
+            else => {},
+        }
+    }
+
+    try maybePrintKey("html_url", "source_url", repo_root, writer);
+    if (topics_root.get("names")) |topics| {
+        switch (topics) {
+            .Array => |arr| {
+                if (arr.items.len > 0) {
+                    try writer.print("    tags:\n", .{});
+                    for (arr.items) |topic| {
+                        switch (topic) {
+                            .String => |str| if (std.mem.indexOf(u8, str, "zig") == null) {
+                                try writer.print("      {s}\n", .{str});
+                            },
+                            else => {},
+                        }
+                    }
+                }
+            },
+            else => {},
+        }
+    }
+    try writer.print(
+        \\
+        \\    root: src/main.zig
+        \\    files:
+        \\      README.md
+        \\      LICENSE
+        \\
+    , .{});
 }
