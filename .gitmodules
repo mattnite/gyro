@@ -25,9 +25,6 @@
 [submodule "libs/version"]
 	path = libs/version
 	url = https://github.com/mattnite/version.git
-[submodule "libs/glob"]
-	path = libs/glob
-	url = git@github.com:mattnite/glob.git
 [submodule "libs/tar"]
 	path = libs/tar
 	url = https://github.com/mattnite/tar.git
