@@ -182,6 +182,7 @@ pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
     defer b.destroy();
 
     const deps_file = try std.fs.cwd().createFile("deps.zig", .{ .truncate = true });
+    errdefer std.fs.cwd().deleteFile("deps.zig") catch {};
     defer deps_file.close();
 
     try ctx.dep_tree.printZig(deps_file.writer());
@@ -411,7 +412,7 @@ pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool)
                 },
             };
         } else blk: {
-            const latest = try api.getLatest(&arena.allocator, target, repository, null);
+            const latest = try api.getLatest(&arena.allocator, repository, target, null);
             var buf = try arena.allocator.alloc(u8, 80);
             var stream = std.io.fixedBufferStream(buf);
             try stream.writer().print("^{}", .{latest});

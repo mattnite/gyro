@@ -37,8 +37,8 @@ const Source = union(SourceType) {
     },
 };
 
-fn findLatestMatch(self: Self, lockfile: *Lockfile) ?*const Lockfile.Entry {
-    var ret: ?*const Lockfile.Entry = null;
+fn findLatestMatch(self: Self, lockfile: *Lockfile) ?*Lockfile.Entry {
+    var ret: ?*Lockfile.Entry = null;
     for (lockfile.entries.items) |*entry| {
         if (@as(SourceType, self.src) != @as(SourceType, entry.*)) continue;
 
@@ -66,40 +66,33 @@ fn findLatestMatch(self: Self, lockfile: *Lockfile) ?*const Lockfile.Entry {
     return ret;
 }
 
-fn resolveLatest(self: Self, tree: *DependencyTree, lockfile: *Lockfile) !Lockfile.Entry {
+fn resolveLatest(
+    self: Self,
+    arena: *std.heap.ArenaAllocator,
+    lockfile: *Lockfile,
+) !Lockfile.Entry {
+    const allocator = &arena.allocator;
     return switch (self.src) {
         .pkg => |pkg| .{
             .pkg = .{
                 .name = pkg.name,
                 .repository = pkg.repository,
                 .version = try api.getLatest(
-                    tree.allocator,
+                    allocator,
                     pkg.repository,
                     pkg.name,
                     pkg.version,
                 ),
             },
         },
-        .github => |gh| blk: {
-            const commit = try api.getHeadCommit(tree.allocator, gh.user, gh.repo, gh.ref);
-            errdefer tree.allocator.free(commit);
-
-            std.log.info("commit for {s}/{s} {s}: {s}", .{ gh.user, gh.repo, gh.ref, commit });
-
-            try tree.buf_pool.append(tree.allocator, commit);
-            errdefer _ = tree.buf_pool.pop();
-
-            var entry = Lockfile.Entry{
-                .github = .{
-                    .user = gh.user,
-                    .repo = gh.repo,
-                    .ref = gh.ref,
-                    .commit = commit,
-                    .root = gh.root,
-                },
-            };
-
-            break :blk entry;
+        .github => |gh| Lockfile.Entry{
+            .github = .{
+                .user = gh.user,
+                .repo = gh.repo,
+                .ref = gh.ref,
+                .commit = try api.getHeadCommit(allocator, gh.user, gh.repo, gh.ref),
+                .root = gh.root,
+            },
         },
         .url => |url| .{
             .url = .{
@@ -110,9 +103,13 @@ fn resolveLatest(self: Self, tree: *DependencyTree, lockfile: *Lockfile) !Lockfi
     };
 }
 
-pub fn resolve(self: Self, tree: *DependencyTree, lockfile: *Lockfile) !*const Lockfile.Entry {
+pub fn resolve(
+    self: Self,
+    arena: *std.heap.ArenaAllocator,
+    lockfile: *Lockfile,
+) !*Lockfile.Entry {
     return self.findLatestMatch(lockfile) orelse blk: {
-        try lockfile.entries.append(try self.resolveLatest(tree, lockfile));
+        try lockfile.entries.append(try self.resolveLatest(arena, lockfile));
         break :blk &lockfile.entries.items[lockfile.entries.items.len - 1];
     };
 }

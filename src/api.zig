@@ -33,6 +33,8 @@ pub fn getLatest(
 
     defer allocator.free(url);
 
+    std.log.err("getting latest: {s}", .{url});
+
     var headers = http.Headers.init(allocator);
     defer headers.deinit();
 
@@ -40,6 +42,8 @@ pub fn getLatest(
     var ip_buf: [80]u8 = undefined;
     var stream = std.io.fixedBufferStream(&ip_buf);
 
+    try headers.set("Accept", "*/*");
+    try headers.set("User-Agent", "gyro");
     try headers.set("Host", switch (uri.host) {
         .name => |name| name,
         .ip => |ip| blk: {
@@ -54,7 +58,7 @@ pub fn getLatest(
     try req.fulfill();
 
     if (req.status.code != 200) {
-        std.log.err("got http status code: {}", .{req.status.code});
+        std.log.err("got http status code for {s}: {}", .{ url, req.status.code });
         return error.FailedRequest;
     }
 
@@ -95,7 +99,7 @@ pub fn getHeadCommit(
     try req.fulfill();
 
     if (req.status.code != 200) {
-        std.log.err("got http status code: {}", .{req.status.code});
+        std.log.err("got http status code for {s}: {}", .{ url, req.status.code });
         return error.FailedRequest;
     }
 
@@ -124,47 +128,45 @@ fn getManifest(
     var headers = http.Headers.init(allocator);
     defer headers.deinit();
 
+    try headers.set("Host", repository);
+    try headers.set("Accept", "*/*");
+    try headers.set("User-Agent", "gyro");
+
     var req = try zfetch.Request.init(allocator, url);
     defer req.deinit();
-
-    if (req.status.code != 200) {
-        std.log.err("got http status code: {}", .{req.status.code});
-        return error.FailedRequest;
-    }
 
     try req.commit(.GET, headers, null);
     try req.fulfill();
 
+    if (req.status.code != 200) {
+        std.log.err("got http status code for {s}: {}", .{ url, req.status.code });
+        return error.FailedRequest;
+    }
+
     return req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
 }
 
-pub const DependencyResult = struct {
-    deps: []Dependency,
-    text: []const u8,
-};
-
 pub fn getDependencies(
-    allocator: *Allocator,
+    arena: *std.heap.ArenaAllocator,
     repository: []const u8,
     package: []const u8,
     semver: version.Semver,
-) !DependencyResult {
-    var text = try getManifest(allocator, repository, package, semver);
-    errdefer allocator.free(text);
-
+) ![]Dependency {
+    var text = try getManifest(&arena.allocator, repository, package, semver);
     var deps = std.ArrayListUnmanaged(Dependency){};
-
     var tree = zzz.ZTree(1, 100){};
     var root = try tree.appendText(text);
+    //TODO: count then alloc
     if (zFindChild(root, "deps")) |deps_node| {
         var it = ZChildIterator.init(deps_node);
-        while (it.next()) |node| try deps.append(allocator, try Dependency.fromZNode(node));
+        while (it.next()) |node|
+            try deps.append(
+                &arena.allocator,
+                try Dependency.fromZNode(node),
+            );
     }
 
-    return DependencyResult{
-        .deps = deps.items,
-        .text = text,
-    };
+    return deps.items;
 }
 
 pub fn getRoot(
@@ -178,7 +180,14 @@ pub fn getRoot(
 
     var tree = zzz.ZTree(1, 100){};
     var root = try tree.appendText(text);
-    const root_path = (try zFindString(root, "root")) orelse return error.NoRoot;
+    const root_path = (try zFindString(root, "root")) orelse {
+        std.log.err("Root missing for package: {s}-{} from {s}", .{
+            package,
+            semver,
+            repository,
+        });
+        return error.Explained;
+    };
     return try allocator.dupe(u8, root_path);
 }
 
@@ -195,7 +204,7 @@ pub fn getPkg(
         .{
             repository,
             package,
-            version,
+            semver,
         },
     );
     defer allocator.free(url);
@@ -226,7 +235,7 @@ fn getTarGzImpl(
     try req.fulfill();
 
     if (req.status.code != 200) {
-        std.log.err("got http status code: {}", .{req.status.code});
+        std.log.err("got http status code for {s}: {}", .{ url, req.status.code });
         return error.FailedRequest;
     }
 
@@ -324,7 +333,7 @@ pub fn getGithubTopics(
     try req.fulfill();
 
     if (req.status.code != 200) {
-        std.log.err("got http status code: {}", .{req.status.code});
+        std.log.err("got http status code {s}: {}", .{ url, req.status.code });
         return error.Explained;
     }
 

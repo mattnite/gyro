@@ -81,11 +81,13 @@ fn createManifest(self: Self, tree: *zzz.ZTree(1, 100), ver_str: []const u8) !vo
     var root = try tree.addNode(null, .Null);
     try zPutKeyString(tree, root, "name", self.name);
     try zPutKeyString(tree, root, "version", ver_str);
-    try zPutKeyString(tree, root, "root", self.root orelse "src/main.zig");
+
     inline for (std.meta.fields(Self)) |field| {
         if (@TypeOf(@field(self, field.name)) == ?[]const u8) {
             if (@field(self, field.name)) |value| {
                 try zPutKeyString(tree, root, field.name, value);
+            } else if (std.mem.eql(u8, field.name, "root")) {
+                try zPutKeyString(tree, root, field.name, "src/main.zig");
             }
         }
     }
@@ -168,7 +170,7 @@ pub fn bundle(self: Self, root: std.fs.Dir, output_dir: std.fs.Dir) !void {
         var it = try glob.Iterator.init(self.allocator, dir, pattern);
         defer it.deinit();
 
-        while (try it.next()) |subpath|
+        while (try it.next()) |subpath| {
             tarball.addFile(dir, "pkg", subpath) catch |err| {
                 return if (err == error.FileNotFound) blk: {
                     std.log.err("file pattern '{s}' wants path '{s}', but it doesn't exist", .{
@@ -178,5 +180,6 @@ pub fn bundle(self: Self, root: std.fs.Dir, output_dir: std.fs.Dir) !void {
                     break :blk error.Explained;
                 } else err;
             };
+        }
     }
 }

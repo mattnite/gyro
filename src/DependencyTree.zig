@@ -9,11 +9,8 @@ const DepQueue = std.TailQueue(struct {
     dep: *Dependency,
 });
 
-allocator: *Allocator,
-dep_pool: std.ArrayListUnmanaged(Dependency),
-edge_pool: std.ArrayListUnmanaged(Edge),
-node_pool: std.ArrayListUnmanaged(Node),
-buf_pool: std.ArrayListUnmanaged([]const u8),
+arena: std.heap.ArenaAllocator,
+node_pool: std.ArrayList(*Node),
 root: Node,
 
 const Node = struct {
@@ -29,17 +26,14 @@ const Edge = struct {
 };
 
 pub fn generate(
-    allocator: *Allocator,
+    gpa: *Allocator,
     lockfile: *Lockfile,
     deps: std.ArrayList(Dependency),
 ) !*Self {
-    var ret = try allocator.create(Self);
+    var ret = try gpa.create(Self);
     ret.* = Self{
-        .allocator = allocator,
-        .dep_pool = std.ArrayListUnmanaged(Dependency){},
-        .edge_pool = std.ArrayListUnmanaged(Edge){},
-        .node_pool = std.ArrayListUnmanaged(Node){},
-        .buf_pool = std.ArrayListUnmanaged([]const u8){},
+        .arena = std.heap.ArenaAllocator.init(gpa),
+        .node_pool = std.ArrayList(*Node).init(gpa),
         .root = .{
             .entry = undefined,
             .depth = 0,
@@ -49,11 +43,11 @@ pub fn generate(
     errdefer ret.destroy();
 
     var queue = DepQueue{};
-    defer while (queue.popFirst()) |node| allocator.destroy(node);
+    defer while (queue.popFirst()) |node| gpa.destroy(node);
 
-    try ret.dep_pool.appendSlice(allocator, deps.items);
-    for (ret.dep_pool.items) |*dep| {
-        var node = try allocator.create(DepQueue.Node);
+    var init_deps = try ret.arena.allocator.dupe(Dependency, deps.items);
+    for (init_deps) |*dep| {
+        var node = try gpa.create(DepQueue.Node);
         node.data = .{
             .from = &ret.root,
             .dep = dep,
@@ -63,51 +57,41 @@ pub fn generate(
     }
 
     while (queue.popFirst()) |q_node| {
-        defer allocator.destroy(q_node);
+        defer gpa.destroy(q_node);
 
-        const entry = try q_node.data.dep.resolve(ret, lockfile);
-        var node = for (ret.node_pool.items) |*node| {
+        const entry = try q_node.data.dep.resolve(&ret.arena, lockfile);
+        const node = for (ret.node_pool.items) |node| {
             if (node.entry == entry) {
                 node.depth = std.math.max(node.depth, q_node.data.from.depth + 1);
                 break node;
             }
         } else blk: {
-            try ret.node_pool.append(allocator, Node{
+            const ptr = try ret.arena.allocator.create(Node);
+            ptr.* = Node{
                 .entry = entry,
                 .depth = q_node.data.from.depth + 1,
                 .edges = std.ArrayListUnmanaged(*Edge){},
-            });
+            };
 
-            const ptr = &ret.node_pool.items[ret.node_pool.items.len - 1];
-            const dependencies = try entry.getDeps(ret);
-            defer ret.allocator.free(dependencies);
-
-            try ret.dep_pool.appendSlice(allocator, dependencies);
-            var i: usize = 0;
-            while (i < dependencies.len) : (i += 1) {
-                var new_node = try allocator.create(DepQueue.Node);
-                new_node.data = .{
-                    .from = ptr,
-                    .dep = &ret.dep_pool.items[ret.dep_pool.items.len -
-                            dependencies.len + i],
-                };
+            try ret.node_pool.append(ptr);
+            const dependencies = try entry.getDeps(&ret.arena);
+            for (dependencies) |*dep| {
+                var new_node = try gpa.create(DepQueue.Node);
+                new_node.data = .{ .from = ptr, .dep = dep };
                 queue.append(new_node);
             }
 
             break :blk ptr;
         };
 
-        try ret.edge_pool.append(allocator, Edge{
+        var edge = try ret.arena.allocator.create(Edge);
+        edge.* = Edge{
             .from = q_node.data.from,
             .to = node,
             .dep = q_node.data.dep,
-        });
+        };
 
-        try q_node.data.from.edges.append(
-            allocator,
-            &ret.edge_pool.items[ret.edge_pool.items.len - 1],
-        );
-
+        try q_node.data.from.edges.append(gpa, edge);
         try ret.validate();
     }
 
@@ -123,18 +107,14 @@ fn validate(self: Self) !void {
 }
 
 pub fn destroy(self: *Self) void {
-    self.root.edges.deinit(self.allocator);
+    const gpa = self.arena.child_allocator;
+    self.root.edges.deinit(gpa);
 
-    for (self.node_pool.items) |*node| node.edges.deinit(self.allocator);
-    self.node_pool.deinit(self.allocator);
+    for (self.node_pool.items) |node| node.edges.deinit(gpa);
+    self.node_pool.deinit();
 
-    self.dep_pool.deinit(self.allocator);
-    self.edge_pool.deinit(self.allocator);
-
-    for (self.buf_pool.items) |buf| self.allocator.free(buf);
-    self.buf_pool.deinit(self.allocator);
-
-    self.allocator.destroy(self);
+    self.arena.deinit();
+    gpa.destroy(self);
 }
 
 pub fn createArgs(
@@ -196,7 +176,7 @@ fn recursivePrintZig(
     try writer.print(".name = \"{s}\",\n", .{edge.dep.alias});
 
     try indent(depth + 1, writer);
-    try writer.print(".path = \"{s}\",\n", .{try edge.to.entry.rootPath(self)});
+    try writer.print(".path = \"{s}\",\n", .{try edge.to.entry.rootPath(&self.arena)});
 
     if (edge.to.edges.items.len > 0) {
         try indent(depth + 1, writer);

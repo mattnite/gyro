@@ -3,7 +3,6 @@ const version = @import("version");
 const zzz = @import("zzz");
 const api = @import("api.zig");
 const Dependency = @import("Dependency.zig");
-const DependencyTree = @import("DependencyTree.zig");
 usingnamespace @import("common.zig");
 
 const Self = @This();
@@ -67,26 +66,17 @@ pub const Entry = union(enum) {
         };
     }
 
-    pub fn getDeps(self: Entry, tree: *DependencyTree) ![]Dependency {
+    pub fn getDeps(self: Entry, arena: *std.heap.ArenaAllocator) ![]Dependency {
         return switch (self) {
-            .pkg => |pkg| blk: {
-                const resp = try api.getDependencies(
-                    tree.allocator,
-                    pkg.repository,
-                    pkg.name,
-                    pkg.version,
-                );
-                errdefer {
-                    tree.allocator.free(resp.text);
-                    tree.allocator.free(resp.deps);
-                }
-
-                try tree.buf_pool.append(tree.allocator, resp.text);
-                break :blk resp.deps;
-            },
+            .pkg => |pkg| try api.getDependencies(
+                arena,
+                pkg.repository,
+                pkg.name,
+                pkg.version,
+            ),
             .url, .github => blk: {
-                try self.fetch(tree.allocator);
-                const base_path = try self.basePath(tree);
+                try self.fetch(arena.child_allocator);
+                const base_path = try self.basePath(arena);
                 var base_dir = try std.fs.cwd().openDir(
                     base_path,
                     .{ .access_sub_paths = true },
@@ -105,87 +95,69 @@ pub const Entry = union(enum) {
                 defer file.close();
 
                 const text = try file.reader().readAllAlloc(
-                    tree.allocator,
+                    &arena.allocator,
                     std.math.maxInt(usize),
                 );
-                errdefer tree.allocator.free(text);
 
                 var deps = std.ArrayListUnmanaged(Dependency){};
 
+                // TODO: count then alloc
                 var ztree = zzz.ZTree(1, 100){};
                 var root = try ztree.appendText(text);
                 if (zFindChild(root, "deps")) |deps_node| {
                     var it = ZChildIterator.init(deps_node);
                     while (it.next()) |node|
                         try deps.append(
-                            tree.allocator,
+                            &arena.allocator,
                             try Dependency.fromZNode(node),
                         );
                 }
 
-                try tree.buf_pool.append(tree.allocator, text);
                 break :blk deps.items;
             },
         };
     }
 
-    fn basePath(self: Entry, tree: *DependencyTree) ![]const u8 {
+    fn basePath(self: Entry, arena: *std.heap.ArenaAllocator) ![]const u8 {
         return if (self == .url and std.mem.startsWith(u8, self.url.str, file_proto))
             self.url.str[file_proto.len..]
         else blk: {
-            const package_path = try self.packagePath(tree.allocator);
-            defer tree.allocator.free(package_path);
+            const package_path = try self.packagePath(arena.child_allocator);
+            defer arena.child_allocator.free(package_path);
 
-            const ret = try std.fs.path.join(tree.allocator, &[_][]const u8{
+            break :blk try std.fs.path.join(&arena.allocator, &[_][]const u8{
                 package_path,
                 "pkg",
             });
-            errdefer tree.allocator.free(ret);
-
-            try tree.buf_pool.append(tree.allocator, ret);
-            break :blk ret;
         };
     }
 
-    pub fn rootPath(self: Entry, tree: *DependencyTree) ![]const u8 {
+    pub fn rootPath(self: Entry, arena: *std.heap.ArenaAllocator) ![]const u8 {
         const root_path = switch (self) {
-            .pkg => |pkg| blk: {
-                const resp = try api.getRoot(
-                    tree.allocator,
-                    pkg.repository,
-                    pkg.name,
-                    pkg.version,
-                );
-                errdefer tree.allocator.free(resp);
-
-                try tree.buf_pool.append(tree.allocator, resp);
-                break :blk resp;
-            },
+            .pkg => |pkg| try api.getRoot(
+                &arena.allocator,
+                pkg.repository,
+                pkg.name,
+                pkg.version,
+            ),
             .github => |gh| gh.root,
-            .url => |url| if (std.mem.startsWith(u8, url.str, file_proto)) {
-                const ret = try std.fs.path.join(tree.allocator, &[_][]const u8{
+            .url => |url| if (std.mem.startsWith(u8, url.str, file_proto))
+                try std.fs.path.join(&arena.allocator, &[_][]const u8{
                     url.str[file_proto.len..],
                     url.root,
-                });
-                errdefer tree.allocator.free(ret);
-
-                try tree.buf_pool.append(tree.allocator, ret);
-                return ret;
-            } else url.root,
+                })
+            else
+                url.root,
         };
 
-        const package_path = try self.packagePath(tree.allocator);
-        defer tree.allocator.free(package_path);
+        const package_path = try self.packagePath(arena.child_allocator);
+        defer arena.child_allocator.free(package_path);
 
-        const ret = try std.fs.path.join(tree.allocator, &[_][]const u8{
+        return try std.fs.path.join(&arena.allocator, &[_][]const u8{
             package_path,
             "pkg",
             root_path,
         });
-        errdefer tree.allocator.free(ret);
-
-        try tree.buf_pool.append(tree.allocator, ret);
-        return ret;
     }
 
     pub fn packagePath(self: Entry, allocator: *Allocator) ![]const u8 {
