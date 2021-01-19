@@ -4,7 +4,7 @@ const zfetch = @import("zfetch");
 const http = @import("hzzp");
 const tar = @import("tar");
 const zzz = @import("zzz");
-const zuri = @import("uri");
+const uri = @import("uri");
 const Dependency = @import("Dependency.zig");
 usingnamespace @import("common.zig");
 
@@ -38,19 +38,14 @@ pub fn getLatest(
     var headers = http.Headers.init(allocator);
     defer headers.deinit();
 
-    const uri = try zuri.Uri.parse(url, true);
+    const link = try uri.parse(url);
     var ip_buf: [80]u8 = undefined;
     var stream = std.io.fixedBufferStream(&ip_buf);
 
     try headers.set("Accept", "*/*");
     try headers.set("User-Agent", "gyro");
-    try headers.set("Host", switch (uri.host) {
-        .name => |name| name,
-        .ip => |ip| blk: {
-            try stream.writer().print("{}", .{ip});
-            break :blk stream.getWritten();
-        },
-    });
+    try headers.set("Host", link.host orelse return error.NoHost);
+
     var req = try zfetch.Request.init(allocator, url);
     defer req.deinit();
 
@@ -224,10 +219,8 @@ fn getTarGzImpl(
     var req = try zfetch.Request.init(allocator, url);
     defer req.deinit();
 
-    const uri = try zuri.Uri.parse(url, true);
-    if (@as(zuri.Uri.Host, uri.host) == .ip) return error.NotSupportedYet;
-
-    try headers.set("Host", uri.host.name);
+    const link = try uri.parse(url);
+    try headers.set("Host", link.host orelse return error.NoHost);
     try headers.set("Accept", "*/*");
     try headers.set("User-Agent", "gyro");
 

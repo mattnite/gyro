@@ -4,60 +4,60 @@ const ssl = @import(pkgs.ssl.path);
 
 const clap = .{
     .name = "clap",
-    .path = "../zig-clap/clap.zig",
+    .path = "libs/zig-clap/clap.zig",
 };
 
 const version = .{
     .name = "version",
-    .path = "../version/src/main.zig",
+    .path = "libs/version/src/main.zig",
     .dependencies = &[_]Pkg{
         .{
             .name = "mecha",
-            .path = "../mecha/mecha.zig",
+            .path = "libs/mecha/mecha.zig",
         },
     },
 };
 
 const tar = .{
     .name = "tar",
-    .path = "../tar/src/main.zig",
+    .path = "libs/tar/src/main.zig",
 };
 
 const zzz = .{
     .name = "zzz",
-    .path = "../zzz/src/main.zig",
+    .path = "libs/zzz/src/main.zig",
 };
 
 const glob = .{
     .name = "glob",
-    .path = "../glob/src/main.zig",
+    .path = "libs/glob/src/main.zig",
 };
 
 const hzzp = .{
     .name = "hzzp",
-    .path = "../hzzp/src/main.zig",
+    .path = "libs/hzzp/src/main.zig",
 };
 
 const zfetch = .{
     .name = "zfetch",
-    .path = "../zfetch/src/main.zig",
+    .path = "libs/zfetch/src/main.zig",
     .dependencies = &[_]std.build.Pkg{
         hzzp,
-        zuri,
+        uri,
         .{
             .name = "network",
-            .path = "../zig-network/network.zig",
+            .path = "libs/zig-network/network.zig",
         },
         .{
             .name = "iguanatls",
-            .path = "../iguanaTLS/src/main.zig",
+            .path = "libs/iguanaTLS/src/main.zig",
         },
     },
 };
 
-const zuri = .{
+const uri = .{
     .name = "uri",
-    .path = "../zuri/src/zuri.zig",
+    .path = "libs/zig-uri/uri.zig",
 };
 
 fn addAllPkgs(lib: *LibExeObjStep) void {
@@ -68,7 +68,7 @@ fn addAllPkgs(lib: *LibExeObjStep) void {
     lib.addPackage(glob);
     lib.addPackage(hzzp);
     lib.addPackage(zfetch);
-    lib.addPackage(zuri);
+    lib.addPackage(uri);
 }
 pub fn build(b: *Builder) !void {
     var target = b.standardTargetOptions(.{});
