@@ -11,9 +11,9 @@ const Hasher = std.crypto.hash.blake2.Blake2b128;
 const testing = std.testing;
 const file_proto = "file://";
 
-allocator: *Allocator,
+arena: std.heap.ArenaAllocator,
 text: []const u8,
-entries: std.ArrayList(Entry),
+entries: std.ArrayList(*Entry),
 
 pub const Entry = union(enum) {
     pkg: struct {
@@ -286,13 +286,17 @@ pub const Entry = union(enum) {
 
 fn fromReader(allocator: *Allocator, reader: anytype) !Self {
     var ret = Self{
-        .allocator = allocator,
-        .entries = std.ArrayList(Entry).init(allocator),
+        .arena = std.heap.ArenaAllocator.init(allocator),
+        .entries = std.ArrayList(*Entry).init(allocator),
         .text = try reader.readAllAlloc(allocator, std.math.maxInt(usize)),
     };
 
     var it = std.mem.tokenize(ret.text, "\n");
-    while (it.next()) |line| try ret.entries.append(try Entry.fromLine(line));
+    while (it.next()) |line| {
+        const entry = try ret.arena.allocator.create(Entry);
+        entry.* = try Entry.fromLine(line);
+        try ret.entries.append(entry);
+    }
 
     return ret;
 }
@@ -302,8 +306,9 @@ pub fn fromFile(allocator: *Allocator, file: std.fs.File) !Self {
 }
 
 pub fn deinit(self: *Self) void {
+    self.entries.allocator.free(self.text);
     self.entries.deinit();
-    self.allocator.free(self.text);
+    self.arena.deinit();
 }
 
 pub fn save(self: Self, file: std.fs.File) !void {
@@ -313,7 +318,7 @@ pub fn save(self: Self, file: std.fs.File) !void {
 
 pub fn fetchAll(self: Self) !void {
     for (self.entries.items) |entry|
-        try entry.fetch(self.allocator);
+        try entry.fetch(self.arena.child_allocator);
 }
 
 fn expectEntryEqual(expected: Entry, actual: Entry) void {

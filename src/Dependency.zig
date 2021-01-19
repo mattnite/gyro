@@ -39,7 +39,7 @@ const Source = union(SourceType) {
 
 fn findLatestMatch(self: Self, lockfile: *Lockfile) ?*Lockfile.Entry {
     var ret: ?*Lockfile.Entry = null;
-    for (lockfile.entries.items) |*entry| {
+    for (lockfile.entries.items) |entry| {
         if (@as(SourceType, self.src) != @as(SourceType, entry.*)) continue;
 
         switch (self.src) {
@@ -70,9 +70,10 @@ fn resolveLatest(
     self: Self,
     arena: *std.heap.ArenaAllocator,
     lockfile: *Lockfile,
-) !Lockfile.Entry {
+) !*Lockfile.Entry {
     const allocator = &arena.allocator;
-    return switch (self.src) {
+    const ret = try allocator.create(Lockfile.Entry);
+    ret.* = switch (self.src) {
         .pkg => |pkg| .{
             .pkg = .{
                 .name = pkg.name,
@@ -101,6 +102,8 @@ fn resolveLatest(
             },
         },
     };
+
+    return ret;
 }
 
 pub fn resolve(
@@ -109,8 +112,9 @@ pub fn resolve(
     lockfile: *Lockfile,
 ) !*Lockfile.Entry {
     return self.findLatestMatch(lockfile) orelse blk: {
-        try lockfile.entries.append(try self.resolveLatest(arena, lockfile));
-        break :blk &lockfile.entries.items[lockfile.entries.items.len - 1];
+        const entry = try self.resolveLatest(arena, lockfile);
+        try lockfile.entries.append(entry);
+        break :blk entry;
     };
 }
 

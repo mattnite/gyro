@@ -1,6 +1,7 @@
 usingnamespace std.build;
 const std = @import("std");
 const ssl = @import(pkgs.ssl.path);
+const pkgs = @import("deps.zig").pkgs;
 
 const clap = .{
     .name = "clap",
@@ -81,10 +82,21 @@ pub fn build(b: *Builder) !void {
 
     const mode = b.standardReleaseOptions();
 
+    const bootstrap = b.option(bool, "bootstrap", "bootstrapping with just the zig compiler");
+
     const gyro = b.addExecutable("gyro", "src/main.zig");
     gyro.setTarget(target);
     gyro.setBuildMode(mode);
-    addAllPkgs(gyro);
+    if (bootstrap) |bs| {
+        if (bs) {
+            addAllPkgs(gyro);
+        } else {
+            pkgs.addAllTo(gyro);
+        }
+    } else {
+        pkgs.addAllTo(gyro);
+    }
+
     gyro.install();
 
     const tests = b.addTest("src/main.zig");
