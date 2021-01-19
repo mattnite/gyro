@@ -28,3 +28,6 @@
 [submodule "libs/tar"]
 	path = libs/tar
 	url = https://github.com/mattnite/tar.git
+[submodule "libs/glob"]
+	path = libs/glob
+	url = https://github.com/mattnite/glob
