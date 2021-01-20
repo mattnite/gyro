@@ -1,7 +1,7 @@
 name: windows
 on:
   push:
-    branches: [ master ]
+    branches: [ master, gyro ]
   pull_request:
     branches: [ master ]
   schedule:
@@ -27,27 +27,14 @@ jobs:
         fetch-depth: 0
 
     - name: Setup Zig
-      uses: goto-bus-stop/setup-zig@v1.2.5
+      uses: goto-bus-stop/setup-zig@v1.3.0
       with:
-        version: 0.7.1
+        version: master
 
     - run: echo $(pwd)/zig-cache/bin >> $GITHUB_PATH
 
-    - name: Compile
-      run: zig build
+    - name: Bootstrap build
+      run: zig build -Dbootstrap
 
-    - name: Search
-      run: zkg search
-
-    - name: Add
-      run: zkg add bearssl
-
-    - name: Fetch
-      run: zkg fetch
-
-    - name: Example Project
-      working-directory: ./tests/example
-      run: |
-        zkg fetch
-        cat deps.zig
-        zig build
+    - name: Self-hosted build
+      run: gyro build
