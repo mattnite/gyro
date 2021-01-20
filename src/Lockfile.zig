@@ -67,15 +67,26 @@ pub const Entry = union(enum) {
     }
 
     pub fn getDeps(self: Entry, arena: *std.heap.ArenaAllocator) ![]Dependency {
-        return switch (self) {
-            .pkg => |pkg| try api.getDependencies(
-                arena,
-                pkg.repository,
-                pkg.name,
-                pkg.version,
-            ),
+        try self.fetch(arena.child_allocator);
+        const file = switch (self) {
+            .pkg => |pkg| blk: {
+                const package_path = try self.packagePath(arena.child_allocator);
+                defer arena.child_allocator.free(package_path);
+
+                var base_dir = try std.fs.cwd().openDir(
+                    package_path,
+                    .{ .access_sub_paths = true },
+                );
+                defer base_dir.close();
+
+                break :blk base_dir.openFile(
+                    "manifest.zzz",
+                    .{ .read = true },
+                ) catch |err| {
+                    return if (err == error.FileNotFound) &[_]Dependency{} else err;
+                };
+            },
             .url, .github => blk: {
-                try self.fetch(arena.child_allocator);
                 const base_path = try self.basePath(arena);
                 var base_dir = try std.fs.cwd().openDir(
                     base_path,
@@ -83,39 +94,36 @@ pub const Entry = union(enum) {
                 );
                 defer base_dir.close();
 
-                const file = base_dir.openFile(
+                break :blk base_dir.openFile(
                     "gyro.zzz",
                     .{ .read = true },
                 ) catch |err| {
-                    if (err == error.FileNotFound)
-                        break :blk &[_]Dependency{}
-                    else
-                        return err;
+                    return if (err == error.FileNotFound) &[_]Dependency{} else err;
                 };
-                defer file.close();
-
-                const text = try file.reader().readAllAlloc(
-                    &arena.allocator,
-                    std.math.maxInt(usize),
-                );
-
-                var deps = std.ArrayListUnmanaged(Dependency){};
-
-                // TODO: count then alloc
-                var ztree = zzz.ZTree(1, 100){};
-                var root = try ztree.appendText(text);
-                if (zFindChild(root, "deps")) |deps_node| {
-                    var it = ZChildIterator.init(deps_node);
-                    while (it.next()) |node|
-                        try deps.append(
-                            &arena.allocator,
-                            try Dependency.fromZNode(node),
-                        );
-                }
-
-                break :blk deps.items;
             },
         };
+        defer file.close();
+
+        const text = try file.reader().readAllAlloc(
+            &arena.allocator,
+            std.math.maxInt(usize),
+        );
+
+        var deps = std.ArrayListUnmanaged(Dependency){};
+
+        // TODO: count then alloc
+        var ztree = zzz.ZTree(1, 100){};
+        var root = try ztree.appendText(text);
+        if (zFindChild(root, "deps")) |deps_node| {
+            var it = ZChildIterator.init(deps_node);
+            while (it.next()) |node|
+                try deps.append(
+                    &arena.allocator,
+                    try Dependency.fromZNode(node),
+                );
+        }
+
+        return deps.items;
     }
 
     fn basePath(self: Entry, arena: *std.heap.ArenaAllocator) ![]const u8 {
@@ -153,13 +161,12 @@ pub const Entry = union(enum) {
         const package_path = try self.packagePath(arena.child_allocator);
         defer arena.child_allocator.free(package_path);
 
-        const first = try std.fs.path.join(arena.child_allocator, &[_][]const u8{
-            package_path,
-            "pkg",
-            root_path,
-        });
-
         return if (std.fs.path.sep == std.fs.path.sep_windows) blk: {
+            const first = try std.fs.path.join(arena.child_allocator, &[_][]const u8{
+                package_path,
+                "pkg",
+                root_path,
+            });
             defer arena.child_allocator.free(first);
 
             const second = try std.mem.replaceOwned(
@@ -178,7 +185,12 @@ pub const Entry = union(enum) {
                 "/",
                 "\\\\",
             );
-        } else first;
+        } else
+            try std.fs.path.join(&arena.allocator, &[_][]const u8{
+                package_path,
+                "pkg",
+                root_path,
+            });
     }
 
     pub fn packagePath(self: Entry, allocator: *Allocator) ![]const u8 {

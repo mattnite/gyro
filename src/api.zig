@@ -141,29 +141,6 @@ fn getManifest(
     return req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
 }
 
-pub fn getDependencies(
-    arena: *std.heap.ArenaAllocator,
-    repository: []const u8,
-    package: []const u8,
-    semver: version.Semver,
-) ![]Dependency {
-    var text = try getManifest(&arena.allocator, repository, package, semver);
-    var deps = std.ArrayListUnmanaged(Dependency){};
-    var tree = zzz.ZTree(1, 100){};
-    var root = try tree.appendText(text);
-    //TODO: count then alloc
-    if (zFindChild(root, "deps")) |deps_node| {
-        var it = ZChildIterator.init(deps_node);
-        while (it.next()) |node|
-            try deps.append(
-                &arena.allocator,
-                try Dependency.fromZNode(node),
-            );
-    }
-
-    return deps.items;
-}
-
 pub fn getRoot(
     allocator: *Allocator,
     repository: []const u8,
