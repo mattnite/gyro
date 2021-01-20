@@ -374,7 +374,11 @@ pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool)
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    const file = try std.fs.cwd().openFile("gyro.zzz", .{ .write = true });
+    const file = try std.fs.cwd().createFile("gyro.zzz", .{
+        .truncate = false,
+        .read = true,
+        .exclusive = false,
+    });
     defer file.close();
 
     const text = try file.reader().readAllAlloc(&arena.allocator, std.math.maxInt(usize));

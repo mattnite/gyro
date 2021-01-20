@@ -132,6 +132,7 @@ fn runCommands(allocator: *std.mem.Allocator) !void {
             const summary = "Add dependencies to the project";
             const params = comptime [_]clap.Param(clap.Help){
                 clap.parseParam("-h, --help              Display help") catch unreachable,
+                clap.parseParam("-b, --build-dep         Add a build dependency") catch unreachable,
                 clap.Param(clap.Help){
                     .takes_value = .Many,
                 },
@@ -140,7 +141,7 @@ fn runCommands(allocator: *std.mem.Allocator) !void {
             var args = parseHandlingHelpAndErrors(allocator, summary, &params, &iter);
             defer args.deinit();
 
-            try add(allocator, args.positionals(), false);
+            try add(allocator, args.positionals(), args.flag("--build-dep"));
         },
         .package => {
             const summary = "Bundle package(s) into a ziglet";
