@@ -132,7 +132,7 @@ pub const Entry = union(enum) {
         };
     }
 
-    pub fn rootPath(self: Entry, arena: *std.heap.ArenaAllocator) ![]const u8 {
+    pub fn escapedRootPath(self: Entry, arena: *std.heap.ArenaAllocator) ![]const u8 {
         const root_path = switch (self) {
             .pkg => |pkg| try api.getRoot(
                 &arena.allocator,
@@ -153,11 +153,32 @@ pub const Entry = union(enum) {
         const package_path = try self.packagePath(arena.child_allocator);
         defer arena.child_allocator.free(package_path);
 
-        return try std.fs.path.join(&arena.allocator, &[_][]const u8{
+        const first = try std.fs.path.join(arena.child_allocator, &[_][]const u8{
             package_path,
             "pkg",
             root_path,
         });
+
+        return if (std.fs.path.sep == std.fs.path.sep_windows) blk: {
+            defer arena.child_allocator.free(first);
+
+            const second = try std.mem.replaceOwned(
+                u8,
+                arena.child_allocator,
+                first,
+                "\\",
+                "\\\\",
+            );
+            defer arena.child_allocator.free(second);
+
+            break :blk try std.mem.replaceOwned(
+                u8,
+                &arena.allocator,
+                second,
+                "/",
+                "\\\\",
+            );
+        } else first;
     }
 
     pub fn packagePath(self: Entry, allocator: *Allocator) ![]const u8 {

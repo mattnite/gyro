@@ -124,6 +124,18 @@ pub fn createArgs(
     return error.Todo;
 }
 
+fn escape(allocator: *Allocator, str: []const u8) ![]const u8 {
+    return for (str) |c| {
+        if (!std.ascii.isAlNum(c) and c != '_') {
+            var buf = try allocator.alloc(u8, str.len + 3);
+            std.mem.copy(u8, buf, "@\"");
+            std.mem.copy(u8, buf[2..], str);
+            buf[buf.len - 1] = '"';
+            break buf;
+        }
+    } else try allocator.dupe(u8, str);
+}
+
 pub fn printZig(self: *Self, writer: anytype) !void {
     try writer.print(
         \\pub const pkgs = struct {{
@@ -132,10 +144,10 @@ pub fn printZig(self: *Self, writer: anytype) !void {
     , .{});
 
     for (self.root.edges.items) |edge| {
-        try writer.print("    pub const {s} = std.build.Pkg{{\n", .{
-            edge.dep.alias,
-        });
+        const alias = try escape(self.arena.child_allocator, edge.dep.alias);
+        defer self.arena.child_allocator.free(alias);
 
+        try writer.print("    pub const {s} = std.build.Pkg{{\n", .{alias});
         try self.recursivePrintZig(0, edge, writer);
         try writer.print(
             \\    }};
@@ -176,7 +188,7 @@ fn recursivePrintZig(
     try writer.print(".name = \"{s}\",\n", .{edge.dep.alias});
 
     try indent(depth + 1, writer);
-    try writer.print(".path = \"{s}\",\n", .{try edge.to.entry.rootPath(&self.arena)});
+    try writer.print(".path = \"{s}\",\n", .{try edge.to.entry.escapedRootPath(&self.arena)});
 
     if (edge.to.edges.items.len > 0) {
         try indent(depth + 1, writer);
