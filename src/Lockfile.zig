@@ -141,13 +141,29 @@ pub const Entry = union(enum) {
     }
 
     pub fn escapedRootPath(self: Entry, arena: *std.heap.ArenaAllocator) ![]const u8 {
-        const root_path = switch (self) {
-            .pkg => |pkg| try api.getRoot(
-                &arena.allocator,
-                pkg.repository,
-                pkg.name,
-                pkg.version,
-            ),
+        const package_path = try self.packagePath(arena.child_allocator);
+        defer arena.child_allocator.free(package_path);
+
+        var root_path = switch (self) {
+            .pkg => |pkg| blk: {
+                var dir = try std.fs.cwd().openDir(package_path, .{ .access_sub_paths = true });
+                defer dir.close();
+
+                const file = try dir.openFile("manifest.zzz", .{ .read = true });
+                defer file.close();
+
+                var text = try file.reader().readAllAlloc(&arena.allocator, std.math.maxInt(usize));
+                var tree = zzz.ZTree(1, 100){};
+                var root = try tree.appendText(text);
+                break :blk (try zFindString(root, "root")) orelse {
+                    std.log.err("Root missing for package: {s}-{} from {s}", .{
+                        pkg.name,
+                        pkg.version,
+                        pkg.repository,
+                    });
+                    return error.Explained;
+                };
+            },
             .github => |gh| gh.root,
             .url => |url| if (std.mem.startsWith(u8, url.str, file_proto))
                 try std.fs.path.join(&arena.allocator, &[_][]const u8{
@@ -158,10 +174,12 @@ pub const Entry = union(enum) {
                 url.root,
         };
 
-        const package_path = try self.packagePath(arena.child_allocator);
-        defer arena.child_allocator.free(package_path);
-
         return if (std.fs.path.sep == std.fs.path.sep_windows) blk: {
+            for (root_path) |*c| {
+                if (c.* == '/') {
+                    c.* = '\\';
+                }
+            }
             const first = try std.fs.path.join(arena.child_allocator, &[_][]const u8{
                 package_path,
                 "pkg",
@@ -169,20 +187,11 @@ pub const Entry = union(enum) {
             });
             defer arena.child_allocator.free(first);
 
-            const second = try std.mem.replaceOwned(
-                u8,
-                arena.child_allocator,
-                first,
-                "\\",
-                "\\\\",
-            );
-            defer arena.child_allocator.free(second);
-
             break :blk try std.mem.replaceOwned(
                 u8,
                 &arena.allocator,
-                second,
-                "/",
+                first,
+                "\\",
                 "\\\\",
             );
         } else
