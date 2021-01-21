@@ -165,10 +165,12 @@ pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
     );
     defer std.fs.cwd().deleteFile("build_runner.zig") catch {};
 
-    //const build_pkgs = try ctx.build_dep_tree.createPkgs(allocator);
-    //defer pkgs.deinit();
-
     // TODO: configurable local cache
+    const pkgs = try ctx.build_dep_tree.assemblePkgs(std.build.Pkg{
+        .name = "gyro",
+        .path = "deps.zig",
+    });
+
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
@@ -192,18 +194,8 @@ pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
     runner.addPackage(std.build.Pkg{
         .name = "@build",
         .path = "build.zig",
-        .dependencies = &[_]std.build.Pkg{
-            std.build.Pkg{
-                .name = "gyro",
-                .path = "deps.zig",
-            },
-        },
+        .dependencies = pkgs,
     });
-
-    // // add build_deps here
-    // try pkgs.addAllTo(runner)
-    //
-    // // add normal deps as build_option
 
     const run_cmd = runner.run();
     run_cmd.addArgs(&[_][]const u8{

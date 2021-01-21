@@ -140,11 +140,11 @@ pub const Entry = union(enum) {
         };
     }
 
-    pub fn escapedRootPath(self: Entry, arena: *std.heap.ArenaAllocator) ![]const u8 {
+    pub fn getRootPath(self: Entry, arena: *std.heap.ArenaAllocator) ![]const u8 {
         const package_path = try self.packagePath(arena.child_allocator);
         defer arena.child_allocator.free(package_path);
 
-        var root_path = switch (self) {
+        var root_path = try arena.allocator.dupe(u8, switch (self) {
             .pkg => |pkg| blk: {
                 var dir = try std.fs.cwd().openDir(package_path, .{ .access_sub_paths = true });
                 defer dir.close();
@@ -172,34 +172,36 @@ pub const Entry = union(enum) {
                 })
             else
                 url.root,
-        };
+        });
 
-        return if (std.fs.path.sep == std.fs.path.sep_windows) blk: {
+        if (std.fs.path.sep == std.fs.path.sep_windows) {
             for (root_path) |*c| {
                 if (c.* == '/') {
                     c.* = '\\';
                 }
             }
-            const first = try std.fs.path.join(arena.child_allocator, &[_][]const u8{
-                package_path,
-                "pkg",
-                root_path,
-            });
-            defer arena.child_allocator.free(first);
+        }
 
-            break :blk try std.mem.replaceOwned(
+        return try std.fs.path.join(&arena.allocator, &[_][]const u8{
+            package_path,
+            "pkg",
+            root_path,
+        });
+    }
+
+    pub fn getEscapedRootPath(self: Entry, arena: *std.heap.ArenaAllocator) ![]const u8 {
+        var root_path = try self.getRootPath(arena);
+
+        return if (std.fs.path.sep == std.fs.path.sep_windows)
+            try std.mem.replaceOwned(
                 u8,
                 &arena.allocator,
-                first,
+                root_path,
                 "\\",
                 "\\\\",
-            );
-        } else
-            try std.fs.path.join(&arena.allocator, &[_][]const u8{
-                package_path,
-                "pkg",
-                root_path,
-            });
+            )
+        else
+            root_path;
     }
 
     pub fn packagePath(self: Entry, allocator: *Allocator) ![]const u8 {

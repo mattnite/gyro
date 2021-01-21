@@ -117,11 +117,33 @@ pub fn destroy(self: *Self) void {
     gpa.destroy(self);
 }
 
-pub fn createArgs(
-    self: Self,
-    allocator: *Allocator,
-) !std.ArrayList([]const u8) {
-    return error.Todo;
+pub fn assemblePkgs(self: *Self, seed: std.build.Pkg) ![]std.build.Pkg {
+    var ret = try self.arena.allocator.alloc(std.build.Pkg, self.root.edges.items.len + 1);
+    ret[0] = seed;
+    for (ret[1..]) |*pkg, i| {
+        pkg.* = try recursiveBuildPkg(&self.arena, self.root.edges.items[i]);
+    }
+
+    return ret;
+}
+
+fn recursiveBuildPkg(arena: *std.heap.ArenaAllocator, edge: *Edge) anyerror!std.build.Pkg {
+    var ret = std.build.Pkg{
+        .name = edge.dep.alias,
+        .path = try edge.to.entry.getRootPath(arena),
+        .dependencies = null,
+    };
+
+    if (edge.to.edges.items.len > 0) {
+        var pkgs = try arena.allocator.alloc(std.build.Pkg, edge.to.edges.items.len);
+        for (pkgs) |*pkg, i| {
+            pkg.* = try recursiveBuildPkg(arena, edge.to.edges.items[i]);
+        }
+
+        ret.dependencies = pkgs;
+    }
+
+    return ret;
 }
 
 fn escape(allocator: *Allocator, str: []const u8) ![]const u8 {
@@ -188,7 +210,9 @@ fn recursivePrintZig(
     try writer.print(".name = \"{s}\",\n", .{edge.dep.alias});
 
     try indent(depth + 1, writer);
-    try writer.print(".path = \"{s}\",\n", .{try edge.to.entry.escapedRootPath(&self.arena)});
+    try writer.print(".path = \"{s}\",\n", .{
+        try edge.to.entry.getEscapedRootPath(&self.arena),
+    });
 
     if (edge.to.edges.items.len > 0) {
         try indent(depth + 1, writer);
