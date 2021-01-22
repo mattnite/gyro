@@ -1,702 +1,436 @@
 const std = @import("std");
-const builtin = @import("builtin");
 const clap = @import("clap");
-const http = @import("http");
-const net = @import("net");
-const ssl = @import("ssl");
-const Uri = @import("uri").Uri;
-const Manifest = @import("manifest.zig");
-const Import = @import("import.zig").Import;
+const version = @import("version");
+const zzz = @import("zzz");
+const api = @import("api.zig");
+const Project = @import("Project.zig");
+const Lockfile = @import("Lockfile.zig");
+const Dependency = @import("Dependency.zig");
+const DependencyTree = @import("DependencyTree.zig");
+usingnamespace @import("common.zig");
 
-const os = std.os;
-const debug = std.debug;
-const fs = std.fs;
-const mem = std.mem;
-const json = std.json;
-const fmt = std.fmt;
+const Allocator = std.mem.Allocator;
 
-const Allocator = mem.Allocator;
-const ArrayList = std.ArrayList;
-const OutStream = std.fs.File.OutStream;
+const FetchContext = struct {
+    project_file: std.fs.File,
+    lock_file: std.fs.File,
 
-const default_remote = "https://zpm.random-projects.net/api";
-const imports_zzz = "imports.zzz";
+    project: Project,
+    lockfile: Lockfile,
+    dep_tree: *DependencyTree,
+    build_dep_tree: *DependencyTree,
 
-const ziglibs_pem = @embedFile("ziglibs.pem");
+    fn deinit(self: *FetchContext) void {
+        self.lockfile.save(self.lock_file) catch {};
+        self.build_dep_tree.destroy();
+        self.dep_tree.destroy();
+        self.lockfile.deinit();
+        self.project.deinit();
 
-const DependencyGraph = struct {
-    allocator: *Allocator,
-    cache: []const u8,
-    queue_start: usize,
-    nodes: std.ArrayList(Node),
-    manifests: ArrayList(Manifest),
-
-    const Self = @This();
-
-    /// Create DependencyGraph given a root path
-    fn init(allocator: *Allocator, path: []const u8, cache: []const u8) !DependencyGraph {
-        var ret = DependencyGraph{
-            .allocator = allocator,
-            .cache = cache,
-            .queue_start = 0,
-            .nodes = ArrayList(Node).init(allocator),
-            .manifests = ArrayList(Manifest).init(allocator),
-        };
-
-        // TODO: get cwd of process
-        try ret.nodes.append(try Node.init(allocator, "", 0));
-        return ret;
+        // TODO: delete lockfile if it doesn't have anything in it
+        self.lock_file.close();
+        self.project_file.close();
     }
-
-    fn deinit(self: *Self) void {
-        self.nodes.deinit();
-
-        for (self.manifests.items) |manifest| {
-            manifest.deinit();
-        }
-    }
-
-    fn process(self: *Self) !void {
-        while (self.queue_start < self.nodes.items.len) : (self.queue_start += 1) {
-            var front = &self.nodes.items[self.queue_start];
-            const import_path = if (front.base_path.len == 0)
-                imports_zzz
-            else
-                try std.fs.path.join(self.allocator, &[_][]const u8{
-                    front.base_path,
-                    imports_zzz,
-                });
-            defer if (front.base_path.len != 0) self.allocator.free(import_path);
-
-            const file = std.fs.cwd().openFile(import_path, .{ .read = true }) catch |err| {
-                if (err == error.FileNotFound)
-                    continue
-                else
-                    return err;
-            };
-            try self.manifests.append(try Manifest.init(self.allocator, file));
-
-            var manifest = &self.manifests.items[self.manifests.items.len - 1];
-            for (manifest.*.deps.items) |dep| {
-                const path = try dep.path(self.allocator, self.cache);
-                defer self.allocator.free(path);
-
-                for (self.nodes.items) |*node| {
-                    if (mem.eql(u8, path, node.base_path)) {
-                        try front.connect_dependency(node, dep.name, dep.root);
-                        break;
-                    }
-                } else {
-                    try dep.fetch(self.allocator, self.cache);
-                    try self.nodes.append(try Node.init(self.allocator, path, front.depth + 1));
-                    try front.connect_dependency(
-                        &self.nodes.items[self.nodes.items.len - 1],
-                        dep.name,
-                        dep.root,
-                    );
-                }
-
-                try self.validate();
-            }
-        }
-    }
-
-    /// Naive check for circular dependencies
-    fn validate(self: *Self) !void {
-        for (self.nodes.items) |*node| {
-            for (node.dependencies.items) |dep| {
-                if (dep.node.depth <= node.depth) {
-                    return error.CyclicalDependency;
-                }
-            }
-
-            for (node.dependents.items) |dep| {
-                if (dep.depth >= node.depth) {
-                    return error.CyclicalDependency;
-                }
-            }
-        }
-    }
-
-    const DependencyEdge = struct {
-        node: *Node,
-        alias: []const u8,
-        root: []const u8,
-    };
-
-    const DependentEdge = struct {
-        node: *Node,
-    };
-
-    const Node = struct {
-        allocator: *Allocator,
-        dependencies: ArrayList(DependencyEdge),
-        dependents: ArrayList(*Node),
-        base_path: []const u8,
-        depth: u32,
-
-        fn init(allocator: *Allocator, base_path: []const u8, depth: u32) !Node {
-            return Node{
-                .allocator = allocator,
-                .dependencies = ArrayList(DependencyEdge).init(allocator),
-                .dependents = ArrayList(*Node).init(allocator),
-                .base_path = try allocator.dupe(u8, base_path),
-                .depth = depth,
-            };
-        }
-
-        fn deinit(self: *Node) void {
-            self.allocator(base_path);
-            self.dependents.deinit();
-            self.dependencies.deinit();
-        }
-
-        fn connect_dependency(self: *Node, dep: *Node, alias: []const u8, root: []const u8) !void {
-            if (self == dep)
-                return error.CircularDependency;
-
-            if (dep.depth <= self.depth)
-                dep.depth = self.depth + 1;
-
-            try self.dependencies.append(DependencyEdge{
-                .node = dep,
-                .alias = alias,
-                .root = root,
-            });
-            try dep.dependents.append(self);
-        }
-    };
 };
 
-fn indent(stream: OutStream, n: usize) !void {
-    try stream.writeByteNTimes(' ', n * 4);
+pub fn fetchImpl(allocator: *Allocator) !FetchContext {
+    const project_file = std.fs.cwd().openFile(
+        "gyro.zzz",
+        .{ .read = true },
+    ) catch |err| {
+        return if (err == error.FileNotFound) blk: {
+            std.log.err("Missing gyro.zzz project file", .{});
+            break :blk error.Explained;
+        } else err;
+    };
+    errdefer project_file.close();
+
+    const lock_file = try std.fs.cwd().createFile(
+        "gyro.lock",
+        .{ .truncate = false, .read = true },
+    );
+    errdefer lock_file.close();
+
+    var project = try Project.fromFile(allocator, project_file);
+    errdefer project.deinit();
+
+    var lockfile = try Lockfile.fromFile(allocator, lock_file);
+    errdefer lockfile.deinit();
+
+    const dep_tree = try DependencyTree.generate(
+        allocator,
+        &lockfile,
+        project.dependencies,
+    );
+    errdefer dep_tree.destroy();
+
+    const build_dep_tree = try DependencyTree.generate(
+        allocator,
+        &lockfile,
+        project.build_dependencies,
+    );
+    errdefer build_dep_tree.destroy();
+
+    try lockfile.fetchAll();
+    return FetchContext{
+        .project_file = project_file,
+        .lock_file = lock_file,
+        .project = project,
+        .lockfile = lockfile,
+        .dep_tree = dep_tree,
+        .build_dep_tree = build_dep_tree,
+    };
 }
 
-fn recusivePrint(
-    allocator: *Allocator,
-    stream: fs.File.OutStream,
-    edge: *DependencyGraph.DependencyEdge,
-    depth: usize,
-) anyerror!void {
-    const root_file = try std.mem.replaceOwned(u8, allocator, edge.root, "/", &[_]u8{fs.path.sep});
-    defer allocator.free(root_file);
+pub fn fetch(allocator: *Allocator) !void {
+    var ctx = try fetchImpl(allocator);
+    defer ctx.deinit();
+}
 
-    var path = try fs.path.join(allocator, &[_][]const u8{
-        edge.node.base_path,
-        root_file,
+pub fn update(allocator: *Allocator) !void {
+    try std.fs.cwd().deleteFile("gyro.lock");
+    try fetch(allocator);
+}
+
+const EnvInfo = struct {
+    zig_exe: []const u8,
+    lib_dir: []const u8,
+    std_dir: []const u8,
+    global_cache_dir: []const u8,
+    version: []const u8,
+};
+
+pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
+    var ctx = try fetchImpl(allocator);
+    defer ctx.deinit();
+
+    std.fs.cwd().access("build.zig", .{ .read = true }) catch |err| {
+        return if (err == error.FileNotFound) blk: {
+            std.log.err("no build.zig in current working directory", .{});
+            break :blk error.Explained;
+        } else err;
+    };
+
+    var fifo = std.fifo.LinearFifo(u8, .{ .Dynamic = {} }).init(allocator);
+    defer fifo.deinit();
+
+    const result = try std.ChildProcess.exec(.{
+        .allocator = allocator,
+        .argv = &[_][]const u8{ "zig", "env" },
     });
+    defer {
+        allocator.free(result.stdout);
+        allocator.free(result.stderr);
+    }
+
+    switch (result.term) {
+        .Exited => |val| {
+            if (val != 0) {
+                std.log.err("zig compiler returned error code: {}", .{val});
+                return error.Explained;
+            }
+        },
+        .Signal => |sig| {
+            std.log.err("zig compiler interrupted by signal: {}", .{sig});
+            return error.Explained;
+        },
+        else => return error.UnknownTerm,
+    }
+
+    const parse_opts = std.json.ParseOptions{ .allocator = allocator };
+    const env = try std.json.parse(
+        EnvInfo,
+        &std.json.TokenStream.init(result.stdout),
+        parse_opts,
+    );
+    defer std.json.parseFree(EnvInfo, env, parse_opts);
+
+    const path = try std.fs.path.join(
+        allocator,
+        &[_][]const u8{ env.std_dir, "special" },
+    );
     defer allocator.free(path);
 
-    if (fs.path.sep == '\\') {
-        const tmp = try std.mem.replaceOwned(u8, allocator, path, "\\", "\\\\");
-        allocator.free(path);
-        path = tmp;
-    }
+    var special_dir = try std.fs.openDirAbsolute(
+        path,
+        .{ .access_sub_paths = true },
+    );
+    defer special_dir.close();
 
-    try indent(stream, depth);
-    if (depth == 1) {
-        try stream.print(".{} = .{{\n", .{edge.alias});
-    } else {
-        try stream.print(".{{\n", .{});
-    }
+    try special_dir.copyFile(
+        "build_runner.zig",
+        std.fs.cwd(),
+        "build_runner.zig",
+        .{},
+    );
+    defer std.fs.cwd().deleteFile("build_runner.zig") catch {};
 
-    try indent(stream, depth + 1);
-    try stream.print(".name = \"{}\",\n", .{edge.alias});
-    try indent(stream, depth + 1);
-    try stream.print(".path = \"{}\",\n", .{path});
-    if (edge.node.dependencies.items.len > 0) {
-        try indent(stream, depth + 1);
-        try stream.print(".dependencies = &[_]Pkg{{\n", .{});
+    // TODO: configurable local cache
+    const pkgs = try ctx.build_dep_tree.assemblePkgs(std.build.Pkg{
+        .name = "gyro",
+        .path = "deps.zig",
+    });
 
-        for (edge.node.dependencies.items) |*dep| {
-            try recusivePrint(allocator, stream, dep, depth + 2);
-        }
-
-        try indent(stream, depth + 1);
-        try stream.print("}},\n", .{});
-    }
-
-    try indent(stream, depth);
-    try stream.print("}},\n", .{});
-}
-
-pub fn fetch(cache_path: ?[]const u8) !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    const allocator = &arena.allocator;
+    const b = try std.build.Builder.create(
+        &arena.allocator,
+        env.zig_exe,
+        ".",
+        "zig-cache",
+        env.global_cache_dir,
+    );
+    defer b.destroy();
 
-    fs.cwd().access(imports_zzz, .{ .read = true, .write = true }) catch |err| {
-        if (err == error.FileNotFound) {
-            _ = try std.io.getStdErr().writer().write("imports.zzz does not exist\n");
-        }
-
-        return err;
-    };
-
-    var dep_graph = try DependencyGraph.init(allocator, ".", "zig-deps");
-    try dep_graph.process();
-
-    const gen_file = try std.fs.cwd().createFile("deps.zig", fs.File.CreateFlags{
-        .truncate = true,
-    });
+    const deps_file = try std.fs.cwd().createFile("deps.zig", .{ .truncate = true });
     errdefer std.fs.cwd().deleteFile("deps.zig") catch {};
-    defer gen_file.close();
+    defer deps_file.close();
 
-    const file_stream = gen_file.outStream();
-    try file_stream.writeAll(
-        \\const Pkg = @import("std").build.Pkg;
-        \\pub const pkgs = .{
-        \\
-    );
+    try ctx.dep_tree.printZig(deps_file.writer());
 
-    for (dep_graph.nodes.items[0].dependencies.items) |*dep| {
-        try recusivePrint(allocator, file_stream, dep, 1);
+    b.resolveInstallPrefix();
+    const runner = b.addExecutable("build", "build_runner.zig");
+    runner.addPackage(std.build.Pkg{
+        .name = "@build",
+        .path = "build.zig",
+        .dependencies = pkgs,
+    });
+
+    const run_cmd = runner.run();
+    run_cmd.addArgs(&[_][]const u8{
+        env.zig_exe,
+        ".",
+        "zig-cache",
+        env.global_cache_dir,
+    });
+
+    while (try args.next()) |arg| run_cmd.addArg(arg);
+    b.default_step.dependOn(&run_cmd.step);
+    if (b.validateUserInputDidItFail()) {
+        return error.UserInputFailed;
     }
 
-    try file_stream.writeAll("};\n");
-}
-
-const Protocol = enum {
-    http,
-    https,
-
-    pub fn to_port(self: Protocol) u16 {
-        return switch (self) {
-            .http => 80,
-            .https => 443,
-        };
-    }
-};
-
-fn httpRequest(
-    allocator: *Allocator,
-    hostname: [:0]const u8,
-    port: u16,
-    params: []const u8,
-) !std.ArrayList(u8) {
-    var socket = try net.connectToHost(allocator, hostname, port, .tcp);
-    defer socket.close();
-
-    var buf: [mem.page_size]u8 = undefined;
-    var http_client = http.base.client.create(
-        &buf,
-        socket.reader(),
-        socket.writer(),
-    );
-
-    try http_client.writeStatusLine("GET", params);
-    try http_client.writeHeaderValue("Accept", "application/json");
-    try http_client.writeHeaderValue("Host", hostname);
-    try http_client.writeHeaderValue("Agent", "zkg");
-    try http_client.finishHeaders();
-
-    return readHttpBody(allocator, &http_client);
-}
-
-fn httpsRequest(
-    allocator: *Allocator,
-    hostname: [:0]const u8,
-    port: u16,
-    params: []const u8,
-) !std.ArrayList(u8) {
-    var trust_anchor = ssl.TrustAnchorCollection.init(allocator);
-    defer trust_anchor.deinit();
-
-    switch (builtin.os.tag) {
-        .linux => pem: {
-            const file = std.fs.openFileAbsolute("/etc/ssl/cert.pem", .{ .read = true }) catch |err| {
-                if (err == error.FileNotFound) {
-                    try trust_anchor.appendFromPEM(ziglibs_pem);
-                    break :pem;
-                } else return err;
-            };
-            defer file.close();
-
-            const certs = try file.readToEndAlloc(allocator, 500000);
-            defer allocator.free(certs);
-
-            try trust_anchor.appendFromPEM(certs);
-        },
-        else => {
-            try trust_anchor.appendFromPEM(ziglibs_pem);
-        },
-    }
-
-    var x509 = ssl.x509.Minimal.init(trust_anchor);
-    var ssl_client = ssl.Client.init(x509.getEngine());
-    ssl_client.relocate();
-    try ssl_client.reset(hostname, false);
-
-    var socket = try net.connectToHost(allocator, hostname, port, .tcp);
-    defer socket.close();
-
-    var socket_reader = socket.reader();
-    var socket_writer = socket.writer();
-
-    var ssl_socket = ssl.initStream(
-        ssl_client.getEngine(),
-        &socket_reader,
-        &socket_writer,
-    );
-    defer ssl_socket.close() catch {};
-
-    var buf: [mem.page_size]u8 = undefined;
-    var http_client = http.base.client.create(
-        &buf,
-        ssl_socket.inStream(),
-        ssl_socket.outStream(),
-    );
-
-    try http_client.writeStatusLine("GET", params);
-    try http_client.writeHeaderValue("Accept", "application/json");
-    try http_client.writeHeaderValue("Host", hostname);
-    try http_client.writeHeaderValue("Agent", "zkg");
-    try http_client.finishHeaders();
-    try ssl_socket.flush();
-
-    return readHttpBody(allocator, &http_client);
-}
-
-fn readHttpBody(allocator: *mem.Allocator, client: anytype) !std.ArrayList(u8) {
-    var body = std.ArrayList(u8).init(allocator);
-    errdefer body.deinit();
-
-    while (try client.next()) |event| {
-        switch (event) {
-            .status => |status| {
-                if (status.code != 200) {
-                    try std.io.getStdErr().writer().print("got HTTP {} return code\n", .{status.code});
-                    return error.BadStatusCode;
-                }
+    b.make(&[_][]const u8{"install"}) catch |err| {
+        switch (err) {
+            error.UncleanExit => {
+                std.log.err("Compiler had an unclean exit", .{});
+                return error.Explained;
             },
-            .head_done => break,
-            .header, .end, .skip => {},
-            .payload => unreachable,
+            else => return err,
         }
-    }
-
-    try client.reader().readAllArrayList(&body, 4 * 1024 * 1024);
-
-    return body;
-}
-
-pub const SearchParams = union(enum) {
-    all: void,
-    name: []const u8,
-    tag: []const u8,
-    author: []const u8,
-};
-
-const Params = union(enum) {
-    packages: SearchParams,
-    tags: void,
-
-    fn append_param(buf: []u8, key: []const u8, value: []const u8) ![]u8 {
-        return try fmt.bufPrint(buf, "?{}={}", .{ key, value });
-    }
-
-    fn print(self: Params, buf: []u8, uri: Uri) ![]const u8 {
-        var n = (try fmt.bufPrint(buf, "{}", .{uri.path})).len;
-
-        if (n == 0 or buf[n - 1] != '/') {
-            n += (try fmt.bufPrint(buf[n..], "/", .{})).len;
-        }
-
-        switch (self) {
-            .packages => |search_params| {
-                n += (try fmt.bufPrint(buf[n..], "packages", .{})).len;
-                switch (search_params) {
-                    .name => |name| {
-                        n += (try append_param(buf[n..], "name", name)).len;
-                    },
-                    .tag => |tag| {
-                        n += (try append_param(buf[n..], "tags", tag)).len;
-                    },
-                    .author => |author| {
-                        n += (try append_param(buf[n..], "author", author)).len;
-                    },
-                    .all => {},
-                }
-            },
-            .tags => {
-                n += (try fmt.bufPrint(buf[n..], "tags", .{})).len;
-            },
-        }
-
-        return buf[0..n];
-    }
-};
-
-fn query(
-    allocator: *mem.Allocator,
-    remote: []const u8,
-    params: Params,
-) !std.ArrayList(u8) {
-    const uri = try Uri.parse(remote, false);
-    const protocol: Protocol = if (mem.eql(u8, uri.scheme, "http"))
-        .http
-    else if (mem.eql(u8, uri.scheme, "https"))
-        .https
-    else if (mem.eql(u8, uri.scheme, ""))
-        return error.MissingProtocol
-    else
-        return error.UnsupportedProtocol;
-
-    const port: u16 = if (uri.port) |port| port else protocol.to_port();
-    const hostnameZ = try mem.dupeZ(allocator, u8, uri.host.name);
-    defer allocator.free(hostnameZ);
-
-    const question: []const u8 = "?";
-    const none: []const u8 = "";
-    var params_buf: [2048]u8 = undefined;
-    const params_str = try params.print(&params_buf, uri);
-
-    return switch (protocol) {
-        .http => httpRequest(allocator, hostnameZ, port, params_str),
-        .https => httpsRequest(allocator, hostnameZ, port, params_str),
     };
 }
 
-const Entry = struct {
-    name: []const u8,
-    git: []const u8,
-    root_file: []const u8,
-    author: []const u8,
-    description: []const u8,
+pub fn package(
+    allocator: *Allocator,
+    output_dir: ?[]const u8,
+    names: []const []const u8,
+) !void {
+    const file = try std.fs.cwd().openFile("gyro.zzz", .{ .read = true });
+    defer file.close();
 
-    pub fn from_json(obj: json.Value) !Entry {
-        if (obj != .Object) return error.NotObject;
+    var project = try Project.fromFile(allocator, file);
+    defer project.deinit();
 
-        return Entry{
-            .name = obj.Object.get("name").?.String,
-            .git = obj.Object.get("git").?.String,
-            .root_file = switch (obj.Object.get("root_file").?) {
-                .String => |str| str,
-                .Null => "/src/main.zig",
-                else => unreachable,
-            },
-            .author = obj.Object.get("author").?.String,
-            .description = obj.Object.get("description").?.String,
-        };
+    if (project.packages.count() == 0) {
+        std.log.err("there are no packages to package!", .{});
+        return error.Explained;
     }
-};
 
-const Column = struct {
-    str: []const u8,
-    width: usize,
-};
+    var found_not_pkg = false;
+    for (names) |name| if (!project.contains(name)) {
+        std.log.err("{s} is not a package", .{name});
+        found_not_pkg = true;
+    };
 
-fn printColumns(writer: anytype, columns: []const Column, last: []const u8) !void {
-    for (columns) |column| {
-        try writer.print("{}", .{column.str});
-        if (column.str.len < column.width) {
-            try writer.writeByteNTimes(' ', column.width - column.str.len);
+    if (found_not_pkg) return error.Explained;
+    var write_dir = try std.fs.cwd().openDir(
+        if (output_dir) |output| output else ".",
+        .{ .iterate = true, .access_sub_paths = true },
+    );
+    defer write_dir.close();
+
+    var read_dir = try std.fs.cwd().openDir(".", .{ .iterate = true });
+    defer read_dir.close();
+
+    if (names.len > 0) {
+        for (names) |name| try project.get(name).?.bundle(read_dir, write_dir);
+    } else {
+        var it = project.iterator();
+        while (it.next()) |pkg| try pkg.bundle(read_dir, write_dir);
+    }
+}
+
+fn maybePrintKey(
+    json_key: []const u8,
+    zzz_key: []const u8,
+    root: anytype,
+    writer: anytype,
+) !void {
+    if (root.get(json_key)) |val| {
+        switch (val) {
+            .String => |str| try writer.print("    {s}: \"{s}\"\n", .{ zzz_key, str }),
+            else => {},
+        }
+    }
+}
+
+pub fn init(
+    allocator: *Allocator,
+    link: []const u8,
+) !void {
+    const file = std.fs.cwd().createFile("gyro.zzz", .{ .exclusive = true }) catch |err| {
+        return if (err == error.PathAlreadyExists) blk: {
+            std.log.err("gyro.zzz already exists", .{});
+            break :blk error.Explained;
+        } else err;
+    };
+    errdefer std.fs.cwd().deleteFile("gyro.zzz") catch {};
+    defer file.close();
+
+    const info = try parseUserRepo(link);
+
+    var repo_tree = try api.getGithubRepo(allocator, info.user, info.repo);
+    defer repo_tree.deinit();
+
+    var topics_tree = try api.getGithubTopics(allocator, info.user, info.repo);
+    defer topics_tree.deinit();
+
+    if (repo_tree.root != .Object or topics_tree.root != .Object) {
+        std.log.err("Invalid JSON response from Github", .{});
+        return error.Explained;
+    }
+
+    const repo_root = repo_tree.root.Object;
+    const topics_root = topics_tree.root.Object;
+    const writer = file.writer();
+    try writer.print(
+        \\pkgs:
+        \\  {s}:
+        \\    version: 0.0.0
+        \\    author: {s}
+        \\
+    , .{ try normalizeName(info.repo), info.user });
+
+    try maybePrintKey("description", "description", repo_root, writer);
+
+    // pretty gross ngl
+    if (repo_root.get("license")) |license| {
+        switch (license) {
+            .Object => |obj| {
+                if (obj.get("spdx_id")) |spdx| {
+                    switch (spdx) {
+                        .String => |id| {
+                            try writer.print("    license: {s}\n", .{id});
+                        },
+                        else => {},
+                    }
+                }
+            },
+            else => {},
         }
     }
 
-    try writer.print("{}\n", .{last});
-}
-
-pub fn search(
-    allocator: *mem.Allocator,
-    params: SearchParams,
-    print_json: bool,
-    remote_opt: ?[]const u8,
-) !void {
-    const response = try query(allocator, remote_opt orelse default_remote, .{
-        .packages = params,
-    });
-    defer response.deinit();
-
-    if (print_json) {
-        _ = try std.io.getStdOut().writer().write(response.items);
-        return;
-    }
-
-    var parser = json.Parser.init(allocator, false);
-    defer parser.deinit();
-
-    const tree = try parser.parse(response.items);
-    const root = tree.root;
-
-    var entries = std.ArrayList(Entry).init(allocator);
-    defer entries.deinit();
-
-    if (root != .Array) {
-        return error.ResponseType;
-    }
-
-    for (root.Array.items) |item| {
-        try entries.append(try Entry.from_json(item));
-    }
-
-    // column sizes
-    var name_width: usize = 0;
-    var author_width: usize = 0;
-    for (entries.items) |item| {
-        name_width = std.math.max(name_width, item.name.len);
-        author_width = std.math.max(author_width, item.author.len);
-    }
-
-    const name_title = "NAME";
-    const author_title = "AUTHOR";
-    const desc_title = "DESCRIPTION";
-
-    name_width = std.math.max(name_width, name_title.len) + 2;
-    author_width = std.math.max(author_width, author_title.len) + 2;
-
-    try printColumns(
-        std.io.getStdErr().writer(),
-        &[_]Column{
-            .{ .str = name_title, .width = name_width },
-            .{ .str = author_title, .width = author_width },
-        },
-        desc_title,
-    );
-
-    for (entries.items) |item| {
-        try printColumns(
-            std.io.getStdOut().writer(),
-            &[_]Column{
-                .{ .str = item.name, .width = name_width },
-                .{ .str = item.author, .width = author_width },
+    try maybePrintKey("html_url", "source_url", repo_root, writer);
+    if (topics_root.get("names")) |topics| {
+        switch (topics) {
+            .Array => |arr| {
+                if (arr.items.len > 0) {
+                    try writer.print("    tags:\n", .{});
+                    for (arr.items) |topic| {
+                        switch (topic) {
+                            .String => |str| if (std.mem.indexOf(u8, str, "zig") == null) {
+                                try writer.print("      {s}\n", .{str});
+                            },
+                            else => {},
+                        }
+                    }
+                }
             },
-            item.description,
-        );
+            else => {},
+        }
     }
+    try writer.print(
+        \\
+        \\    root: src/main.zig
+        \\    files:
+        \\      README.md
+        \\      LICENSE
+        \\
+    , .{});
 }
 
-const Tag = struct {
-    name: []const u8,
-    description: []const u8,
+pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool) !void {
+    const repository = api.default_repo;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
 
-    fn from_json(obj: json.Value) !Tag {
-        if (obj != .Object) return error.NotObject;
-
-        return Tag{
-            .name = obj.Object.get("name").?.String,
-            .description = obj.Object.get("description").?.String,
-        };
-    }
-};
-
-pub fn tags(allocator: *mem.Allocator, remote_opt: ?[]const u8) !void {
-    const response = try query(allocator, remote_opt orelse default_remote, .{
-        .tags = {},
-    });
-    defer response.deinit();
-
-    var parser = json.Parser.init(allocator, false);
-    defer parser.deinit();
-
-    const tree = try parser.parse(response.items);
-    const root = tree.root;
-
-    if (root != .Array) {
-        return error.ResponseType;
-    }
-
-    var entries = std.ArrayList(Tag).init(allocator);
-    defer entries.deinit();
-
-    for (root.Array.items) |item| {
-        try entries.append(try Tag.from_json(item));
-    }
-
-    const name_title = "TAG";
-    const desc_title = "DESCRIPTION";
-
-    var name_width: usize = 0;
-    for (entries.items) |item| {
-        name_width = std.math.max(name_width, item.name.len);
-    }
-
-    name_width = std.math.max(name_width, name_title.len) + 2;
-
-    try printColumns(
-        std.io.getStdErr().writer(),
-        &[_]Column{.{ .str = name_title, .width = name_width }},
-        desc_title,
-    );
-
-    for (entries.items) |item| {
-        try printColumns(
-            std.io.getStdOut().writer(),
-            &[_]Column{.{ .str = item.name, .width = name_width }},
-            item.description,
-        );
-    }
-}
-
-pub fn add(
-    allocator: *mem.Allocator,
-    name: []const u8,
-    alias_opt: ?[]const u8,
-    remote_opt: ?[]const u8,
-) !void {
-    const alias = alias_opt orelse name;
-
-    const file = try std.fs.cwd().createFile(imports_zzz, .{
+    const file = try std.fs.cwd().createFile("gyro.zzz", .{
+        .truncate = false,
         .read = true,
         .exclusive = false,
-        .truncate = false,
     });
     defer file.close();
 
-    var manifest = try Manifest.init(allocator, file);
-    defer manifest.deinit();
+    const text = try file.reader().readAllAlloc(&arena.allocator, std.math.maxInt(usize));
+    var tree = zzz.ZTree(1, 100){};
+    var root = try tree.appendText(text);
+    const deps_key = if (build_deps) "build_deps" else "deps";
+    var deps = zFindChild(root, deps_key) orelse try tree.addNode(root, .{ .String = deps_key });
 
-    const response = try query(allocator, remote_opt orelse default_remote, .{
-        .packages = .{ .name = name },
-    });
-    defer response.deinit();
+    // TODO: error if alias already exists
+    for (targets) |target| {
+        const dep = if (std.mem.containsAtLeast(u8, target, 1, "/")) blk: {
+            const info = try parseUserRepo(target);
+            var value_tree = try api.getGithubRepo(&arena.allocator, info.user, info.repo);
+            if (value_tree.root != .Object) {
+                std.log.err("Invalid JSON response from Github", .{});
+                return error.Explained;
+            }
 
-    var parser = json.Parser.init(allocator, false);
-    defer parser.deinit();
+            const root_json = value_tree.root.Object;
+            const default_branch = if (root_json.get("default_branch")) |val| switch (val) {
+                .String => |str| str,
+                else => "main",
+            } else "main";
+            std.log.debug("default_branch: {s}", .{default_branch});
 
-    const tree = try parser.parse(response.items);
-    const root = tree.root;
+            break :blk Dependency{
+                .alias = try normalizeName(info.repo),
+                .src = .{
+                    .github = .{
+                        .user = info.user,
+                        .repo = info.repo,
+                        .ref = default_branch,
+                        .root = default_root,
+                    },
+                },
+            };
+        } else blk: {
+            const latest = try api.getLatest(&arena.allocator, repository, target, null);
+            var buf = try arena.allocator.alloc(u8, 80);
+            var stream = std.io.fixedBufferStream(buf);
+            try stream.writer().print("^{}", .{latest});
+            break :blk Dependency{
+                .alias = target,
+                .src = .{
+                    .pkg = .{
+                        .name = target,
+                        .version = version.Range{
+                            .min = latest,
+                            .kind = .caret,
+                        },
+                        .repository = api.default_repo,
+                        .ver_str = stream.getWritten(),
+                    },
+                },
+            };
+        };
 
-    if (root != .Array) {
-        return error.ResponseType;
+        try dep.addToZNode(&tree, deps, false);
     }
 
-    if (root.Array.items.len == 0) {
-        return error.NameMatch;
-    } else if (root.Array.items.len != 1) {
-        return error.Ambiguous;
-    }
-
-    const entry = try Entry.from_json(root.Array.items[0]);
-    var import = Import{
-        .name = alias,
-        .root = entry.root_file,
-        .src = try Import.urlToSource(entry.git),
-    };
-
-    const head = try import.getBranchHead(allocator);
-    defer if (head) |h| allocator.free(h);
-    if (head) |commit| {
-        switch (import.src) {
-            .github => {
-                import.src.github.ref = commit;
-            },
-            else => unreachable,
-        }
-    }
-
-    try manifest.addImport(import);
-    try manifest.commit();
-}
-
-pub fn remove(allocator: *Allocator, name: []const u8) !void {
-    const file = try std.fs.cwd().openFile(imports_zzz, .{ .read = true, .write = true });
-    defer file.close();
-
-    var manifest = try Manifest.init(allocator, file);
-    defer manifest.deinit();
-
-    try manifest.removeImport(name);
-    try manifest.commit();
+    try file.seekTo(0);
+    try root.stringifyPretty(file.writer());
 }

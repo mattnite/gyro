@@ -1,0 +1,17 @@
+pkgs:
+  gyro:
+    version: 0.0.0
+    files:
+      README.md
+      LICENSE
+      build.zig
+      src/*.zig
+deps:
+  glob: ^0.0.0
+  hzzp: ^0.0.0
+  tar: ^0.0.0
+  version: ^0.0.0
+  zfetch: ^0.0.0
+  uri: ^0.0.0
+  clap: ^0.4.0
+  zzz: ^0.0.0

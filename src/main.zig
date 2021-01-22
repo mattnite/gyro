@@ -1,30 +1,34 @@
 const std = @import("std");
 const clap = @import("clap");
-const net = @import("net");
+const zfetch = @import("zfetch");
 usingnamespace @import("commands.zig");
 
+//pub const io_mode = .evented;
+pub const zfetch_use_buffered_io = false;
+
 const Command = enum {
-    fetch,
-    search,
-    tags,
+    init,
     add,
-    remove,
+    package,
+    fetch,
+    update,
+    build,
 };
 
 fn printUsage() noreturn {
     const stderr = std.io.getStdErr().writer();
     _ = stderr.write(
-        \\zkg <cmd> [cmd specific options]
+        \\gyro <cmd> [cmd specific options]
         \\
         \\cmds:
-        \\  search  List packages matching your query
-        \\  tags    List tags found in your remote
-        \\  add     Add a package to your imports file
-        \\  remove  Remove a package from your imports file
-        \\  fetch   Download packages specified in your imports file into your
-        \\          cache dir
+        \\  init     Initialize a gyro.zzz with a link to a github repo
+        \\  add      Add dependencies to the project
+        \\  build    Build your project with build dependencies
+        \\  fetch    Download any undownloaded dependencies
+        \\  package  Bundle package(s) into a ziglet 
+        \\  update   Delete lock file and fetch new package versions
         \\
-        \\for more information: zkg <cmd> --help
+        \\for more information: gyro <cmd> --help
         \\
         \\
     ) catch {};
@@ -39,7 +43,13 @@ fn showHelp(comptime summary: []const u8, comptime params: anytype) void {
     _ = stderr.write("\n") catch {};
 }
 
-fn parseHandlingHelpAndErrors(allocator: *std.mem.Allocator, comptime summary: []const u8, comptime params: anytype, iter: anytype) clap.ComptimeClap(clap.Help, params) {
+
+fn parseHandlingHelpAndErrors(
+    allocator: *std.mem.Allocator,
+    comptime summary: []const u8,
+    comptime params: anytype,
+    iter: anytype,
+) clap.ComptimeClap(clap.Help, params) {
     var diag: clap.Diagnostic = undefined;
     var args = clap.ComptimeClap(clap.Help, params).parse(allocator, iter, &diag) catch |err| {
         // Report useful error and exit
@@ -56,17 +66,27 @@ fn parseHandlingHelpAndErrors(allocator: *std.mem.Allocator, comptime summary: [
     return args;
 }
 
-pub fn main() anyerror!void {
-    const stderr = std.io.getStdErr().writer();
+pub fn main() !void {
+    try zfetch.init();
+    defer zfetch.deinit();
+
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+
     const allocator = &gpa.allocator;
+    runCommands(allocator) catch |err| {
+        switch (err) {
+            error.Explained => std.process.exit(1),
+            else => return err,
+        }
+    };
+}
 
-    try net.init();
-    defer net.deinit();
-
+fn runCommands(allocator: *std.mem.Allocator) !void {
     var iter = try clap.args.OsIterator.init(allocator);
     defer iter.deinit();
 
+    const stderr = std.io.getStdErr().writer();
     const cmd_str = (try iter.next()) orelse {
         try stderr.print("no command given\n", .{});
         printUsage();
@@ -77,119 +97,71 @@ pub fn main() anyerror!void {
             break @field(Command, field.name);
         }
     } else {
-        try stderr.print("{} is not a valid command\n", .{cmd_str});
+        try stderr.print("{s} is not a valid command\n", .{cmd_str});
         printUsage();
     };
 
-    @setEvalBranchQuota(5000);
     switch (cmd) {
-        .fetch => {
-            const summary = "Download packages specified in your imports file into your cache dir";
+        .build => try build(allocator, &iter),
+        .fetch => try fetch(allocator),
+        .update => try update(allocator),
+        .init => {
+            const summary = "Initialize a gyro.zzz with a link to a github repo";
             const params = comptime [_]clap.Param(clap.Help){
-                clap.parseParam("-h, --help             Display help") catch unreachable,
-                clap.parseParam("-c, --cache-dir <DIR>  cache directory, default is zig-cache") catch unreachable,
+                clap.parseParam("-h, --help              Display help") catch unreachable,
+                clap.Param(clap.Help){
+                    .takes_value = .One,
+                },
             };
 
             var args = parseHandlingHelpAndErrors(allocator, summary, &params, &iter);
             defer args.deinit();
 
-            try fetch(args.option("--cache-dir"));
-        },
-        .search => {
-            const summary = "Lists packages matching your query";
-            const params = comptime [_]clap.Param(clap.Help){
-                clap.parseParam("-h, --help             Display help") catch unreachable,
-                clap.parseParam("-r, --remote <REMOTE>  Select which endpoint to query") catch unreachable,
-                clap.parseParam("-t, --tag <TAG>        Filter results for specific tag") catch unreachable,
-                clap.parseParam("-n, --name <NAME>      Query specific package") catch unreachable,
-                clap.parseParam("-a, --author <NAME>    Filter results for specific author") catch unreachable,
-                clap.parseParam("-j, --json             Print raw JSON") catch unreachable,
-            };
+            const num = args.positionals().len;
+            if (num < 1) {
+                std.log.err("please give me a link to your github repo or just '<user>/<repo>'", .{});
+                return error.Explained;
+            } else if (num > 1) {
+                std.log.err("that's too many args, please just give me one in the form of a link to your github repo or just '<user>/<repo>'", .{});
+                return error.Explained;
+            }
 
-            var args = parseHandlingHelpAndErrors(allocator, summary, &params, &iter);
-            defer args.deinit();
-
-            const name_opt = args.option("--name");
-            const tag_opt = args.option("--tag");
-            const author_opt = args.option("--author");
-
-            var count: usize = 0;
-            if (name_opt != null) count += 1;
-            if (tag_opt != null) count += 1;
-            if (author_opt != null) count += 1;
-
-            if (count > 1) return error.OnlyOneQueryType;
-
-            const search_params = if (name_opt) |name|
-                SearchParams{ .name = name }
-            else if (tag_opt) |tag|
-                SearchParams{ .tag = tag }
-            else if (author_opt) |author|
-                SearchParams{ .author = author }
-            else
-                SearchParams{ .all = {} };
-
-            try search(
-                allocator,
-                search_params,
-                args.flag("--json"),
-                args.option("--remote"),
-            );
-        },
-        .tags => {
-            const summary = "List tags found in your remote";
-            const params = comptime [_]clap.Param(clap.Help){
-                clap.parseParam("-h, --help             Display help") catch unreachable,
-                clap.parseParam("-r, --remote <REMOTE>  Select which endpoint to query") catch unreachable,
-            };
-
-            var args = parseHandlingHelpAndErrors(allocator, summary, &params, &iter);
-            defer args.deinit();
-
-            try tags(allocator, args.option("--remote"));
+            try init(allocator, args.positionals()[0]);
         },
         .add => {
-            const summary = "Add a package to your imports file";
+            // TODO: add more arguments
+            const summary = "Add dependencies to the project";
             const params = comptime [_]clap.Param(clap.Help){
-                clap.parseParam("-h, --help             Display help") catch unreachable,
-                clap.parseParam("-r, --remote <REMOTE>  Select which endpoint to query") catch unreachable,
-                clap.parseParam("-a, --alias <ALIAS>    Set the @import name of the package") catch unreachable,
+                clap.parseParam("-h, --help              Display help") catch unreachable,
+                clap.parseParam("-b, --build-dep         Add a build dependency") catch unreachable,
                 clap.Param(clap.Help){
-                    .takes_value = .One,
+                    .takes_value = .Many,
                 },
             };
 
             var args = parseHandlingHelpAndErrors(allocator, summary, &params, &iter);
             defer args.deinit();
 
-            switch (args.positionals().len) {
-                0 => return error.MissingName,
-                1 => try add(allocator, args.positionals()[0], args.option("--alias"), args.option("--remote")),
-                else => for (args.positionals()) |pos| {
-                    try add(allocator, pos, null, args.option("--remote"));
-                },
-            }
+            try add(allocator, args.positionals(), args.flag("--build-dep"));
         },
-        .remove => {
-            const summary = "Remove a package from your imports file";
+        .package => {
+            const summary = "Bundle package(s) into a ziglet";
             const params = comptime [_]clap.Param(clap.Help){
-                clap.parseParam("-h, --help             Display help") catch unreachable,
+                clap.parseParam("-h, --help              Display help") catch unreachable,
+                clap.parseParam("-o, --output-dir <DIR>  Directory to put tarballs in") catch unreachable,
                 clap.Param(clap.Help){
-                    .takes_value = .One,
+                    .takes_value = .Many,
                 },
             };
 
             var args = parseHandlingHelpAndErrors(allocator, summary, &params, &iter);
             defer args.deinit();
 
-            // there can only be one positional argument
-            if (args.positionals().len > 1) {
-                return error.TooManyPositionalArgs;
-            } else if (args.positionals().len != 1) {
-                return error.MissingName;
-            }
-
-            try remove(allocator, args.positionals()[0]);
+            try package(allocator, args.option("--output-dir"), args.positionals());
         },
     }
+}
+
+test "all" {
+    std.testing.refAllDecls(@import("Dependency.zig"));
 }

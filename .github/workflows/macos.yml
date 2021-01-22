@@ -1,7 +1,7 @@
 name: macOS
 on:
   push:
-    branches: [ master ]
+    branches: [ master, gyro ]
   pull_request:
     branches: [ master ]
   schedule:
@@ -19,20 +19,14 @@ jobs:
         fetch-depth: 0
 
     - name: Setup Zig
-      uses: goto-bus-stop/setup-zig@v1.2.5
+      uses: goto-bus-stop/setup-zig@v1.3.0
       with:
-        version: 0.7.1
+        version: master
 
     - run: echo "$(pwd)/zig-cache/bin" >> $GITHUB_PATH
 
-    - name: Compile
-      run: zig build test
+    - name: Bootstrap build
+      run: zig build -Dbootstrap
 
-    - name: Search
-      run: ./zig-cache/bin/zkg search
-
-    - name: Add
-      run: ./zig-cache/bin/zkg add bearssl
-
-    - name: Fetch
-      run: ./zig-cache/bin/zkg fetch
+    - name: Self-hosted build
+      run: gyro build

@@ -1,21 +1,33 @@
 [submodule "libs/zig-clap"]
 	path = libs/zig-clap
-	url = https://github.com/Hejsil/zig-clap
+	url = https://github.com/Hejsil/zig-clap.git
+[submodule "libs/mecha"]
+	path = libs/mecha
+	url = https://github.com/Hejsil/mecha.git
+[submodule "libs/zzz"]
+	path = libs/zzz
+	url = https://github.com/mattnite/zzz.git
 [submodule "libs/hzzp"]
 	path = libs/hzzp
 	url = https://github.com/truemedian/hzzp.git
+[submodule "libs/zfetch"]
+	path = libs/zfetch
+	url = https://github.com/truemedian/zfetch.git
+[submodule "libs/zig-uri"]
+	path = libs/zig-uri
+	url = https://github.com/MasterQ32/zig-uri.git
 [submodule "libs/zig-network"]
 	path = libs/zig-network
 	url = https://github.com/MasterQ32/zig-network.git
-[submodule "libs/zig-bearssl"]
-	path = libs/zig-bearssl
-	url = https://github.com/MasterQ32/zig-bearssl
-[submodule "libs/--recursive"]
-	path = libs/--recursive
-	url = https://github.com/Vexu/zuri.git
-[submodule "libs/zuri"]
-	path = libs/zuri
-	url = https://github.com/Vexu/zuri.git
-[submodule "libs/zzz"]
-	path = libs/zzz
-	url = https://github.com/gruebite/zzz.git
+[submodule "libs/iguanaTLS"]
+	path = libs/iguanaTLS
+	url = https://github.com/alexnask/iguanaTLS.git
+[submodule "libs/version"]
+	path = libs/version
+	url = https://github.com/mattnite/version.git
+[submodule "libs/tar"]
+	path = libs/tar
+	url = https://github.com/mattnite/tar.git
+[submodule "libs/glob"]
+	path = libs/glob
+	url = https://github.com/mattnite/glob
