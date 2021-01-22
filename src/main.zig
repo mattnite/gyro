@@ -43,6 +43,7 @@ fn showHelp(comptime summary: []const u8, comptime params: anytype) void {
     _ = stderr.write("\n") catch {};
 }
 
+
 fn parseHandlingHelpAndErrors(
     allocator: *std.mem.Allocator,
     comptime summary: []const u8,
