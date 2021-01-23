@@ -1,7 +1,7 @@
 name: Linux
 on:
   push:
-    branches: [ master, gyro ]
+    branches: [ master ]
   pull_request:
     branches: [ master ]
   schedule:
@@ -27,6 +27,9 @@ jobs:
 
     - name: Bootstrap build
       run: zig build -Dbootstrap
+
+    - name: Bootstrap build 32-bit
+      run: zig build -Dbootstrap -Dtarget=i386-linux-gnu --prefix tmp
 
     - name: Self Hosted
       run: gyro build

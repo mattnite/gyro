@@ -1,7 +1,7 @@
 name: windows
 on:
   push:
-    branches: [ master, gyro ]
+    branches: [ master ]
   pull_request:
     branches: [ master ]
   schedule:
@@ -36,6 +36,8 @@ jobs:
     - name: Bootstrap build
       run: zig build -Dbootstrap
 
-    - run: mkdir tmp
+    - name: Bootstrap build 32-bit
+      run: zig build -Dbootstrap -Dtarget=i386-windows-gnu --prefix tmp
+
     - name: Self-hosted build
       run: gyro build --prefix tmp
