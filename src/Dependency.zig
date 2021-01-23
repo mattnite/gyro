@@ -1,6 +1,7 @@
 const std = @import("std");
 const version = @import("version");
 const zzz = @import("zzz");
+const uri = @import("uri");
 const Lockfile = @import("Lockfile.zig");
 const DependencyTree = @import("DependencyTree.zig");
 const api = @import("api.zig");
@@ -222,6 +223,27 @@ pub fn fromZNode(node: *zzz.ZNode) !Self {
             },
         };
     };
+
+    if (src == .url) {
+        _ = uri.parse(src.url.str) catch |err| {
+            switch (err) {
+                error.InvalidFormat => {
+                    std.log.err(
+                        "Failed to parse '{s}' as a url ({}), did you forget to wrap your url in double quotes?",
+                        .{ src.url.str, err },
+                    );
+                },
+                error.UnexpectedCharacter => {
+                    std.log.err(
+                        "Failed to parse '{s}' as a url ({}), did you forget 'file://' for defining a local path?",
+                        .{ src.url.str, err },
+                    );
+                },
+                else => return err,
+            }
+            return error.Explained;
+        };
+    }
 
     // TODO: integrity
 

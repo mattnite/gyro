@@ -2,6 +2,7 @@ const std = @import("std");
 const version = @import("version");
 const zzz = @import("zzz");
 const api = @import("api.zig");
+const uri = @import("uri");
 const Dependency = @import("Dependency.zig");
 usingnamespace @import("common.zig");
 
@@ -37,14 +38,17 @@ pub const Entry = union(enum) {
         var it = std.mem.tokenize(line, " ");
         const first = it.next() orelse return error.EmptyLine;
 
-        return if (std.mem.eql(u8, first, "url"))
-            Entry{
+        return if (std.mem.eql(u8, first, "url")) blk: {
+            const ret = Entry{
                 .url = .{
                     .root = it.next() orelse return error.NoRoot,
                     .str = it.next() orelse return error.NoUrl,
                 },
-            }
-        else if (std.mem.eql(u8, first, "github"))
+            };
+
+            const url = try uri.parse(ret.url.str);
+            break :blk ret;
+        } else if (std.mem.eql(u8, first, "github"))
             Entry{
                 .github = .{
                     .user = it.next() orelse return error.NoUser,
@@ -127,9 +131,9 @@ pub const Entry = union(enum) {
     }
 
     fn basePath(self: Entry, arena: *std.heap.ArenaAllocator) ![]const u8 {
-        return if (self == .url and std.mem.startsWith(u8, self.url.str, file_proto))
-            self.url.str[file_proto.len..]
-        else blk: {
+        return if (self == .url and std.mem.startsWith(u8, self.url.str, file_proto)) blk: {
+            break :blk self.url.str[file_proto.len..];
+        } else blk: {
             const package_path = try self.packagePath(arena.child_allocator);
             defer arena.child_allocator.free(package_path);
 
