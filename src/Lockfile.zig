@@ -165,13 +165,25 @@ pub const Entry = union(enum) {
                 };
             },
             .github => |gh| gh.root,
-            .url => |url| if (std.mem.startsWith(u8, url.str, file_proto))
-                try std.fs.path.join(&arena.allocator, &[_][]const u8{
+            .url => |url| if (std.mem.startsWith(u8, url.str, file_proto)) {
+                var ret = try std.fs.path.join(&arena.allocator, &[_][]const u8{
                     url.str[file_proto.len..],
                     url.root,
-                })
-            else
-                url.root,
+                });
+
+                if (std.fs.path.sep == std.fs.path.sep_windows) {
+                    for (ret) |*c| {
+                        if (c.* == '/') {
+                            c.* = '\\';
+                        }
+                    }
+                }
+
+                return ret;
+            } else blk: {
+                std.log.err("got a url cache path: {s}", .{url.root});
+                break :blk url.root;
+            },
         });
 
         if (std.fs.path.sep == std.fs.path.sep_windows) {
