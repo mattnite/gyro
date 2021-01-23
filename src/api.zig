@@ -33,8 +33,6 @@ pub fn getLatest(
 
     defer allocator.free(url);
 
-    std.log.err("getting latest: {s}", .{url});
-
     var headers = http.Headers.init(allocator);
     defer headers.deinit();
 
@@ -52,9 +50,28 @@ pub fn getLatest(
     try req.commit(.GET, headers, null);
     try req.fulfill();
 
-    if (req.status.code != 200) {
-        std.log.err("got http status code for {s}: {}", .{ url, req.status.code });
-        return error.FailedRequest;
+    switch (req.status.code) {
+        200 => {},
+        404 => {
+            if (range) |r| {
+                std.log.err("failed to find {} for {s} on {s}", .{
+                    r,
+                    package,
+                    repository,
+                });
+            } else {
+                std.log.err("failed to find latest for {s} on {s}", .{
+                    package,
+                    repository,
+                });
+            }
+
+            return error.Explained;
+        },
+        else => |code| {
+            std.log.err("got http status code for {s}: {}", .{ url, code });
+            return error.FailedRequest;
+        },
     }
 
     var buf: [10]u8 = undefined;
@@ -137,6 +154,7 @@ fn getTarGzImpl(
     var headers = http.Headers.init(allocator);
     defer headers.deinit();
 
+    std.log.err("fetching tarball: {s}", .{url});
     var req = try zfetch.Request.init(allocator, url);
     defer req.deinit();
 
