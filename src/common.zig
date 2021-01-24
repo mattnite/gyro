@@ -34,7 +34,6 @@ pub fn zGetString(node: *const zzz.ZNode) ![]const u8 {
     return switch (node.value) {
         .String => |str| str,
         else => {
-            std.log.debug("{}\n", .{node.value});
             return error.NotAString;
         },
     };

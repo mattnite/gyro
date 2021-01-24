@@ -18,6 +18,7 @@ entries: std.ArrayList(*Entry),
 
 pub const Entry = union(enum) {
     pkg: struct {
+        user: []const u8,
         name: []const u8,
         version: version.Semver,
         repository: []const u8,
@@ -58,15 +59,19 @@ pub const Entry = union(enum) {
                     .commit = it.next() orelse return error.NoCommit,
                 },
             }
-        else blk: {
-            const repo = if (std.mem.eql(u8, first, "default")) api.default_repo else first;
+        else if (std.mem.eql(u8, first, "pkg")) blk: {
+            const repo = it.next() orelse return error.NoRepo;
             break :blk Entry{
                 .pkg = .{
-                    .repository = repo,
+                    .repository = if (std.mem.eql(u8, repo, "default")) api.default_repo else repo,
+                    .user = it.next() orelse return error.NoUser,
                     .name = it.next() orelse return error.NoName,
                     .version = try version.Semver.parse(it.next() orelse return error.NoVersion),
                 },
             };
+        } else {
+            std.log.info("unknown lockfile entry: {s}", .{first});
+            return error.UnknownEntryType;
         };
     }
 
@@ -160,7 +165,8 @@ pub const Entry = union(enum) {
                 var tree = zzz.ZTree(1, 100){};
                 var root = try tree.appendText(text);
                 break :blk (try zFindString(root, "root")) orelse {
-                    std.log.err("Root missing for package: {s}-{} from {s}", .{
+                    std.log.err("Root missing for package: {s}/{s}-{} from {s}", .{
+                        pkg.user,
                         pkg.name,
                         pkg.version,
                         pkg.repository,
@@ -231,6 +237,7 @@ pub const Entry = union(enum) {
                 try ver_stream.writer().print("{}", .{pkg.version});
 
                 var node = try tree.addNode(root, .{ .String = "pkg" });
+                try zPutKeyString(&tree, node, "user", pkg.user);
                 try zPutKeyString(&tree, node, "name", pkg.name);
                 try zPutKeyString(&tree, node, "version", ver_stream.getWritten());
                 try zPutKeyString(&tree, node, "repository", pkg.repository);
@@ -264,7 +271,7 @@ pub const Entry = union(enum) {
         defer fifo.deinit();
 
         switch (self) {
-            .pkg => |pkg| try fifo.writer().print("{s}-{}-{s}", .{ pkg.name, pkg.version, &ret }),
+            .pkg => |pkg| try fifo.writer().print("{s}-{s}-{}-{s}", .{ pkg.name, pkg.user, pkg.version, &ret }),
             .github => |gh| try fifo.writer().print("{s}-{s}-{s}", .{ gh.repo, gh.user, gh.commit }),
             .url => |url| try fifo.writer().print("{s}", .{&ret}),
         }
@@ -301,7 +308,7 @@ pub const Entry = union(enum) {
 
         if (found) return;
         switch (self) {
-            .pkg => |pkg| try api.getPkg(allocator, pkg.repository, pkg.name, pkg.version, base_dir),
+            .pkg => |pkg| try api.getPkg(allocator, pkg.repository, pkg.user, pkg.name, pkg.version, base_dir),
             .github => |gh| {
                 var pkg_dir = try base_dir.makeOpenPath("pkg", .{ .access_sub_paths = true });
                 defer pkg_dir.close();
@@ -328,7 +335,7 @@ pub const Entry = union(enum) {
                 else
                     pkg.repository;
 
-                try writer.print("{s} {s} {}", .{ repo, pkg.name, pkg.version });
+                try writer.print("pkg {s} {s} {s} {}", .{ repo, pkg.user, pkg.name, pkg.version });
             },
             .github => |gh| try writer.print("github {s} {s} {s} {s} {s}", .{
                 gh.user,
@@ -387,6 +394,7 @@ fn expectEntryEqual(expected: Entry, actual: Entry) void {
 
     switch (expected) {
         .pkg => |pkg| {
+            testing.expectEqualStrings(pkg.user, actual.pkg.user);
             testing.expectEqualStrings(pkg.name, actual.pkg.name);
             testing.expectEqualStrings(pkg.repository, actual.pkg.repository);
             testing.expectEqual(pkg.version, actual.pkg.version);
@@ -406,9 +414,10 @@ fn expectEntryEqual(expected: Entry, actual: Entry) void {
 }
 
 test "entry from pkg: default repository" {
-    const actual = try Entry.fromLine("default something 0.1.0");
+    const actual = try Entry.fromLine("pkg default matt something 0.1.0");
     const expected = Entry{
         .pkg = .{
+            .user = "matt",
             .name = "something",
             .repository = api.default_repo,
             .version = version.Semver{
@@ -423,9 +432,10 @@ test "entry from pkg: default repository" {
 }
 
 test "entry from pkg: non-default repository" {
-    const actual = try Entry.fromLine("my_own_repository foo 0.2.0");
+    const actual = try Entry.fromLine("pkg my_own_repository matt foo 0.2.0");
     const expected = Entry{
         .pkg = .{
+            .user = "matt",
             .name = "foo",
             .repository = "my_own_repository",
             .version = version.Semver{
@@ -468,8 +478,8 @@ test "entry from url" {
 
 test "lockfile with example of all" {
     const text =
-        \\default something 0.1.0
-        \\my_repository foo 0.4.5
+        \\pkg default matt something 0.1.0
+        \\pkg my_repository matt foo 0.4.5
         \\github my_user my_repo master src/foo.zig 30d004329543603f76bd9d7daca054878a04fdb5
         \\url src/foo.zig https://example.com/something.tar.gz
     ;
@@ -480,6 +490,7 @@ test "lockfile with example of all" {
     var expected = [_]Entry{
         .{
             .pkg = .{
+                .user = "matt",
                 .name = "something",
                 .repository = api.default_repo,
                 .version = version.Semver{
@@ -491,6 +502,7 @@ test "lockfile with example of all" {
         },
         .{
             .pkg = .{
+                .user = "matt",
                 .name = "foo",
                 .repository = "my_repository",
                 .version = version.Semver{
