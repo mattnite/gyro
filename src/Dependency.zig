@@ -581,10 +581,12 @@ fn expectZzzEqual(expected: *zzz.ZNode, actual: *zzz.ZNode) void {
 }
 
 fn serializeTest(from: []const u8, to: []const u8, explicit: bool) !void {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
     const dep = try fromString(from);
     var actual = zzz.ZTree(1, 1000){};
     var actual_root = try actual.addNode(null, .{ .Null = {} });
-    try dep.addToZNode(&actual, actual_root, explicit);
+    try dep.addToZNode(&arena, &actual, actual_root, explicit);
     var expected = zzz.ZTree(1, 1000){};
     const expected_root = try expected.appendText(to);
 
