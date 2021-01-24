@@ -43,7 +43,6 @@ fn showHelp(comptime summary: []const u8, comptime params: anytype) void {
     _ = stderr.write("\n") catch {};
 }
 
-
 fn parseHandlingHelpAndErrors(
     allocator: *std.mem.Allocator,
     comptime summary: []const u8,
@@ -101,6 +100,7 @@ fn runCommands(allocator: *std.mem.Allocator) !void {
         printUsage();
     };
 
+    @setEvalBranchQuota(2000);
     switch (cmd) {
         .build => try build(allocator, &iter),
         .fetch => try fetch(allocator),
@@ -134,6 +134,7 @@ fn runCommands(allocator: *std.mem.Allocator) !void {
             const params = comptime [_]clap.Param(clap.Help){
                 clap.parseParam("-h, --help              Display help") catch unreachable,
                 clap.parseParam("-b, --build-dep         Add a build dependency") catch unreachable,
+                clap.parseParam("-g, --github            Get dependency from a git repo") catch unreachable,
                 clap.Param(clap.Help){
                     .takes_value = .Many,
                 },
@@ -142,7 +143,7 @@ fn runCommands(allocator: *std.mem.Allocator) !void {
             var args = parseHandlingHelpAndErrors(allocator, summary, &params, &iter);
             defer args.deinit();
 
-            try add(allocator, args.positionals(), args.flag("--build-dep"));
+            try add(allocator, args.positionals(), args.flag("--build-dep"), args.flag("--github"));
         },
         .package => {
             const summary = "Bundle package(s) into a ziglet";

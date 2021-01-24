@@ -16,22 +16,26 @@ pub const default_repo = "astrolabe.pm";
 pub fn getLatest(
     allocator: *Allocator,
     repository: []const u8,
+    user: []const u8,
     package: []const u8,
     range: ?version.Range,
 ) !version.Semver {
     const url = if (range) |r|
-        try std.fmt.allocPrint(allocator, "https://{s}/pkgs/{s}/latest?v={}", .{
+        try std.fmt.allocPrint(allocator, "https://{s}/pkgs/{s}/{s}/latest?v={}", .{
             repository,
+            user,
             package,
             r,
         })
     else
-        try std.fmt.allocPrint(allocator, "https://{s}/pkgs/{s}/latest", .{
+        try std.fmt.allocPrint(allocator, "https://{s}/pkgs/{s}/{s}/latest", .{
             repository,
+            user,
             package,
         });
-
     defer allocator.free(url);
+
+    std.log.debug("looking at latest: {s}", .{url});
 
     var headers = http.Headers.init(allocator);
     defer headers.deinit();
@@ -54,13 +58,15 @@ pub fn getLatest(
         200 => {},
         404 => {
             if (range) |r| {
-                std.log.err("failed to find {} for {s} on {s}", .{
+                std.log.err("failed to find {} for {s}/{s} on {s}", .{
                     r,
+                    user,
                     package,
                     repository,
                 });
             } else {
-                std.log.err("failed to find latest for {s} on {s}", .{
+                std.log.err("failed to find latest for {s}/{s} on {s}", .{
+                    user,
                     package,
                     repository,
                 });
@@ -69,7 +75,7 @@ pub fn getLatest(
             return error.Explained;
         },
         else => |code| {
-            std.log.err("got http status code for {s}: {}", .{ url, code });
+            std.log.err("got http status code {} for {s}", .{ code, url });
             return error.FailedRequest;
         },
     }
@@ -127,20 +133,24 @@ pub fn getHeadCommit(
 pub fn getPkg(
     allocator: *Allocator,
     repository: []const u8,
+    user: []const u8,
     package: []const u8,
     semver: version.Semver,
     dir: std.fs.Dir,
 ) !void {
     const url = try std.fmt.allocPrint(
         allocator,
-        "https://{s}/archive/{s}/{}",
+        "https://{s}/archive/{s}/{s}/{}",
         .{
             repository,
+            user,
             package,
             semver,
         },
     );
     defer allocator.free(url);
+
+    std.log.debug("fetching pkg: {s}", .{url});
 
     try getTarGz(allocator, url, dir);
 }
@@ -213,7 +223,11 @@ pub fn getGithubRepo(
     user: []const u8,
     repo: []const u8,
 ) !std.json.ValueTree {
-    const url = try std.fmt.allocPrint(allocator, "https://api.github.com/repos/{s}/{s}", .{ user, repo });
+    const url = try std.fmt.allocPrint(
+        allocator,
+        "https://api.github.com/repos/{s}/{s}",
+        .{ user, repo },
+    );
     defer allocator.free(url);
 
     var headers = http.Headers.init(allocator);

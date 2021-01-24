@@ -1,7 +1,7 @@
 usingnamespace std.build;
 const std = @import("std");
 const ssl = @import(pkgs.ssl.path);
-const pkgs = @import("deps.zig").pkgs;
+const deps = @import("deps.zig");
 
 const clap = .{
     .name = "clap",
@@ -91,10 +91,10 @@ pub fn build(b: *Builder) !void {
         if (bs) {
             addAllPkgs(gyro);
         } else {
-            pkgs.addAllTo(gyro);
+            deps.addAllTo(gyro);
         }
     } else {
-        pkgs.addAllTo(gyro);
+        deps.addAllTo(gyro);
     }
 
     gyro.install();

@@ -361,7 +361,7 @@ pub fn init(
     , .{});
 }
 
-pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool) !void {
+pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool, github: bool) !void {
     const repository = api.default_repo;
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
@@ -374,15 +374,15 @@ pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool)
     defer file.close();
 
     const text = try file.reader().readAllAlloc(&arena.allocator, std.math.maxInt(usize));
-    var tree = zzz.ZTree(1, 100){};
+    var tree = zzz.ZTree(1, 1000){};
     var root = try tree.appendText(text);
     const deps_key = if (build_deps) "build_deps" else "deps";
     var deps = zFindChild(root, deps_key) orelse try tree.addNode(root, .{ .String = deps_key });
 
     // TODO: error if alias already exists
     for (targets) |target| {
-        const dep = if (std.mem.containsAtLeast(u8, target, 1, "/")) blk: {
-            const info = try parseUserRepo(target);
+        const info = try parseUserRepo(target);
+        const dep = if (github) blk: {
             var value_tree = try api.getGithubRepo(&arena.allocator, info.user, info.repo);
             if (value_tree.root != .Object) {
                 std.log.err("Invalid JSON response from Github", .{});
@@ -408,15 +408,16 @@ pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool)
                 },
             };
         } else blk: {
-            const latest = try api.getLatest(&arena.allocator, repository, target, null);
+            const latest = try api.getLatest(&arena.allocator, repository, info.user, info.repo, null);
             var buf = try arena.allocator.alloc(u8, 80);
             var stream = std.io.fixedBufferStream(buf);
             try stream.writer().print("^{}", .{latest});
             break :blk Dependency{
-                .alias = target,
+                .alias = info.repo,
                 .src = .{
                     .pkg = .{
-                        .name = target,
+                        .user = info.user,
+                        .name = info.repo,
                         .version = version.Range{
                             .min = latest,
                             .kind = .caret,
@@ -428,7 +429,7 @@ pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool)
             };
         };
 
-        try dep.addToZNode(&tree, deps, false);
+        try dep.addToZNode(&arena, &tree, deps, false);
     }
 
     try file.seekTo(0);

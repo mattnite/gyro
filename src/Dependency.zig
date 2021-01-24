@@ -18,6 +18,7 @@ src: Source,
 
 const Source = union(SourceType) {
     pkg: struct {
+        user: []const u8,
         name: []const u8,
         version: version.Range,
         repository: []const u8,
@@ -46,6 +47,7 @@ fn findLatestMatch(self: Self, lockfile: *Lockfile) ?*Lockfile.Entry {
         switch (self.src) {
             .pkg => |pkg| {
                 if (!mem.eql(u8, pkg.name, entry.pkg.name) or
+                    !mem.eql(u8, pkg.user, entry.pkg.user) or
                     !mem.eql(u8, pkg.repository, entry.pkg.repository)) continue;
 
                 const range = pkg.version;
@@ -77,11 +79,13 @@ fn resolveLatest(
     ret.* = switch (self.src) {
         .pkg => |pkg| .{
             .pkg = .{
+                .user = pkg.user,
                 .name = pkg.name,
                 .repository = pkg.repository,
                 .version = try api.getLatest(
                     allocator,
                     pkg.repository,
+                    pkg.user,
                     pkg.name,
                     pkg.version,
                 ),
@@ -121,16 +125,12 @@ pub fn resolve(
 
 /// There are four ways for a dependency to be declared in the project file:
 ///
-/// A package from the default index:
-/// ```
-/// name: "^0.1.0"
-/// ```
-///
 /// A package from some other index:
 /// ```
 /// name:
 ///   src:
 ///     pkg:
+///       user: <user>
 ///       name: <name> # optional
 ///       version: <version string>
 ///       repository: <repository> # optional
@@ -159,18 +159,19 @@ pub fn resolve(
 pub fn fromZNode(node: *zzz.ZNode) !Self {
     if (node.*.child == null) return error.NoChildren;
 
-    const alias = try zGetString(node);
-
     // check if only one child node and that it has no children
     if (node.*.child.?.value == .String and node.*.child.?.child == null) {
         if (node.*.child.?.sibling != null) return error.Unknown;
+        const key = try zGetString(node);
 
+        const info = try parseUserRepo(key);
         const ver_str = try zGetString(node.*.child.?);
         return Self{
-            .alias = alias,
+            .alias = info.repo,
             .src = .{
                 .pkg = .{
-                    .name = alias,
+                    .user = info.user,
+                    .name = info.repo,
                     .ver_str = ver_str,
                     .version = try version.Range.parse(ver_str),
                     .repository = api.default_repo,
@@ -180,6 +181,7 @@ pub fn fromZNode(node: *zzz.ZNode) !Self {
     }
 
     // search for src node
+    const alias = try zGetString(node);
     const src_node = blk: {
         var it = ZChildIterator.init(node);
 
@@ -201,6 +203,7 @@ pub fn fromZNode(node: *zzz.ZNode) !Self {
         break :blk switch (src_type) {
             .pkg => .{
                 .pkg = .{
+                    .user = (try zFindString(child, "user")) orelse return error.MissingUser,
                     .name = (try zFindString(child, "name")) orelse alias,
                     .ver_str = (try zFindString(child, "version")) orelse return error.MissingVersion,
                     .version = try version.Range.parse((try zFindString(child, "version")) orelse return error.MissingVersion),
@@ -252,7 +255,7 @@ pub fn fromZNode(node: *zzz.ZNode) !Self {
 
 /// for testing
 fn fromString(str: []const u8) !Self {
-    var tree = zzz.ZTree(1, 100){};
+    var tree = zzz.ZTree(1, 1000){};
     const root = try tree.appendText(str);
     return Self.fromZNode(root.*.child.?);
 }
@@ -263,6 +266,7 @@ fn expectDepEqual(expected: Self, actual: Self) void {
 
     return switch (expected.src) {
         .pkg => |pkg| {
+            testing.expectEqualStrings(pkg.user, actual.src.pkg.user);
             testing.expectEqualStrings(pkg.name, actual.src.pkg.name);
             testing.expectEqualStrings(pkg.repository, actual.src.pkg.repository);
             testing.expectEqualStrings(pkg.ver_str, actual.src.pkg.ver_str);
@@ -282,20 +286,18 @@ fn expectDepEqual(expected: Self, actual: Self) void {
 }
 
 test "default repo pkg" {
-    const actual = try fromString("something: ^0.1.0");
-    const expected = Self{
+    expectDepEqual(Self{
         .alias = "something",
         .src = .{
             .pkg = .{
+                .user = "matt",
                 .name = "something",
                 .ver_str = "^0.1.0",
                 .version = try version.Range.parse("^0.1.0"),
                 .repository = api.default_repo,
             },
         },
-    };
-
-    expectDepEqual(expected, actual);
+    }, try fromString("matt/something: ^0.1.0"));
 }
 
 test "aliased, default repo pkg" {
@@ -303,6 +305,7 @@ test "aliased, default repo pkg" {
         \\something:
         \\  src:
         \\    pkg:
+        \\      user: matt
         \\      name: blarg
         \\      version: ^0.1.0
     );
@@ -311,6 +314,7 @@ test "aliased, default repo pkg" {
         .alias = "something",
         .src = .{
             .pkg = .{
+                .user = "matt",
                 .name = "blarg",
                 .ver_str = "^0.1.0",
                 .version = try version.Range.parse("^0.1.0"),
@@ -339,6 +343,7 @@ test "non-default repo pkg" {
         \\something:
         \\  src:
         \\    pkg:
+        \\      user: matt
         \\      version: ^0.1.0
         \\      repository: example.com
     );
@@ -347,6 +352,7 @@ test "non-default repo pkg" {
         .alias = "something",
         .src = .{
             .pkg = .{
+                .user = "matt",
                 .name = "something",
                 .ver_str = "^0.1.0",
                 .version = try version.Range.parse("^0.1.0"),
@@ -363,6 +369,7 @@ test "aliased, non-default repo pkg" {
         \\something:
         \\  src:
         \\    pkg:
+        \\      user: matt
         \\      name: real_name
         \\      version: ^0.1.0
         \\      repository: example.com
@@ -372,6 +379,7 @@ test "aliased, non-default repo pkg" {
         .alias = "something",
         .src = .{
             .pkg = .{
+                .user = "matt",
                 .name = "real_name",
                 .ver_str = "^0.1.0",
                 .version = try version.Range.parse("^0.1.0"),
@@ -490,7 +498,8 @@ test "github can't take an integrity " {
 /// serializes dependency information back into zzz format
 pub fn addToZNode(
     self: Self,
-    tree: *zzz.ZTree(1, 100),
+    arena: *std.heap.ArenaAllocator,
+    tree: *zzz.ZTree(1, 1000),
     parent: *zzz.ZNode,
     explicit: bool,
 ) !void {
@@ -498,14 +507,18 @@ pub fn addToZNode(
 
     switch (self.src) {
         .pkg => |pkg| if (!explicit and
-            std.mem.eql(u8, pkg.name, self.alias) and
+            std.mem.eql(u8, self.alias, pkg.name) and
             std.mem.eql(u8, pkg.repository, api.default_repo))
         {
+            var fifo = std.fifo.LinearFifo(u8, .{ .Dynamic = {} }).init(&arena.allocator);
+            try fifo.writer().print("{s}/{s}", .{ pkg.user, pkg.name });
+            alias.value.String = fifo.readableSlice(0);
             _ = try tree.addNode(alias, .{ .String = pkg.ver_str });
         } else {
             var src = try tree.addNode(alias, .{ .String = "src" });
             var node = try tree.addNode(src, .{ .String = "pkg" });
 
+            try zPutKeyString(tree, node, "user", pkg.user);
             if (explicit or !std.mem.eql(u8, pkg.name, self.alias)) {
                 try zPutKeyString(tree, node, "name", pkg.name);
             }
@@ -568,31 +581,55 @@ fn expectZzzEqual(expected: *zzz.ZNode, actual: *zzz.ZNode) void {
 }
 
 fn serializeTest(from: []const u8, to: []const u8, explicit: bool) !void {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
     const dep = try fromString(from);
-    var actual = zzz.ZTree(1, 100){};
+    var actual = zzz.ZTree(1, 1000){};
     var actual_root = try actual.addNode(null, .{ .Null = {} });
-    try dep.addToZNode(&actual, actual_root, explicit);
-    var expected = zzz.ZTree(1, 100){};
+    try dep.addToZNode(&arena, &actual, actual_root, explicit);
+    var expected = zzz.ZTree(1, 1000){};
     const expected_root = try expected.appendText(to);
 
     expectZzzEqual(expected_root, actual_root);
 }
 
 test "serialize pkg non-explicit" {
-    const str = "something: ^0.1.0";
-    try serializeTest(str, str, false);
-}
-
-test "serialize pkg explicit" {
-    try serializeTest("something: ^0.1.0",
+    const str =
         \\something:
         \\  src:
         \\    pkg:
+        \\      user: test
+        \\      version: ^0.0.0
+        \\
+    ;
+
+    const expected = "test/something: ^0.0.0";
+
+    try serializeTest(str, expected, false);
+}
+
+test "serialize pkg explicit" {
+    const str =
+        \\something:
+        \\  src:
+        \\    pkg:
+        \\      user: test
+        \\      version: ^0.0.0
+        \\
+    ;
+
+    const expected =
+        \\something:
+        \\  src:
+        \\    pkg:
+        \\      user: test
         \\      name: something
-        \\      version: ^0.1.0
+        \\      version: ^0.0.0
         \\      repository: astrolabe.pm
         \\
-    , true);
+    ;
+
+    try serializeTest(str, expected, true);
 }
 
 test "serialize github non-explicit" {
