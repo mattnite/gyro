@@ -10,7 +10,7 @@ usingnamespace @import("common.zig");
 const Self = @This();
 const Allocator = std.mem.Allocator;
 
-allocator: *Allocator,
+arena: std.heap.ArenaAllocator,
 name: []const u8,
 version: version.Semver,
 root: ?[]const u8,
@@ -34,7 +34,7 @@ pub fn init(
     build_deps: []Dependency,
 ) Self {
     return Self{
-        .allocator = allocator,
+        .arena = std.heap.ArenaAllocator.init(allocator),
         .name = name,
         .version = ver,
         .deps = deps,
@@ -54,6 +54,7 @@ pub fn init(
 pub fn deinit(self: *Self) void {
     self.tags.deinit();
     self.files.deinit();
+    self.arena.deinit();
 }
 
 pub fn fillFromZNode(
@@ -77,7 +78,7 @@ pub fn fillFromZNode(
     }
 }
 
-fn createManifest(self: Self, tree: *zzz.ZTree(1, 100), ver_str: []const u8) !void {
+fn createManifest(self: *Self, tree: *zzz.ZTree(1, 1000), ver_str: []const u8) !void {
     var root = try tree.addNode(null, .Null);
     try zPutKeyString(tree, root, "name", self.name);
     try zPutKeyString(tree, root, "version", ver_str);
@@ -99,16 +100,16 @@ fn createManifest(self: Self, tree: *zzz.ZTree(1, 100), ver_str: []const u8) !vo
 
     if (self.deps.len > 0) {
         var deps = try tree.addNode(root, .{ .String = "deps" });
-        for (self.deps) |dep| try dep.addToZNode(tree, deps, true);
+        for (self.deps) |dep| try dep.addToZNode(&self.arena, tree, deps, true);
     }
 
     if (self.build_deps.len > 0) {
         var build_deps = try tree.addNode(root, .{ .String = "build_deps" });
-        for (self.build_deps) |dep| try dep.addToZNode(tree, build_deps, true);
+        for (self.build_deps) |dep| try dep.addToZNode(&self.arena, tree, build_deps, true);
     }
 }
 
-pub fn bundle(self: Self, root: std.fs.Dir, output_dir: std.fs.Dir) !void {
+pub fn bundle(self: *Self, root: std.fs.Dir, output_dir: std.fs.Dir) !void {
     var ver_buf: [1024]u8 = undefined;
     var ver_str = std.io.fixedBufferStream(&ver_buf);
     try ver_str.writer().print("{}", .{self.version});
@@ -127,16 +128,16 @@ pub fn bundle(self: Self, root: std.fs.Dir, output_dir: std.fs.Dir) !void {
     errdefer output_dir.deleteFile(stream.getWritten()) catch {};
     defer file.close();
 
-    var tarball = tar.builder(self.allocator, file.writer());
+    var tarball = tar.builder(self.arena.child_allocator, file.writer());
     defer {
         tarball.finish() catch {};
         tarball.deinit();
     }
 
-    var fifo = std.fifo.LinearFifo(u8, .Dynamic).init(self.allocator);
+    var fifo = std.fifo.LinearFifo(u8, .Dynamic).init(self.arena.child_allocator);
     defer fifo.deinit();
 
-    var manifest = zzz.ZTree(1, 100){};
+    var manifest = zzz.ZTree(1, 1000){};
     try self.createManifest(&manifest, ver_str.getWritten());
     try manifest.rootSlice()[0].stringify(fifo.writer());
     try fifo.writer().writeByte('\n');
@@ -167,7 +168,7 @@ pub fn bundle(self: Self, root: std.fs.Dir, output_dir: std.fs.Dir) !void {
         var dir = try root.openDir(".", .{ .iterate = true, .access_sub_paths = true });
         defer dir.close();
 
-        var it = try glob.Iterator.init(self.allocator, dir, pattern);
+        var it = try glob.Iterator.init(self.arena.child_allocator, dir, pattern);
         defer it.deinit();
 
         while (try it.next()) |subpath| {

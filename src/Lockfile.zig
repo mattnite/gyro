@@ -39,8 +39,9 @@ pub const Entry = union(enum) {
         var it = std.mem.tokenize(line, " ");
         const first = it.next() orelse return error.EmptyLine;
 
-        return if (std.mem.eql(u8, first, "url")) blk: {
-            const ret = Entry{
+        var ret: Entry = undefined;
+        if (std.mem.eql(u8, first, "url")) {
+            ret = Entry{
                 .url = .{
                     .root = it.next() orelse return error.NoRoot,
                     .str = it.next() orelse return error.NoUrl,
@@ -48,9 +49,8 @@ pub const Entry = union(enum) {
             };
 
             const url = try uri.parse(ret.url.str);
-            break :blk ret;
-        } else if (std.mem.eql(u8, first, "github"))
-            Entry{
+        } else if (std.mem.eql(u8, first, "github")) {
+            ret = Entry{
                 .github = .{
                     .user = it.next() orelse return error.NoUser,
                     .repo = it.next() orelse return error.NoRepo,
@@ -58,10 +58,10 @@ pub const Entry = union(enum) {
                     .root = it.next() orelse return error.NoRoot,
                     .commit = it.next() orelse return error.NoCommit,
                 },
-            }
-        else if (std.mem.eql(u8, first, "pkg")) blk: {
+            };
+        } else if (std.mem.eql(u8, first, "pkg")) {
             const repo = it.next() orelse return error.NoRepo;
-            break :blk Entry{
+            ret = Entry{
                 .pkg = .{
                     .repository = if (std.mem.eql(u8, repo, "default")) api.default_repo else repo,
                     .user = it.next() orelse return error.NoUser,
@@ -69,10 +69,9 @@ pub const Entry = union(enum) {
                     .version = try version.Semver.parse(it.next() orelse return error.NoVersion),
                 },
             };
-        } else {
-            std.log.info("unknown lockfile entry: {s}", .{first});
-            return error.UnknownEntryType;
-        };
+        } else return error.UnknownEntryType;
+
+        return ret;
     }
 
     pub fn getDeps(self: Entry, arena: *std.heap.ArenaAllocator) ![]Dependency {
@@ -121,7 +120,7 @@ pub const Entry = union(enum) {
         var deps = std.ArrayListUnmanaged(Dependency){};
 
         // TODO: count then alloc
-        var ztree = zzz.ZTree(1, 100){};
+        var ztree = zzz.ZTree(1, 1000){};
         var root = try ztree.appendText(text);
         if (zFindChild(root, "deps")) |deps_node| {
             var it = ZChildIterator.init(deps_node);
@@ -162,7 +161,7 @@ pub const Entry = union(enum) {
                 defer file.close();
 
                 var text = try file.reader().readAllAlloc(&arena.allocator, std.math.maxInt(usize));
-                var tree = zzz.ZTree(1, 100){};
+                var tree = zzz.ZTree(1, 1000){};
                 var root = try tree.appendText(text);
                 break :blk (try zFindString(root, "root")) orelse {
                     std.log.err("Root missing for package: {s}/{s}-{} from {s}", .{
@@ -227,7 +226,7 @@ pub const Entry = union(enum) {
     }
 
     pub fn packagePath(self: Entry, allocator: *Allocator) ![]const u8 {
-        var tree = zzz.ZTree(1, 100){};
+        var tree = zzz.ZTree(1, 1000){};
         var root = try tree.addNode(null, .{ .Null = {} });
         var ver_buf: [8]u8 = undefined;
 
@@ -530,6 +529,6 @@ test "lockfile with example of all" {
     };
 
     for (expected) |exp, i| {
-        expectEntryEqual(exp, actual.entries.items[i]);
+        expectEntryEqual(exp, actual.entries.items[i].*);
     }
 }

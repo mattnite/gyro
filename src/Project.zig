@@ -66,7 +66,7 @@ pub fn fromFile(allocator: *std.mem.Allocator, file: std.fs.File) !Self {
         return error.Explained;
     }
 
-    var tree = zzz.ZTree(1, 100){};
+    var tree = zzz.ZTree(1, 1000){};
     var root = try tree.appendText(ret.text);
 
     if (zFindChild(root, "deps")) |deps| {

@@ -33,8 +33,9 @@ pub fn getLatest(
             user,
             package,
         });
-
     defer allocator.free(url);
+
+    std.log.debug("looking at latest: {s}", .{url});
 
     var headers = http.Headers.init(allocator);
     defer headers.deinit();
@@ -149,6 +150,8 @@ pub fn getPkg(
     );
     defer allocator.free(url);
 
+    std.log.debug("fetching pkg: {s}", .{url});
+
     try getTarGz(allocator, url, dir);
 }
 
@@ -220,7 +223,11 @@ pub fn getGithubRepo(
     user: []const u8,
     repo: []const u8,
 ) !std.json.ValueTree {
-    const url = try std.fmt.allocPrint(allocator, "https://api.github.com/repos/{s}/{s}", .{ user, repo });
+    const url = try std.fmt.allocPrint(
+        allocator,
+        "https://api.github.com/repos/{s}/{s}",
+        .{ user, repo },
+    );
     defer allocator.free(url);
 
     var headers = http.Headers.init(allocator);

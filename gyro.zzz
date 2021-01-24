@@ -7,11 +7,11 @@ pkgs:
       build.zig
       src/*.zig
 deps:
-  glob: ^0.0.0
-  hzzp: ^0.0.0
-  tar: ^0.0.0
-  version: ^0.0.0
-  zfetch: ^0.0.0
-  uri: ^0.0.0
-  clap: ^0.4.0
-  zzz: ^0.0.0
+  gyro/clap: ^0.4.0
+  gyro/hzzp: ^0.0.0
+  gyro/zfetch: ^0.0.0
+  gyro/zzz: ^0.0.0
+  gyro/glob: ^0.0.0
+  gyro/tar: ^0.0.0
+  gyro/version: ^0.0.0
+  gyro/uri: ^0.0.0

@@ -374,7 +374,7 @@ pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool,
     defer file.close();
 
     const text = try file.reader().readAllAlloc(&arena.allocator, std.math.maxInt(usize));
-    var tree = zzz.ZTree(1, 100){};
+    var tree = zzz.ZTree(1, 1000){};
     var root = try tree.appendText(text);
     const deps_key = if (build_deps) "build_deps" else "deps";
     var deps = zFindChild(root, deps_key) orelse try tree.addNode(root, .{ .String = deps_key });
@@ -429,7 +429,7 @@ pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool,
             };
         };
 
-        try dep.addToZNode(&tree, deps, false);
+        try dep.addToZNode(&arena, &tree, deps, false);
     }
 
     try file.seekTo(0);

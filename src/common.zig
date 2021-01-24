@@ -49,7 +49,7 @@ pub fn zFindString(parent: *zzz.ZNode, key: []const u8) !?[]const u8 {
         null;
 }
 
-pub fn zPutKeyString(tree: *zzz.ZTree(1, 100), parent: *zzz.ZNode, key: []const u8, value: []const u8) !void {
+pub fn zPutKeyString(tree: *zzz.ZTree(1, 1000), parent: *zzz.ZNode, key: []const u8, value: []const u8) !void {
     var node = try tree.addNode(parent, .{ .String = key });
     _ = try tree.addNode(node, .{ .String = value });
 }
@@ -59,31 +59,13 @@ pub const UserRepoResult = struct {
     repo: []const u8,
 };
 
-pub fn parseUserRepo(link: []const u8) !UserRepoResult {
-    const info = blk: {
-        const gh_url = "github.com";
-        const begin = if (std.mem.indexOf(u8, link, gh_url)) |i|
-            if (link.len >= i + gh_url.len + 1) i + gh_url.len + 1 else {
-                std.log.err("couldn't parse link", .{});
-                return error.Explained;
-            }
-        else
-            0;
-        const end = if (std.mem.endsWith(u8, link, ".git")) link.len - 4 else link.len;
+pub fn parseUserRepo(str: []const u8) !UserRepoResult {
+    if (std.mem.count(u8, str, "/") != 1) {
+        std.log.err("need to have a single '/' in {s}", .{str});
+        return error.Explained;
+    }
 
-        const ret = link[begin..end];
-        if (std.mem.count(u8, ret, "/") != 1) {
-            std.log.err(
-                "got '{s}' from '{s}', it needs to have a single '/' so I can figure out the user/repo",
-                .{ ret, link },
-            );
-            return error.Explained;
-        }
-
-        break :blk ret;
-    };
-
-    var it = std.mem.tokenize(info, "/");
+    var it = std.mem.tokenize(str, "/");
     return UserRepoResult{
         .user = it.next().?,
         .repo = it.next().?,
