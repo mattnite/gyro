@@ -35,8 +35,6 @@ pub fn getLatest(
         });
     defer allocator.free(url);
 
-    std.log.debug("looking at latest: {s}", .{url});
-
     var headers = http.Headers.init(allocator);
     defer headers.deinit();
 
@@ -150,8 +148,6 @@ pub fn getPkg(
     );
     defer allocator.free(url);
 
-    std.log.debug("fetching pkg: {s}", .{url});
-
     try getTarGz(allocator, url, dir);
 }
 
@@ -164,7 +160,7 @@ fn getTarGzImpl(
     var headers = http.Headers.init(allocator);
     defer headers.deinit();
 
-    std.log.err("fetching tarball: {s}", .{url});
+    std.log.info("fetching tarball: {s}", .{url});
     var req = try zfetch.Request.init(allocator, url);
     defer req.deinit();
 
