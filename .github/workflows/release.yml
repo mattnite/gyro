@@ -9,7 +9,12 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       upload_url: ${{ steps.create_release.outputs.upload_url }}
+      tag: ${{ steps.tag.outputs.tag }}
     steps:
+    - name: Get tag
+      id: tag
+      uses: dawidd6/action-get-tag@v1
+
     - name: Create Release
       id: create_release
       uses: actions/create-release@v1
@@ -28,7 +33,7 @@ jobs:
       matrix:
         arch: [x86_64, aarch64, riscv64, i386]
     env:
-      TARGET: gyro-${GITHUB_REF#refs/*/}-windows-${{ matrix.arch }}
+      TARGET: gyro-${{ needs.create_release.outputs.tag }}-linux-${{ matrix.arch }}
     steps:
     - name: Checkout
       uses: actions/checkout@v2
@@ -66,10 +71,9 @@ jobs:
     strategy:
       matrix:
         arch: [x86_64, i386]
+    env:
+      TARGET: gyro-${{ needs.create_release.outputs.tag }}-windows-${{ matrix.arch }}
     steps:
-    - run: echo RELEASE_VERSION=${GITHUB_REF#refs/*/} >> $GITHUB_ENV
-    - run: echo TARGET=gyro-${GITHUB_REF#refs/*/}-windows-${{ matrix.arch }} >> $GITHUB_ENV
-
     - name: Checkout
       uses: actions/checkout@v2
       with:
@@ -82,13 +86,13 @@ jobs:
         version: master
 
     - run: sudo apt install zip
-    - run: mkdir $TARGET
+    - run: mkdir ${{ env.TARGET }}
 
     - name: windows-${{ matrix.arch }}
-      run: zig build -Dbootstrap -Dtarget=${{ matrix.arch }}-windows-gnu -Drelease-safe --prefix $TARGET
+      run: zig build -Dbootstrap -Dtarget=${{ matrix.arch }}-windows-gnu -Drelease-safe --prefix ${{ env.TARGET }}
 
     - name: Create zip
-      run: zip -r $TARGET.zip $TARGET 
+      run: zip -r ${{ env.TARGET }}.zip ${{ env.TARGET }} 
 
     - name: Upload Release Asset
       id: upload-release-asset 
@@ -97,8 +101,8 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ needs.create_release.outputs.upload_url }}
-        asset_path: ./$TARGET.zip
-        asset_name: $TARGET.zip
+        asset_path: ./${{ env.TARGET }}.zip
+        asset_name: ${{ env.TARGET }}.zip
         asset_content_type: application/zip
 
   macos:
@@ -107,10 +111,9 @@ jobs:
     strategy:
       matrix:
         arch: [x86_64]
+    env:
+      TARGET: gyro-${{ needs.create_release.outputs.tag }}-macos-${{ matrix.arch }}
     steps:
-    - run: echo RELEASE_VERSION=${GITHUB_REF#refs/*/} >> $GITHUB_ENV
-    - run: echo TARGET=gyro-${GITHUB_REF#refs/*/}-windows-${{ matrix.arch }} >> $GITHUB_ENV
-
     - name: Checkout
       uses: actions/checkout@v2
       with:
@@ -122,13 +125,13 @@ jobs:
       with:
         version: master
 
-    - run: mkdir $TARGET
+    - run: mkdir ${{ env.TARGET }}
 
     - name: macos-${{ matrix.arch }}
-      run: zig build -Dbootstrap -Drelease-safe --prefix $TARGET
+      run: zig build -Dbootstrap -Drelease-safe --prefix ${{ env.TARGET }}
 
     - name: Create Tarball
-      run: tar -czvf $TARGET.tar.gz $TARGET
+      run: tar -czvf ${{ env.TARGET }}.tar.gz ${{ env.TARGET }}
 
     - name: Upload Release Asset
       id: upload-release-asset 
@@ -137,6 +140,6 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         upload_url: ${{ needs.create_release.outputs.upload_url }}
-        asset_path: ./$TARGET.tar.gz
-        asset_name: $TARGET.tar.gz
+        asset_path: ./${{ env.TARGET }}.tar.gz
+        asset_name: ${{ env.TARGET }}.tar.gz
         asset_content_type: application/tarball
