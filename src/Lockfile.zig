@@ -379,7 +379,12 @@ pub fn deinit(self: *Self) void {
 
 pub fn save(self: Self, file: std.fs.File) !void {
     try file.seekTo(0);
-    for (self.entries.items) |entry| try entry.write(file.writer());
+    for (self.entries.items) |entry| {
+        if (entry.* == .url and std.mem.startsWith(u8, entry.url.str, file_proto))
+            continue;
+
+        try entry.write(file.writer());
+    }
 }
 
 pub fn fetchAll(self: Self) !void {
