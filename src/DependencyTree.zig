@@ -179,7 +179,6 @@ pub fn printZig(self: *Self, writer: anytype) !void {
     }
 
     try writer.print(
-        \\
         \\    pub fn addAllTo(artifact: *std.build.LibExeObjStep) void {{
         \\        @setEvalBranchQuota(1_000_000);
         \\        inline for (std.meta.declarations(pkgs)) |decl| {{
