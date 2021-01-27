@@ -1,4 +1,4 @@
-<img align="left" width="100" height="100" src="img/logo.gif">
+<img align="left" width="200" height="200" src="img/logo.gif">
 
 # gyro: a zig package manager
 
