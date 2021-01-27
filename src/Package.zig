@@ -19,7 +19,6 @@ deps: []Dependency,
 build_deps: []Dependency,
 
 // meta info
-author: ?[]const u8,
 description: ?[]const u8,
 license: ?[]const u8,
 homepage_url: ?[]const u8,
@@ -43,7 +42,6 @@ pub fn init(
         .tags = std.ArrayList([]const u8).init(allocator),
 
         .root = null,
-        .author = null,
         .description = null,
         .license = null,
         .homepage_url = null,

@@ -309,9 +309,8 @@ pub fn init(
         \\pkgs:
         \\  {s}:
         \\    version: 0.0.0
-        \\    author: {s}
         \\
-    , .{ try normalizeName(info.repo), info.user });
+    , .{try normalizeName(info.repo)});
 
     try maybePrintKey("description", "description", repo_root, writer);
 
