@@ -1,6 +1,6 @@
-# gyro: a zig package manager
-
 <img align="left" width="100" height="100" src="img/logo.gif">
+
+# gyro: a zig package manager
 
 > A gyroscope is a device used for measuring or maintaining orientation
 
