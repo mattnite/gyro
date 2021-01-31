@@ -393,7 +393,7 @@ pub fn fetchAll(self: Self) !void {
 }
 
 fn expectEntryEqual(expected: Entry, actual: Entry) void {
-    const SourceType = @TagType(Entry);
+    const SourceType = std.meta.Tag(Entry);
     testing.expectEqual(@as(SourceType, expected), @as(SourceType, actual));
 
     switch (expected) {
