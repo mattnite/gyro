@@ -159,37 +159,47 @@ fn escape(allocator: *Allocator, str: []const u8) ![]const u8 {
 }
 
 pub fn printZig(self: *Self, writer: anytype) !void {
-    try writer.print(
+    try writer.writeAll(
         \\const std = @import("std");
-        \\pub const pkgs = struct {{
+        \\const build = std.build;
         \\
-    , .{});
+        \\pub fn addAllTo(artifact: *build.LibExeObjStep) void {
+        \\    for (packages) |pkg| {
+        \\        artifact.addPackage(pkg);
+        \\    }
+        \\}
+        \\
+        \\
+    );
 
-    for (self.root.edges.items) |edge| {
-        const alias = try escape(self.arena.child_allocator, edge.dep.alias);
-        defer self.arena.child_allocator.free(alias);
+    if (self.root.edges.items.len > 0) {
+        try writer.writeAll("pub const pkgs = struct {");
 
-        try writer.print("    pub const {s} = std.build.Pkg{{\n", .{alias});
-        try self.recursivePrintZig(0, edge, writer);
-        try writer.print(
-            \\    }};
-            \\
-            \\
-        , .{});
+        for (self.root.edges.items) |edge| {
+            try writer.writeAll("\n");
+            try indent(0, writer);
+
+            try writer.print("pub const {s} = build.Pkg{{\n", .{std.zig.fmtId(edge.dep.alias)});
+            try self.recursivePrintZig(0, edge, writer);
+
+            try indent(0, writer);
+            try writer.writeAll("};\n");
+        }
+
+        try writer.writeAll("};\n\n");
+
+        try writer.writeAll("pub const packages = &[_]build.Pkg{\n");
+
+        for (self.root.edges.items) |edge| {
+            try indent(0, writer);
+            try writer.print("pkgs.{},\n", .{std.zig.fmtId(edge.dep.alias)});
+        }
+
+        try writer.writeAll("};\n");
+    } else {
+        try writer.writeAll("pub const pkgs = struct {};\n\n");
+        try writer.writeAll("pub const packages = &[_]build.Pkg{};\n");
     }
-
-    try writer.print(
-        \\    pub fn addAllTo(artifact: *std.build.LibExeObjStep) void {{
-        \\        @setEvalBranchQuota(1_000_000);
-        \\        inline for (std.meta.declarations(pkgs)) |decl| {{
-        \\            if (decl.is_pub and decl.data == .Var) {{
-        \\                artifact.addPackage(@field(pkgs, decl.name));
-        \\            }}
-        \\        }}
-        \\    }}
-        \\}};
-        \\
-    , .{});
 }
 
 fn indent(depth: usize, writer: anytype) !void {
@@ -204,11 +214,11 @@ fn recursivePrintZig(
 ) anyerror!void {
     if (depth != 0) {
         try indent(depth, writer);
-        try writer.print("std.build.Pkg{{\n", .{});
+        try writer.writeAll("build.Pkg{\n");
     }
 
     try indent(depth + 1, writer);
-    try writer.print(".name = \"{s}\",\n", .{edge.dep.alias});
+    try writer.print(".name = \"{s}\",\n", .{std.zig.fmtEscapes(edge.dep.alias)});
 
     try indent(depth + 1, writer);
     try writer.print(".path = \"{s}\",\n", .{
@@ -217,18 +227,18 @@ fn recursivePrintZig(
 
     if (edge.to.edges.items.len > 0) {
         try indent(depth + 1, writer);
-        try writer.print(".dependencies = &[_]std.build.Pkg{{\n", .{});
+        try writer.writeAll(".dependencies = &[_]build.Pkg{\n");
 
         for (edge.to.edges.items) |e| {
             try self.recursivePrintZig(depth + 2, e, writer);
         }
 
         try indent(depth + 1, writer);
-        try writer.print("}},\n", .{});
+        try writer.writeAll("},\n");
     }
 
     if (depth != 0) {
         try indent(depth, writer);
-        try writer.print("}},\n", .{});
+        try writer.writeAll("},\n");
     }
 }

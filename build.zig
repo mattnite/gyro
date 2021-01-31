@@ -1,7 +1,6 @@
 usingnamespace std.build;
 const std = @import("std");
-const ssl = @import(pkgs.ssl.path);
-const pkgs = @import("deps.zig").pkgs;
+const pkgs = @import("deps.zig");
 
 const clap = .{
     .name = "clap",
@@ -71,6 +70,7 @@ fn addAllPkgs(lib: *LibExeObjStep) void {
     lib.addPackage(zfetch);
     lib.addPackage(uri);
 }
+
 pub fn build(b: *Builder) !void {
     var target = b.standardTargetOptions(.{});
     if (target.abi == null) {
