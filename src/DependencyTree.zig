@@ -146,18 +146,6 @@ fn recursiveBuildPkg(arena: *std.heap.ArenaAllocator, edge: *Edge) anyerror!std.
     return ret;
 }
 
-fn escape(allocator: *Allocator, str: []const u8) ![]const u8 {
-    return for (str) |c| {
-        if (!std.ascii.isAlNum(c) and c != '_') {
-            var buf = try allocator.alloc(u8, str.len + 3);
-            std.mem.copy(u8, buf, "@\"");
-            std.mem.copy(u8, buf[2..], str);
-            buf[buf.len - 1] = '"';
-            break buf;
-        }
-    } else try allocator.dupe(u8, str);
-}
-
 pub fn printZig(self: *Self, writer: anytype) !void {
     try writer.writeAll(
         \\const std = @import("std");
@@ -177,9 +165,12 @@ pub fn printZig(self: *Self, writer: anytype) !void {
 
         for (self.root.edges.items) |edge| {
             try writer.writeAll("\n");
-            try indent(0, writer);
 
-            try writer.print("pub const {s} = build.Pkg{{\n", .{std.zig.fmtId(edge.dep.alias)});
+            try indent(0, writer);
+            try writer.print("pub const {s} = build.Pkg{{\n", .{
+                std.zig.fmtId(edge.dep.alias),
+            });
+
             try self.recursivePrintZig(0, edge, writer);
 
             try indent(0, writer);
@@ -192,7 +183,9 @@ pub fn printZig(self: *Self, writer: anytype) !void {
 
         for (self.root.edges.items) |edge| {
             try indent(0, writer);
-            try writer.print("pkgs.{},\n", .{std.zig.fmtId(edge.dep.alias)});
+            try writer.print("pkgs.{},\n", .{
+                std.zig.fmtId(edge.dep.alias),
+            });
         }
 
         try writer.writeAll("};\n");
@@ -218,11 +211,13 @@ fn recursivePrintZig(
     }
 
     try indent(depth + 1, writer);
-    try writer.print(".name = \"{s}\",\n", .{std.zig.fmtEscapes(edge.dep.alias)});
+    try writer.print(".name = \"{s}\",\n", .{
+        std.zig.fmtEscapes(edge.dep.alias),
+    });
 
     try indent(depth + 1, writer);
     try writer.print(".path = \"{s}\",\n", .{
-        try edge.to.entry.getEscapedRootPath(&self.arena),
+        std.zig.fmtEscapes(try edge.to.entry.getRootPath(&self.arena)),
     });
 
     if (edge.to.edges.items.len > 0) {
