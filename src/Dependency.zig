@@ -11,7 +11,7 @@ const Self = @This();
 const Allocator = std.mem.Allocator;
 const mem = std.mem;
 const testing = std.testing;
-const SourceType = @TagType(Lockfile.Entry);
+const SourceType = std.meta.Tag(Lockfile.Entry);
 
 alias: []const u8,
 src: Source,
