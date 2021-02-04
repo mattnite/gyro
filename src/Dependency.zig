@@ -157,7 +157,10 @@ pub fn resolve(
 ///     <type>: <integrity str>
 /// ```
 pub fn fromZNode(node: *zzz.ZNode) !Self {
-    if (node.*.child == null) return error.NoChildren;
+    if (node.*.child == null) {
+        std.log.err("unable to parse dependency \"{s}\": no version or src configuration", .{zGetString(node)});
+        return error.Explained;
+    }
 
     // check if only one child node and that it has no children
     if (node.*.child.?.value == .String and node.*.child.?.child == null) {
@@ -190,7 +193,10 @@ pub fn fromZNode(node: *zzz.ZNode) !Self {
                 .String => |str| if (mem.eql(u8, str, "src")) break :blk child,
                 else => continue,
             }
-        } else return error.SrcTagNotFound;
+        } else {
+            std.log.err("unable to parce dependency \"{s}\", expected a \"src\" configuration", .{zGetString(node)});
+            return error.Explained;
+        }
     };
 
     const src: Source = blk: {
@@ -198,7 +204,13 @@ pub fn fromZNode(node: *zzz.ZNode) !Self {
         const src_str = try zGetString(child);
         const src_type = inline for (std.meta.fields(SourceType)) |field| {
             if (mem.eql(u8, src_str, field.name)) break @field(SourceType, field.name);
-        } else return error.InvalidSrcTag;
+        } else {
+            std.log.err("unable to parse dependency \"{s}\", unexpected src type \"{s}\"", .{
+                zGetString(node),
+                src_str,
+            });
+            return error.Explained;
+        };
 
         break :blk switch (src_type) {
             .pkg => .{
