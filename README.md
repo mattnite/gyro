@@ -4,6 +4,8 @@
 
 > A gyroscope is a device used for measuring or maintaining orientation
 
+![Linux](https://github.com/mattnite/gyro/workflows/Linux/badge.svg)
+
 ---
 
 Table of Contents
