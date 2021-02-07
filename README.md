@@ -4,6 +4,8 @@
 
 > A gyroscope is a device used for measuring or maintaining orientation
 
+---
+
 Table of Contents
 =================
   * [Introduction](#introduction)
@@ -13,7 +15,7 @@ Table of Contents
     * [Build Dependencies](#build-dependencies)
   * [Producing Packages](#producing-packages)
 
-# Introduction
+## Introduction
 
 Gyro is an unofficial package manager for the Zig programming language.
 It improves a developer's life by giving them a package experience similar to cargo.
@@ -37,11 +39,11 @@ To build your project all that's needed is `gyro build` and gyro will fetch anyt
 
 If you want code that's not in the package index don't fret because I have you covered, if it's in a github repository, then all you have to do is `gyro add --github <user>/<repo>`, and if it's located elsewhere gyro supports downloading `tar.gz` archives over https (see "How To" section).
 
-# Installation
+## Installation
 
 In order to install gyro, all you need to do is extract one of the [release tarballs](https://github.com/mattnite/gyro/releases) for your system and add the single static binary to your PATH.
 
-## Building
+### Building
 
 If you'd like to build from source, the only thing you need is the zig compiler:
 
@@ -60,7 +62,7 @@ gyro build
 (Note: you might need to move the original gyro binary from the `zig-cache` first).
 This command wraps `zig build`, so you can pass arguements like you normally would, like `gyro build test` to run your unit tests.
 
-# Consuming packages
+## Consuming packages
 
 To find potential zig packages you'd like to use:
 - [astrolabe.pm](https://astrolabe.pm), the default package index
@@ -102,7 +104,7 @@ pub fn main() !void {
 
 If you want to "link" a specific package to an object, the packages you depend on are accessed like `pkgs.<package name>` so in the example above you could instead do `exe.addPackage(pkgs.hello_world)`.
 
-## Build dependencies
+### Build dependencies
 
 It's also possible to use packaged code in your `build.zig`, since this would only run at build time and most likely not required in your application or library these are kept separate from your regular dependencies in your project file.
 
@@ -127,7 +129,7 @@ pub fn build(b: *Builder) void {
 }
 ```
 
-# Producing packages
+## Producing packages
 
 The easiest way for an existing project to adopt gyro is to start by running `gyro init <user>/<repo>` to grab metadata from their Github project.
 From there the package maintainer to finish the init process by defining a few more things:
@@ -136,7 +138,7 @@ From there the package maintainer to finish the init process by defining a few m
 - any other packages if the repo exports multiple repos (and their corresponding root files of course)
 - dependencies (see previous section).
 
-## A note on projects and dependencies
+### A note on projects and dependencies
 
 A project may export multiple packages, each with their own root file.
 For the sake of simplicity all packages in a project share the same dependencies.
