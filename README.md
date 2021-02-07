@@ -6,6 +6,8 @@
 
 [![Linux](https://github.com/mattnite/gyro/workflows/Linux/badge.svg)](https://github.com/mattnite/gyro/actions?query=workflow%3ALinux) [![windows](https://github.com/mattnite/gyro/workflows/windows/badge.svg)](https://github.com/mattnite/gyro/actions?query=workflow%3Awindows) [![macOS](https://github.com/mattnite/gyro/workflows/macOS/badge.svg)](https://github.com/mattnite/gyro/actions?query=workflow%3AmacOS)
 
+<br />
+
 ---
 
 Table of Contents
