@@ -92,13 +92,13 @@ pub fn fromFile(allocator: *std.mem.Allocator, file: std.fs.File) !Self {
             };
 
             const ver = version.Semver.parse(ver_str) catch |err| {
-                std.log.err("failed to parse version string '{}', must be <major>.<minor>.<patch>: {}", .{ ver_str, err });
+                std.log.err("failed to parse version string '{s}', must be <major>.<minor>.<patch>: {}", .{ ver_str, err });
                 return error.Explained;
             };
 
             const res = try ret.packages.getOrPut(name);
             if (res.found_existing) {
-                std.log.err("duplicate exported packages {}", .{name});
+                std.log.err("duplicate exported packages {s}", .{name});
                 return error.Explained;
             }
 
