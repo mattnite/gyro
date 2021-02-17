@@ -1,7 +1,7 @@
 pkg default gyro clap 0.4.0
 pkg default gyro hzzp 0.0.0
 pkg default gyro zfetch 0.0.1
-pkg default gyro zzz 0.0.0
+pkg default gyro zzz 0.0.1
 pkg default gyro glob 0.0.0
 pkg default gyro tar 0.0.1
 pkg default gyro version 0.0.0
