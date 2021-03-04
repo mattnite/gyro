@@ -118,15 +118,12 @@ fn runCommands(allocator: *std.mem.Allocator) !void {
             defer args.deinit();
 
             const num = args.positionals().len;
-            if (num < 1) {
-                std.log.err("please give me a link to your github repo or just '<user>/<repo>'", .{});
-                return error.Explained;
-            } else if (num > 1) {
+            if (num > 1) {
                 std.log.err("that's too many args, please just give me one in the form of a link to your github repo or just '<user>/<repo>'", .{});
                 return error.Explained;
             }
 
-            try init(allocator, args.positionals()[0]);
+            try init(allocator, if (num == 1) args.positionals()[0] else null);
         },
         .add => {
             // TODO: add more arguments

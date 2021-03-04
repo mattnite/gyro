@@ -239,10 +239,11 @@ pub fn package(
     }
 
     var found_not_pkg = false;
-    for (names) |name| if (!project.contains(name)) {
-        std.log.err("{s} is not a package", .{name});
-        found_not_pkg = true;
-    };
+    for (names) |name|
+        if (!project.contains(name)) {
+            std.log.err("{s} is not a package", .{name});
+            found_not_pkg = true;
+        };
 
     if (found_not_pkg) return error.Explained;
     var write_dir = try std.fs.cwd().openDir(
@@ -278,7 +279,7 @@ fn maybePrintKey(
 
 pub fn init(
     allocator: *Allocator,
-    link: []const u8,
+    link: ?[]const u8,
 ) !void {
     const file = std.fs.cwd().createFile("gyro.zzz", .{ .exclusive = true }) catch |err| {
         return if (err == error.PathAlreadyExists) blk: {
@@ -289,7 +290,7 @@ pub fn init(
     errdefer std.fs.cwd().deleteFile("gyro.zzz") catch {};
     defer file.close();
 
-    const info = try parseUserRepo(link);
+    const info = try parseUserRepo(link orelse return);
 
     var repo_tree = try api.getGithubRepo(allocator, info.user, info.repo);
     defer repo_tree.deinit();
