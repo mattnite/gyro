@@ -379,6 +379,23 @@ pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool,
     const deps_key = if (build_deps) "build_deps" else "deps";
     var deps = zFindChild(root, deps_key) orelse try tree.addNode(root, .{ .String = deps_key });
 
+    var aliases = std.StringHashMap(void).init(allocator);
+    defer aliases.deinit();
+
+    var it = ZChildIterator.init(deps);
+    while (it.next()) |dep_node| {
+        var dep = try Dependency.fromZNode(dep_node);
+        try aliases.put(dep.alias, {});
+    }
+
+    for (targets) |target| {
+        const info = try parseUserRepo(target);
+        if (aliases.contains(info.repo)) {
+            std.log.err("'{s}' alias exists in gyro.zzz", .{info.repo});
+            return error.Explained;
+        }
+    }
+
     // TODO: error if alias already exists
     for (targets) |target| {
         const info = try parseUserRepo(target);
