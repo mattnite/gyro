@@ -71,14 +71,32 @@ pub fn fromFile(allocator: *std.mem.Allocator, file: std.fs.File) !Self {
 
     if (zFindChild(root, "deps")) |deps| {
         var it = ZChildIterator.init(deps);
-        while (it.next()) |dep|
-            try ret.dependencies.append(try Dependency.fromZNode(dep));
+        while (it.next()) |dep_node| {
+            const dep = try Dependency.fromZNode(dep_node);
+            for (ret.dependencies.items) |other| {
+                if (std.mem.eql(u8, dep.alias, other.alias)) {
+                    std.log.err("'{s}' alias in 'deps' is declared multiple times", .{dep.alias});
+                    return error.Explained;
+                }
+            } else {
+                try ret.dependencies.append(dep);
+            }
+        }
     }
 
     if (zFindChild(root, "build_deps")) |build_deps| {
         var it = ZChildIterator.init(build_deps);
-        while (it.next()) |dep|
-            try ret.build_dependencies.append(try Dependency.fromZNode(dep));
+        while (it.next()) |dep_node| {
+            const dep = try Dependency.fromZNode(dep_node);
+            for (ret.build_dependencies.items) |other| {
+                if (std.mem.eql(u8, dep.alias, other.alias)) {
+                    std.log.err("'{s}' alias in 'build_deps' is declared multiple times", .{dep.alias});
+                    return error.Explained;
+                }
+            } else {
+                try ret.build_dependencies.append(dep);
+            }
+        }
     }
 
     if (zFindChild(root, "pkgs")) |pkgs| {
