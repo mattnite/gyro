@@ -3,12 +3,13 @@ const zzz = @import("zzz");
 const version = @import("version");
 const Package = @import("Package.zig");
 const Dependency = @import("Dependency.zig");
+const Allocator = std.mem.Allocator;
 
 usingnamespace @import("common.zig");
 
 const Self = @This();
 
-allocator: *std.mem.Allocator,
+allocator: *Allocator,
 text: []const u8,
 packages: std.StringHashMap(Package),
 dependencies: std.ArrayList(Dependency),
@@ -22,7 +23,7 @@ pub const Iterator = struct {
     }
 };
 
-pub fn init(allocator: *std.mem.Allocator, file: std.fs.File) !Self {
+pub fn init(allocator: *Allocator, file: std.fs.File) !Self {
     return Self{
         .allocator = allocator,
         .text = try file.readToEndAlloc(allocator, std.math.maxInt(usize)),
@@ -57,8 +58,14 @@ pub fn iterator(self: Self) Iterator {
     return Iterator{ .inner = self.packages.iterator() };
 }
 
-pub fn fromFile(allocator: *std.mem.Allocator, file: std.fs.File) !Self {
-    var ret = try Self.init(allocator, file);
+pub fn fromText(allocator: *Allocator, text: []const u8) !Self {
+    var ret = Self{
+        .allocator = allocator,
+        .text = text,
+        .packages = std.StringHashMap(Package).init(allocator),
+        .dependencies = std.ArrayList(Dependency).init(allocator),
+        .build_dependencies = std.ArrayList(Dependency).init(allocator),
+    };
     errdefer ret.deinit();
 
     if (std.mem.indexOf(u8, ret.text, "\r\n") != null) {
@@ -127,9 +134,15 @@ pub fn fromFile(allocator: *std.mem.Allocator, file: std.fs.File) !Self {
                 ret.dependencies.items,
                 ret.build_dependencies.items,
             );
+
             try res.entry.value.fillFromZNode(node);
         }
     }
 
     return ret;
+
+}
+
+pub fn fromFile(allocator: *Allocator, file: std.fs.File) !Self {
+    return fromText(allocator, try file.reader().readAllAlloc(allocator, std.math.maxInt(usize)));
 }

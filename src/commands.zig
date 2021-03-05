@@ -413,6 +413,22 @@ pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool,
             } else "main";
             std.log.debug("default_branch: {s}", .{default_branch});
 
+            const text_opt = try api.getGithubGyroFile(
+                &arena.allocator, 
+                info.user, 
+                info.repo, 
+                try api.getHeadCommit(&arena.allocator, info.user, info.repo, default_branch),
+            );
+
+            const root_file = if (text_opt) |t| get_root: {
+                const project = try Project.fromText(&arena.allocator, t);
+                var ret: []const u8 = default_root;
+                if (project.packages.count() == 1)
+                    ret = project.packages.iterator().next().?.value.root orelse default_root;
+
+                break :get_root ret;
+            } else default_root;
+               
             break :blk Dependency{
                 .alias = try normalizeName(info.repo),
                 .src = .{
@@ -420,7 +436,7 @@ pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool,
                         .user = info.user,
                         .repo = info.repo,
                         .ref = default_branch,
-                        .root = default_root,
+                        .root = root_file,
                     },
                 },
             };

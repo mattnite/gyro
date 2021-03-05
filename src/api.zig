@@ -287,3 +287,55 @@ pub fn getGithubTopics(
 
     return try parser.parse(text);
 }
+
+pub fn getGithubGyroFile(
+    allocator: *Allocator,
+    user: []const u8,
+    repo: []const u8,
+    commit: []const u8,
+) !?[]const u8 {
+    const url = try std.fmt.allocPrint(
+        allocator,
+        // TODO: fix api call once Http redirects are handled
+        //"https://api.github.com/repos/{s}/{s}/tarball/{s}",
+        "https://codeload.github.com/{s}/{s}/legacy.tar.gz/{s}",
+        .{
+            user,
+            repo,
+            commit,
+        },
+    );
+    defer allocator.free(url);
+
+    var headers = http.Headers.init(allocator);
+    defer headers.deinit();
+
+    std.log.info("fetching tarball: {s}", .{url});
+    var req = try zfetch.Request.init(allocator, url);
+    defer req.deinit();
+
+    const link = try uri.parse(url);
+    try headers.set("Host", link.host orelse return error.NoHost);
+    try headers.set("Accept", "*/*");
+    try headers.set("User-Agent", "gyro");
+
+    try req.commit(.GET, headers, null);
+    try req.fulfill();
+
+    if (req.status.code != 200) {
+        std.log.err("got http status code for {s}: {}", .{ url, req.status.code });
+        return error.FailedRequest;
+    }
+
+    const subpath = try std.fmt.allocPrint(allocator, "{s}-{s}-{s}/gyro.zzz", .{user, repo, commit[0..7]});
+    defer allocator.free(subpath);
+
+    std.log.info("subpath: {s}", .{subpath});
+
+    var gzip = try std.compress.gzip.gzipStream(allocator, req.reader());
+    defer gzip.deinit();
+
+    var extractor = tar.fileExtractor(subpath, gzip.reader());
+    return extractor.reader().readAllAlloc(allocator, std.math.maxInt(usize)) catch |err|
+        return if (err == error.FileNotFound) null else err;
+}
