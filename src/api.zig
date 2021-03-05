@@ -330,8 +330,6 @@ pub fn getGithubGyroFile(
     const subpath = try std.fmt.allocPrint(allocator, "{s}-{s}-{s}/gyro.zzz", .{user, repo, commit[0..7]});
     defer allocator.free(subpath);
 
-    std.log.info("subpath: {s}", .{subpath});
-
     var gzip = try std.compress.gzip.gzipStream(allocator, req.reader());
     defer gzip.deinit();
 

@@ -388,15 +388,15 @@ pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool,
         try aliases.put(dep.alias, {});
     }
 
+    // TODO: needs to be prettier later
     for (targets) |target| {
         const info = try parseUserRepo(target);
-        if (aliases.contains(info.repo)) {
+        if (aliases.contains(try normalizeName(info.repo))) {
             std.log.err("'{s}' alias exists in gyro.zzz", .{info.repo});
             return error.Explained;
         }
     }
 
-    // TODO: error if alias already exists
     for (targets) |target| {
         const info = try parseUserRepo(target);
         const dep = if (github) blk: {
