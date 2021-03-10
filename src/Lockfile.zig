@@ -118,8 +118,6 @@ pub const Entry = union(enum) {
         );
 
         var deps = std.ArrayListUnmanaged(Dependency){};
-
-        // TODO: count then alloc
         var ztree = zzz.ZTree(1, 1000){};
         var root = try ztree.appendText(text);
         if (zFindChild(root, "deps")) |deps_node| {
@@ -130,6 +128,8 @@ pub const Entry = union(enum) {
                     try Dependency.fromZNode(node),
                 );
         }
+
+        // TODO: find pkg with matching root path, add it's scoped deps
 
         return deps.items;
     }

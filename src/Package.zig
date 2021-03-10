@@ -15,7 +15,7 @@ name: []const u8,
 version: version.Semver,
 root: ?[]const u8,
 files: std.ArrayList([]const u8),
-deps: []Dependency,
+deps: std.ArrayList(Dependency),
 build_deps: []Dependency,
 
 // meta info
@@ -31,12 +31,12 @@ pub fn init(
     ver: version.Semver,
     deps: []Dependency,
     build_deps: []Dependency,
-) Self {
-    return Self{
+) !Self {
+    var ret = Self{
         .arena = std.heap.ArenaAllocator.init(allocator),
         .name = name,
         .version = ver,
-        .deps = deps,
+        .deps = std.ArrayList(Dependency).init(allocator),
         .build_deps = build_deps,
         .files = std.ArrayList([]const u8).init(allocator),
         .tags = std.ArrayList([]const u8).init(allocator),
@@ -47,11 +47,15 @@ pub fn init(
         .homepage_url = null,
         .source_url = null,
     };
+
+    try ret.deps.appendSlice(deps);
+    return ret;
 }
 
 pub fn deinit(self: *Self) void {
     self.tags.deinit();
     self.files.deinit();
+    self.deps.deinit();
     self.arena.deinit();
 }
 
@@ -62,6 +66,21 @@ pub fn fillFromZNode(
     if (zFindChild(node, "files")) |files| {
         var it = ZChildIterator.init(files);
         while (it.next()) |path| try self.files.append(try zGetString(path));
+    }
+
+    if (zFindChild(node, "deps")) |deps| {
+        var it = ZChildIterator.init(deps);
+        while (it.next()) |dep_node| {
+            const dep = try Dependency.fromZNode(dep_node);
+            for (self.deps.items) |other| {
+                if (std.mem.eql(u8, dep.alias, other.alias)) {
+                    std.log.err("'{s}' alias in 'deps' for '{s}' is declared multiple times", .{ dep.alias, self.name });
+                    return error.Explained;
+                }
+            } else {
+                try self.deps.append(dep);
+            }
+        }
     }
 
     if (zFindChild(node, "tags")) |tags| {
@@ -96,9 +115,9 @@ fn createManifest(self: *Self, tree: *zzz.ZTree(1, 1000), ver_str: []const u8) !
         for (self.tags.items) |tag| _ = try tree.addNode(tags, .{ .String = tag });
     }
 
-    if (self.deps.len > 0) {
+    if (self.deps.items.len > 0) {
         var deps = try tree.addNode(root, .{ .String = "deps" });
-        for (self.deps) |dep| try dep.addToZNode(&self.arena, tree, deps, true);
+        for (self.deps.items) |dep| try dep.addToZNode(&self.arena, tree, deps, true);
     }
 
     if (self.build_deps.len > 0) {
