@@ -129,7 +129,33 @@ pub const Entry = union(enum) {
                 );
         }
 
-        // TODO: find pkg with matching root path, add it's scoped deps
+        switch (self) {
+            .url, .github => {
+                // search for pkg with matching root file
+                if (zFindChild(root, "pkgs")) |pkgs_node| {
+                    const entry_root = switch (self) {
+                        .url => |url| url.root,
+                        .github => |gh| gh.root,
+                        else => unreachable,
+                    };
+
+                    var pkg_it = ZChildIterator.init(pkgs_node);
+                    while (pkg_it.next()) |pkg_node| {
+                        const pkg_root = (try zFindString(pkg_node, "root")) orelse "src/main.zig";
+                        if (std.mem.eql(u8, pkg_root, entry_root)) {
+                            if (zFindChild(pkg_node, "deps")) |deps_node| {
+                                var it = ZChildIterator.init(deps_node);
+                                while (it.next()) |dep_node| {
+                                    const dep = try Dependency.fromZNode(dep_node);
+                                    try deps.append(&arena.allocator, dep);
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            else => {},
+        }
 
         return deps.items;
     }
