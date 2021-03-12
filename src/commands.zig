@@ -414,9 +414,9 @@ pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool,
             std.log.debug("default_branch: {s}", .{default_branch});
 
             const text_opt = try api.getGithubGyroFile(
-                &arena.allocator, 
-                info.user, 
-                info.repo, 
+                &arena.allocator,
+                info.user,
+                info.repo,
                 try api.getHeadCommit(&arena.allocator, info.user, info.repo, default_branch),
             );
 
@@ -428,7 +428,7 @@ pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool,
 
                 break :get_root ret;
             } else default_root;
-               
+
             break :blk Dependency{
                 .alias = try normalizeName(info.repo),
                 .src = .{

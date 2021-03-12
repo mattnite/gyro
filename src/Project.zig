@@ -127,7 +127,7 @@ pub fn fromText(allocator: *Allocator, text: []const u8) !Self {
                 return error.Explained;
             }
 
-            res.entry.value = Package.init(
+            res.entry.value = try Package.init(
                 allocator,
                 name,
                 ver,
@@ -140,7 +140,6 @@ pub fn fromText(allocator: *Allocator, text: []const u8) !Self {
     }
 
     return ret;
-
 }
 
 pub fn fromFile(allocator: *Allocator, file: std.fs.File) !Self {

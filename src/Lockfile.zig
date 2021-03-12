@@ -118,8 +118,6 @@ pub const Entry = union(enum) {
         );
 
         var deps = std.ArrayListUnmanaged(Dependency){};
-
-        // TODO: count then alloc
         var ztree = zzz.ZTree(1, 1000){};
         var root = try ztree.appendText(text);
         if (zFindChild(root, "deps")) |deps_node| {
@@ -129,6 +127,34 @@ pub const Entry = union(enum) {
                     &arena.allocator,
                     try Dependency.fromZNode(node),
                 );
+        }
+
+        switch (self) {
+            .url, .github => {
+                // search for pkg with matching root file
+                if (zFindChild(root, "pkgs")) |pkgs_node| {
+                    const entry_root = switch (self) {
+                        .url => |url| url.root,
+                        .github => |gh| gh.root,
+                        else => unreachable,
+                    };
+
+                    var pkg_it = ZChildIterator.init(pkgs_node);
+                    while (pkg_it.next()) |pkg_node| {
+                        const pkg_root = (try zFindString(pkg_node, "root")) orelse "src/main.zig";
+                        if (std.mem.eql(u8, pkg_root, entry_root)) {
+                            if (zFindChild(pkg_node, "deps")) |deps_node| {
+                                var it = ZChildIterator.init(deps_node);
+                                while (it.next()) |dep_node| {
+                                    const dep = try Dependency.fromZNode(dep_node);
+                                    try deps.append(&arena.allocator, dep);
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            else => {},
         }
 
         return deps.items;

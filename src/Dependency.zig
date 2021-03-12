@@ -61,8 +61,10 @@ fn findLatestMatch(self: Self, lockfile: *Lockfile) ?*Lockfile.Entry {
             },
             .github => |gh| if (mem.eql(u8, gh.user, entry.github.user) and
                 mem.eql(u8, gh.repo, entry.github.repo) and
-                mem.eql(u8, gh.ref, entry.github.ref)) return entry,
-            .url => |url| if (mem.eql(u8, url.str, entry.url.str)) return entry,
+                mem.eql(u8, gh.ref, entry.github.ref) and
+                mem.eql(u8, gh.root, entry.github.root)) return entry,
+            .url => |url| if (mem.eql(u8, url.str, entry.url.str) and
+                mem.eql(u8, url.root, entry.url.root)) return entry,
         }
     }
 
@@ -100,7 +102,7 @@ fn resolveLatest(
                 .root = gh.root,
             },
         },
-        .url => |url| .{
+        .url => |url| Lockfile.Entry{
             .url = .{
                 .str = url.str,
                 .root = url.root,
