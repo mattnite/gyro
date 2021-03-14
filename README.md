@@ -38,7 +38,7 @@ pub fn build(b: *Builder) void {
 ```
 
 To make the job of finding suitable packages to use in your project easier, gyro is paired with a package index located at [astrolabe.pm](https://astrolabe.pm).
-A simple `gyro add mecha` will add the latest version of `mecha` (parser combinator library) as a dependency.
+A simple `gyro add hejsil/mecha` will add the latest version of `mecha` (parser combinator library) as a dependency.
 To build your project all that's needed is `gyro build` and gyro will fetch anything that hasn't been downloaded.
 
 If you want code that's not in the package index don't fret because I have you covered, if it's in a github repository, then all you have to do is `gyro add --github <user>/<repo>` (or `-g` instead of `--github`), and if it's located elsewhere gyro supports downloading `tar.gz` archives over https (see "How To" section).
