@@ -24,24 +24,21 @@ const Source = union(SourceType) {
         repository: []const u8,
         ver_str: []const u8,
     },
-
     github: struct {
         user: []const u8,
         repo: []const u8,
         ref: []const u8,
         root: []const u8,
     },
-
     url: struct {
         str: []const u8,
         root: []const u8,
         //integrity: ?Integrity,
     },
-
     local: struct {
         path: []const u8,
         root: []const u8,
-    }
+    },
 };
 
 fn findLatestMatch(self: Self, lockfile: *Lockfile) ?*Lockfile.Entry {
@@ -257,12 +254,6 @@ pub fn fromZNode(node: *zzz.ZNode) !Self {
                         .{ src.url.str, err },
                     );
                 },
-                error.UnexpectedCharacter => {
-                    std.log.err(
-                        "Failed to parse '{s}' as a url ({}), did you forget 'file://' for defining a local path?",
-                        .{ src.url.str, err },
-                    );
-                },
                 else => return err,
             }
             return error.Explained;
@@ -306,7 +297,7 @@ fn expectDepEqual(expected: Self, actual: Self) void {
         .local => |local| {
             testing.expectEqualStrings(local.path, actual.src.local.path);
             testing.expectEqualStrings(local.root, actual.src.local.root);
-        }
+        },
     };
 }
 

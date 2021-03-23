@@ -10,7 +10,6 @@ const Self = @This();
 const Allocator = std.mem.Allocator;
 const Hasher = std.crypto.hash.blake2.Blake2b128;
 const testing = std.testing;
-const file_proto = "file://";
 
 arena: std.heap.ArenaAllocator,
 text: []const u8,
@@ -172,9 +171,9 @@ pub const Entry = union(enum) {
     }
 
     fn basePath(self: Entry, arena: *std.heap.ArenaAllocator) ![]const u8 {
-        return if (self == .url and std.mem.startsWith(u8, self.url.str, file_proto)) blk: {
-            break :blk self.url.str[file_proto.len..];
-        } else blk: {
+        return if (self == .local)
+            self.local.path
+        else blk: {
             const package_path = try self.packagePath(arena.child_allocator);
             defer arena.child_allocator.free(package_path);
 
@@ -211,12 +210,9 @@ pub const Entry = union(enum) {
                 };
             },
             .github => |gh| gh.root,
-            .url => |url| if (std.mem.startsWith(u8, url.str, file_proto)) {
-                var ret = try std.fs.path.join(&arena.allocator, &[_][]const u8{
-                    url.str[file_proto.len..],
-                    url.root,
-                });
-
+            .url => |url| url.root,
+            .local => |local| {
+                var ret = try std.fs.path.join(&arena.allocator, &[_][]const u8{ local.path, local.root });
                 if (std.fs.path.sep == std.fs.path.sep_windows) {
                     for (ret) |*c| {
                         if (c.* == '/') {
@@ -226,11 +222,7 @@ pub const Entry = union(enum) {
                 }
 
                 return ret;
-            } else blk: {
-                std.log.err("got a url cache path: {s}", .{url.root});
-                break :blk url.root;
             },
-            .local => |local| local.root,
         });
 
         if (std.fs.path.sep == std.fs.path.sep_windows) {
@@ -362,10 +354,7 @@ pub const Entry = union(enum) {
 
                 try api.getTarGz(allocator, url.str, pkg_dir);
             },
-            .local => |local| {
-                const absolute_path = try std.fs.path.resolve(allocator, &.{local.path});
-                std.log.scoped(.gambi).warn("Did stuff: {s}", .{absolute_path});
-            }
+            .local => {},
         }
 
         const ok = try base_dir.createFile("ok", .{ .read = true });
@@ -427,7 +416,7 @@ pub fn deinit(self: *Self) void {
 pub fn save(self: Self, file: std.fs.File) !void {
     try file.seekTo(0);
     for (self.entries.items) |entry| {
-        if (entry.* == .url and std.mem.startsWith(u8, entry.url.str, file_proto))
+        if (entry.* == .local)
             continue;
 
         try entry.write(file.writer());
