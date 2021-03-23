@@ -24,18 +24,20 @@ const Source = union(SourceType) {
         repository: []const u8,
         ver_str: []const u8,
     },
-
     github: struct {
         user: []const u8,
         repo: []const u8,
         ref: []const u8,
         root: []const u8,
     },
-
     url: struct {
         str: []const u8,
         root: []const u8,
         //integrity: ?Integrity,
+    },
+    local: struct {
+        path: []const u8,
+        root: []const u8,
     },
 };
 
@@ -65,6 +67,8 @@ fn findLatestMatch(self: Self, lockfile: *Lockfile) ?*Lockfile.Entry {
                 mem.eql(u8, gh.root, entry.github.root)) return entry,
             .url => |url| if (mem.eql(u8, url.str, entry.url.str) and
                 mem.eql(u8, url.root, entry.url.root)) return entry,
+            .local => |local| if (mem.eql(u8, local.path, entry.local.path) and
+                mem.eql(u8, local.root, entry.local.root)) return entry,
         }
     }
 
@@ -106,6 +110,12 @@ fn resolveLatest(
             .url = .{
                 .str = url.str,
                 .root = url.root,
+            },
+        },
+        .local => |local| Lockfile.Entry{
+            .local = .{
+                .path = local.path,
+                .root = local.root,
             },
         },
     };
@@ -226,6 +236,12 @@ pub fn fromZNode(node: *zzz.ZNode) !Self {
                     .root = (try zFindString(node, "root")) orelse "src/main.zig",
                 },
             },
+            .local => .{
+                .local = .{
+                    .path = try zGetString(child.child orelse return error.UrlMissingStr),
+                    .root = (try zFindString(node, "root")) orelse "src/main.zig",
+                },
+            },
         };
     };
 
@@ -235,12 +251,6 @@ pub fn fromZNode(node: *zzz.ZNode) !Self {
                 error.InvalidFormat => {
                     std.log.err(
                         "Failed to parse '{s}' as a url ({}), did you forget to wrap your url in double quotes?",
-                        .{ src.url.str, err },
-                    );
-                },
-                error.UnexpectedCharacter => {
-                    std.log.err(
-                        "Failed to parse '{s}' as a url ({}), did you forget 'file://' for defining a local path?",
                         .{ src.url.str, err },
                     );
                 },
@@ -283,6 +293,10 @@ fn expectDepEqual(expected: Self, actual: Self) void {
         .url => |url| {
             testing.expectEqualStrings(url.str, actual.src.url.str);
             testing.expectEqualStrings(url.root, actual.src.url.root);
+        },
+        .local => |local| {
+            testing.expectEqualStrings(local.path, actual.src.local.path);
+            testing.expectEqualStrings(local.root, actual.src.local.root);
         },
     };
 }
@@ -485,6 +499,47 @@ test "raw explicit root" {
     expectDepEqual(expected, actual);
 }
 
+test "local with default root" {
+    const actual = try fromString(
+        \\foo:
+        \\  src:
+        \\    local: "mypkgs/cool-project"
+    );
+
+    const expected = Self{
+        .alias = "foo",
+        .src = .{
+            .local = .{
+                .path = "mypkgs/cool-project",
+                .root = "src/main.zig",
+            },
+        },
+    };
+
+    expectDepEqual(expected, actual);
+}
+
+test "local with explicit root" {
+    const actual = try fromString(
+        \\foo:
+        \\  src:
+        \\    local: "mypkgs/cool-project"
+        \\  root: main.zig
+    );
+
+    const expected = Self{
+        .alias = "foo",
+        .src = .{
+            .local = .{
+                .path = "mypkgs/cool-project",
+                .root = "main.zig",
+            },
+        },
+    };
+
+    expectDepEqual(expected, actual);
+}
+
 test "pkg can't take a root" {
     // TODO
 }
@@ -547,6 +602,14 @@ pub fn addToZNode(
 
             if (explicit or !std.mem.eql(u8, url.root, "src/main.zig")) {
                 try zPutKeyString(tree, alias, "root", url.root);
+            }
+        },
+        .local => |local| {
+            var src = try tree.addNode(alias, .{ .String = "src" });
+            try zPutKeyString(tree, src, "local", local.path);
+
+            if (explicit or !std.mem.eql(u8, local.root, "src/main.zig")) {
+                try zPutKeyString(tree, alias, "root", local.root);
             }
         },
     }

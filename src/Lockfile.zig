@@ -10,7 +10,6 @@ const Self = @This();
 const Allocator = std.mem.Allocator;
 const Hasher = std.crypto.hash.blake2.Blake2b128;
 const testing = std.testing;
-const file_proto = "file://";
 
 arena: std.heap.ArenaAllocator,
 text: []const u8,
@@ -34,6 +33,10 @@ pub const Entry = union(enum) {
         str: []const u8,
         root: []const u8,
     },
+    local: struct {
+        path: []const u8,
+        root: []const u8,
+    },
 
     pub fn fromLine(line: []const u8) !Entry {
         var it = std.mem.tokenize(line, " ");
@@ -49,6 +52,13 @@ pub const Entry = union(enum) {
             };
 
             const url = try uri.parse(ret.url.str);
+        } else if (std.mem.eql(u8, first, "local")) {
+            ret = Entry{
+                .local = .{
+                    .root = it.next() orelse return error.NoRoot,
+                    .path = it.next() orelse return error.NoPath,
+                },
+            };
         } else if (std.mem.eql(u8, first, "github")) {
             ret = Entry{
                 .github = .{
@@ -94,7 +104,7 @@ pub const Entry = union(enum) {
                     return if (err == error.FileNotFound) &[_]Dependency{} else err;
                 };
             },
-            .url, .github => blk: {
+            .url, .github, .local => blk: {
                 const base_path = try self.basePath(arena);
                 var base_dir = try std.fs.cwd().openDir(
                     base_path,
@@ -161,9 +171,9 @@ pub const Entry = union(enum) {
     }
 
     fn basePath(self: Entry, arena: *std.heap.ArenaAllocator) ![]const u8 {
-        return if (self == .url and std.mem.startsWith(u8, self.url.str, file_proto)) blk: {
-            break :blk self.url.str[file_proto.len..];
-        } else blk: {
+        return if (self == .local)
+            self.local.path
+        else blk: {
             const package_path = try self.packagePath(arena.child_allocator);
             defer arena.child_allocator.free(package_path);
 
@@ -200,12 +210,9 @@ pub const Entry = union(enum) {
                 };
             },
             .github => |gh| gh.root,
-            .url => |url| if (std.mem.startsWith(u8, url.str, file_proto)) {
-                var ret = try std.fs.path.join(&arena.allocator, &[_][]const u8{
-                    url.str[file_proto.len..],
-                    url.root,
-                });
-
+            .url => |url| url.root,
+            .local => |local| {
+                var ret = try std.fs.path.join(&arena.allocator, &[_][]const u8{ local.path, local.root });
                 if (std.fs.path.sep == std.fs.path.sep_windows) {
                     for (ret) |*c| {
                         if (c.* == '/') {
@@ -215,9 +222,6 @@ pub const Entry = union(enum) {
                 }
 
                 return ret;
-            } else blk: {
-                std.log.err("got a url cache path: {s}", .{url.root});
-                break :blk url.root;
             },
         });
 
@@ -276,6 +280,9 @@ pub const Entry = union(enum) {
             .url => |url| {
                 try zPutKeyString(&tree, root, "url", url.str);
             },
+            .local => |local| {
+                try zPutKeyString(&tree, root, "local", local.path);
+            },
         }
 
         var buf: [std.mem.page_size]u8 = undefined;
@@ -299,6 +306,7 @@ pub const Entry = union(enum) {
             .pkg => |pkg| try fifo.writer().print("{s}-{s}-{}-{s}", .{ pkg.name, pkg.user, pkg.version, &ret }),
             .github => |gh| try fifo.writer().print("{s}-{s}-{s}", .{ gh.repo, gh.user, gh.commit }),
             .url => |url| try fifo.writer().print("{s}", .{&ret}),
+            .local => |local| try fifo.writer().print("{s}", .{&ret}),
         }
 
         return std.fs.path.join(allocator, &[_][]const u8{
@@ -346,6 +354,7 @@ pub const Entry = union(enum) {
 
                 try api.getTarGz(allocator, url.str, pkg_dir);
             },
+            .local => {},
         }
 
         const ok = try base_dir.createFile("ok", .{ .read = true });
@@ -370,6 +379,7 @@ pub const Entry = union(enum) {
                 gh.commit,
             }),
             .url => |url| try writer.print("url {s} {s}", .{ url.root, url.str }),
+            .local => |local| try writer.print("local {s} {s}", .{ local.root, local.path }),
         }
 
         try writer.writeAll("\n");
@@ -406,7 +416,7 @@ pub fn deinit(self: *Self) void {
 pub fn save(self: Self, file: std.fs.File) !void {
     try file.seekTo(0);
     for (self.entries.items) |entry| {
-        if (entry.* == .url and std.mem.startsWith(u8, entry.url.str, file_proto))
+        if (entry.* == .local)
             continue;
 
         try entry.write(file.writer());
@@ -439,6 +449,10 @@ fn expectEntryEqual(expected: Entry, actual: Entry) void {
         .url => |url| {
             testing.expectEqualStrings(url.str, actual.url.str);
             testing.expectEqualStrings(url.root, actual.url.root);
+        },
+        .local => |local| {
+            testing.expectEqualStrings(local.path, actual.local.path);
+            testing.expectEqualStrings(local.root, actual.local.root);
         },
     }
 }
@@ -506,12 +520,25 @@ test "entry from url" {
     expectEntryEqual(expected, actual);
 }
 
+test "local entry" {
+    const actual = try Entry.fromLine("local src/foo.zig mypkgs/cool-project");
+    const expected = Entry{
+        .local = .{
+            .root = "src/foo.zig",
+            .path = "mypkgs/cool-project",
+        },
+    };
+
+    expectEntryEqual(expected, actual);
+}
+
 test "lockfile with example of all" {
     const text =
         \\pkg default matt something 0.1.0
         \\pkg my_repository matt foo 0.4.5
         \\github my_user my_repo master src/foo.zig 30d004329543603f76bd9d7daca054878a04fdb5
         \\url src/foo.zig https://example.com/something.tar.gz
+        \\local src/foo.zig mypkgs/cool-project
     ;
     var stream = std.io.fixedBufferStream(text);
     var actual = try Self.fromReader(std.testing.allocator, stream.reader());
@@ -555,6 +582,12 @@ test "lockfile with example of all" {
             .url = .{
                 .root = "src/foo.zig",
                 .str = "https://example.com/something.tar.gz",
+            },
+        },
+        .{
+            .local = .{
+                .root = "src/foo.zig",
+                .path = "mypkgs/cool-project",
             },
         },
     };
