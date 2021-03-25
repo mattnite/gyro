@@ -33,4 +33,4 @@
 	url = https://github.com/mattnite/glob
 [submodule "libs/known-folders"]
 	path = libs/known-folders
-	url = https://github.com/ziglibs/known-folders.git
+	url = https://github.com/ziglibs/known-folders
