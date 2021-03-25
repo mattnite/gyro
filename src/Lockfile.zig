@@ -3,6 +3,7 @@ const version = @import("version");
 const zzz = @import("zzz");
 const api = @import("api.zig");
 const uri = @import("uri");
+const build_options = @import("build_options");
 const Dependency = @import("Dependency.zig");
 usingnamespace @import("common.zig");
 
@@ -73,7 +74,7 @@ pub const Entry = union(enum) {
             const repo = it.next() orelse return error.NoRepo;
             ret = Entry{
                 .pkg = .{
-                    .repository = if (std.mem.eql(u8, repo, "default")) api.default_repo else repo,
+                    .repository = if (std.mem.eql(u8, repo, "default")) build_options.default_repo else repo,
                     .user = it.next() orelse return error.NoUser,
                     .name = it.next() orelse return error.NoName,
                     .version = try version.Semver.parse(it.next() orelse return error.NoVersion),
@@ -364,7 +365,7 @@ pub const Entry = union(enum) {
     pub fn write(self: Entry, writer: anytype) !void {
         switch (self) {
             .pkg => |pkg| {
-                const repo = if (std.mem.eql(u8, pkg.repository, api.default_repo))
+                const repo = if (std.mem.eql(u8, pkg.repository, build_options.default_repo))
                     "default"
                 else
                     pkg.repository;
@@ -463,7 +464,7 @@ test "entry from pkg: default repository" {
         .pkg = .{
             .user = "matt",
             .name = "something",
-            .repository = api.default_repo,
+            .repository = build_options.default_repo,
             .version = version.Semver{
                 .major = 0,
                 .minor = 1,
@@ -549,7 +550,7 @@ test "lockfile with example of all" {
             .pkg = .{
                 .user = "matt",
                 .name = "something",
-                .repository = api.default_repo,
+                .repository = build_options.default_repo,
                 .version = version.Semver{
                     .major = 0,
                     .minor = 1,

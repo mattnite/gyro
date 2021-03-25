@@ -1,11 +1,3 @@
-pkgs:
-  gyro:
-    version: 0.1.1
-    files:
-      README.md
-      LICENSE
-      build.zig
-      src/*.zig
 deps:
   gyro/clap: ^0.4.0
   gyro/hzzp: ^0.0.0
@@ -15,3 +7,4 @@ deps:
   gyro/tar: ^0.0.0
   gyro/version: ^0.0.0
   gyro/uri: ^0.0.0
+  ziglibs/known-folders: ^0.0.0

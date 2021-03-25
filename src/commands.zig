@@ -1,7 +1,10 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const clap = @import("clap");
 const version = @import("version");
 const zzz = @import("zzz");
+const known_folders = @import("known-folders");
+const build_options = @import("build_options");
 const api = @import("api.zig");
 const Project = @import("Project.zig");
 const Lockfile = @import("Lockfile.zig");
@@ -362,7 +365,7 @@ pub fn init(
 }
 
 pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool, github: bool) !void {
-    const repository = api.default_repo;
+    const repository = build_options.default_repo;
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
@@ -411,7 +414,6 @@ pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool,
                 .String => |str| str,
                 else => "main",
             } else "main";
-            std.log.debug("default_branch: {s}", .{default_branch});
 
             const text_opt = try api.getGithubGyroFile(
                 &arena.allocator,
@@ -455,7 +457,7 @@ pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool,
                             .min = latest,
                             .kind = .caret,
                         },
-                        .repository = api.default_repo,
+                        .repository = build_options.default_repo,
                         .ver_str = stream.getWritten(),
                     },
                 },
@@ -467,4 +469,102 @@ pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool,
 
     try file.seekTo(0);
     try root.stringifyPretty(file.writer());
+}
+
+pub fn publish(allocator: *Allocator, pkg: ?[]const u8) !void {
+    const client_id = "ea14bba19a49f4cba053";
+    const scope = "read:user user:email";
+
+    const file = try std.fs.cwd().openFile("gyro.zzz", .{ .read = true });
+    defer file.close();
+
+    var project = try Project.fromFile(allocator, file);
+    defer project.deinit();
+
+    if (project.packages.count() == 0) {
+        std.log.err("there are no packages to publish!", .{});
+        return error.Explained;
+    }
+
+    const name = if (pkg) |p| blk: {
+        if (!project.contains(p)) {
+            std.log.err("{s} is not a package", .{p});
+            return error.Explained;
+        }
+
+        break :blk p;
+    } else if (project.packages.count() == 1)
+        project.iterator().next().?.name
+    else {
+        std.log.err("there are multiple packages exported, choose one", .{});
+        return error.Explained;
+    };
+
+    var access_token: ?[]const u8 = blk: {
+        var dir = if (try known_folders.open(allocator, .cache, .{ .access_sub_paths = true })) |d|
+            d
+        else
+            break :blk null;
+        defer dir.close();
+
+        const cache_file = dir.openFile("gyro-access-token", .{}) catch |err| {
+            if (err == error.FileNotFound)
+                break :blk null
+            else
+                return err;
+        };
+        defer cache_file.close();
+
+        break :blk try cache_file.reader().readAllAlloc(allocator, std.math.maxInt(usize));
+    };
+    defer if (access_token) |at| allocator.free(at);
+
+    if (access_token == null) {
+        const open_program: []const u8 = switch (builtin.os.tag) {
+            .windows => "",
+            .macos => "open",
+            else => "xdg-open",
+        };
+        var browser = try std.ChildProcess.init(&.{ open_program, "https://github.com/login/device" }, allocator);
+        defer browser.deinit();
+
+        _ = browser.spawnAndWait() catch |err| {
+            if (err == error.FileNotFound) {
+                try std.io.getStdErr().writer().print("Not sure how to open your browser, please go to https://github.com/login/device", .{});
+            } else return err;
+        };
+
+        var device_code_resp = try api.postDeviceCode(allocator, client_id, scope);
+        defer std.json.parseFree(api.DeviceCodeResponse, device_code_resp, .{ .allocator = allocator });
+
+        const stderr = std.io.getStdErr().writer();
+        try stderr.print("your code: {s}\nwaiting for github authentication...\n", .{device_code_resp.user_code});
+
+        const end_time = device_code_resp.expires_in + @intCast(u64, std.time.timestamp());
+        const interval_ns = device_code_resp.interval * std.time.ns_per_s;
+        access_token = while (std.time.timestamp() < end_time) : (std.time.sleep(interval_ns)) {
+            if (try api.pollDeviceCode(allocator, client_id, device_code_resp.device_code)) |resp| {
+                if (try known_folders.open(allocator, .cache, .{ .access_sub_paths = true })) |*dir| {
+                    defer dir.close();
+
+                    const cache_file = try dir.createFile("gyro-access-token", .{ .truncate = true });
+                    defer cache_file.close();
+
+                    try cache_file.writer().writeAll(resp);
+                }
+
+                break resp;
+            }
+        } else {
+            std.log.err("timed out device polling", .{});
+            return error.Explained;
+        };
+    }
+
+    if (access_token == null) {
+        std.log.err("failed to get access token", .{});
+        return error.Explained;
+    }
+
+    try api.postPublish(allocator, access_token.?, project.get(name).?);
 }
