@@ -1,10 +1,12 @@
 const std = @import("std");
 const clap = @import("clap");
 const zfetch = @import("zfetch");
+const build_options = @import("build_options");
 usingnamespace @import("commands.zig");
 
 //pub const io_mode = .evented;
 pub const zfetch_use_buffered_io = false;
+pub const log_level: std.log.Level = .info;
 
 const Command = enum {
     init,
@@ -13,11 +15,12 @@ const Command = enum {
     fetch,
     update,
     build,
+    publish,
 };
 
 fn printUsage() noreturn {
     const stderr = std.io.getStdErr().writer();
-    _ = stderr.write(
+    _ = stderr.write(std.fmt.comptimePrint(
         \\gyro <cmd> [cmd specific options]
         \\
         \\cmds:
@@ -27,11 +30,12 @@ fn printUsage() noreturn {
         \\  fetch    Download any undownloaded dependencies
         \\  package  Bundle package(s) into a ziglet 
         \\  update   Delete lock file and fetch new package versions
+        \\  publish  Publish package to {s}
         \\
         \\for more information: gyro <cmd> --help
         \\
         \\
-    ) catch {};
+    , .{build_options.default_repo})) catch {};
 
     std.os.exit(1);
 }
@@ -156,6 +160,20 @@ fn runCommands(allocator: *std.mem.Allocator) !void {
             defer args.deinit();
 
             try package(allocator, args.option("--output-dir"), args.positionals());
+        },
+        .publish => {
+            const summary = "Publish package to astrolabe.pm";
+            const params = comptime [_]clap.Param(clap.Help){
+                clap.parseParam("-h, --help              Display help") catch unreachable,
+                clap.Param(clap.Help){
+                    .takes_value = .One,
+                },
+            };
+
+            var args = parseHandlingHelpAndErrors(allocator, summary, &params, &iter);
+            defer args.deinit();
+
+            try publish(allocator, if (args.positionals().len > 0) args.positionals()[0] else null);
         },
     }
 }

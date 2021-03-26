@@ -1,11 +1,12 @@
 pkg default gyro clap 0.4.0
 pkg default gyro hzzp 0.0.0
-pkg default gyro zfetch 0.0.1
 pkg default gyro zzz 0.0.1
 pkg default gyro glob 0.0.0
 pkg default gyro tar 0.0.1
 pkg default gyro version 0.0.0
 pkg default gyro uri 0.0.0
+pkg default ziglibs known-folders 0.0.0
 pkg default gyro network 0.0.1
-pkg default gyro iguanaTLS 0.0.1
 pkg default gyro mecha 0.0.0
+pkg default gyro zfetch 0.0.1
+pkg default gyro iguanaTLS 0.0.1

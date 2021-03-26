@@ -6,10 +6,10 @@ const tar = @import("tar");
 const zzz = @import("zzz");
 const uri = @import("uri");
 const Dependency = @import("Dependency.zig");
+const Package = @import("Package.zig");
 usingnamespace @import("common.zig");
 
 const Allocator = std.mem.Allocator;
-pub const default_repo = "astrolabe.pm";
 
 // TODO: clean up duplicated code in this file
 
@@ -327,7 +327,7 @@ pub fn getGithubGyroFile(
         return error.FailedRequest;
     }
 
-    const subpath = try std.fmt.allocPrint(allocator, "{s}-{s}-{s}/gyro.zzz", .{user, repo, commit[0..7]});
+    const subpath = try std.fmt.allocPrint(allocator, "{s}-{s}-{s}/gyro.zzz", .{ user, repo, commit[0..7] });
     defer allocator.free(subpath);
 
     var gzip = try std.compress.gzip.gzipStream(allocator, req.reader());
@@ -336,4 +336,146 @@ pub fn getGithubGyroFile(
     var extractor = tar.fileExtractor(subpath, gzip.reader());
     return extractor.reader().readAllAlloc(allocator, std.math.maxInt(usize)) catch |err|
         return if (err == error.FileNotFound) null else err;
+}
+
+pub const DeviceCodeResponse = struct {
+    device_code: []const u8,
+    user_code: []const u8,
+    verification_uri: []const u8,
+    expires_in: u64,
+    interval: u64,
+};
+
+pub fn postDeviceCode(
+    allocator: *Allocator,
+    client_id: []const u8,
+    scope: []const u8,
+) !DeviceCodeResponse {
+    const url = "https://github.com/login/device/code";
+    const payload = try std.fmt.allocPrint(allocator, "client_id={s}&scope={s}", .{ client_id, scope });
+    defer allocator.free(payload);
+
+    var req = try zfetch.Request.init(allocator, url);
+    defer req.deinit();
+
+    const link = try uri.parse(url);
+    var headers = http.Headers.init(allocator);
+    defer headers.deinit();
+
+    try headers.set("Host", link.host orelse return error.NoHost);
+    try headers.set("Accept", "application/json");
+    try headers.set("User-Agent", "gyro");
+
+    try req.do(.POST, headers, payload);
+    if (req.status.code != 200) {
+        std.log.err("got http status code for {s}: {}", .{ url, req.status.code });
+        return error.FailedRequest;
+    }
+
+    const body = try req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
+    defer allocator.free(body);
+
+    var token_stream = std.json.TokenStream.init(body);
+    return std.json.parse(DeviceCodeResponse, &token_stream, .{ .allocator = allocator });
+}
+
+const PollDeviceCodeResponse = struct {
+    access_token: []const u8,
+    token_type: []const u8,
+    scope: []const u8,
+};
+
+pub fn pollDeviceCode(
+    allocator: *Allocator,
+    client_id: []const u8,
+    device_code: []const u8,
+) !?[]const u8 {
+    const url = "https://github.com/login/oauth/access_token";
+    const payload = try std.fmt.allocPrint(
+        allocator,
+        "client_id={s}&device_code={s}&grant_type=urn:ietf:params:oauth:grant-type:device_code",
+        .{ client_id, device_code },
+    );
+    defer allocator.free(payload);
+
+    var req = try zfetch.Request.init(allocator, url);
+    defer req.deinit();
+
+    const link = try uri.parse(url);
+    var headers = http.Headers.init(allocator);
+    defer headers.deinit();
+
+    try headers.set("Host", link.host orelse return error.NoHost);
+    try headers.set("Accept", "application/json");
+    try headers.set("User-Agent", "gyro");
+
+    try req.do(.POST, headers, payload);
+    if (req.status.code != 200) {
+        std.log.err("got http status code for {s}: {}", .{ url, req.status.code });
+        return error.FailedRequest;
+    }
+
+    const body = try req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
+    defer allocator.free(body);
+
+    var parser = std.json.Parser.init(allocator, false);
+    defer parser.deinit();
+
+    var value_tree = try parser.parse(body);
+    defer value_tree.deinit();
+
+    // TODO: error handling based on the json error codes
+    return if (value_tree.root.Object.get("access_token")) |value| switch (value) {
+        .String => |str| try allocator.dupe(u8, str),
+        else => null,
+    } else null;
+}
+
+pub fn postPublish(
+    allocator: *Allocator,
+    access_token: []const u8,
+    pkg: *Package,
+) !void {
+    try pkg.bundle(std.fs.cwd(), std.fs.cwd());
+
+    const filename = try pkg.filename(allocator);
+    defer allocator.free(filename);
+
+    const file = try std.fs.cwd().openFile(filename, .{});
+    defer {
+        file.close();
+        std.fs.cwd().deleteFile(filename) catch {};
+    }
+
+    const authorization = try std.fmt.allocPrint(allocator, "Bearer github {s}", .{access_token});
+    defer allocator.free(authorization);
+
+    const url = "http://" ++ @import("build_options").default_repo ++ "/publish";
+    var req = try zfetch.Request.init(allocator, url);
+    defer req.deinit();
+
+    const link = try uri.parse(url);
+    var headers = http.Headers.init(allocator);
+    defer headers.deinit();
+
+    try headers.set("Host", link.host orelse return error.NoHost);
+    try headers.set("Content-Type", "application/octet-stream");
+    try headers.set("Accept", "*/*");
+    try headers.set("User-Agent", "gyro");
+    try headers.set("Authorization", authorization);
+
+    const payload = try file.reader().readAllAlloc(allocator, std.math.maxInt(usize));
+    defer allocator.free(payload);
+
+    try req.do(.POST, headers, payload);
+    const body = try req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
+    defer allocator.free(body);
+
+    const stderr = std.io.getStdErr().writer();
+    defer stderr.print("{s}\n", .{body}) catch {};
+
+    if (req.status.code != 200) {
+        std.log.err("got http status code for {s}: {}", .{ url, req.status.code });
+        return error.Explained;
+    }
 }

@@ -95,9 +95,10 @@ pub fn fillFromZNode(
     }
 }
 
-fn createManifest(self: *Self, tree: *zzz.ZTree(1, 1000), ver_str: []const u8) !void {
+fn createManifest(self: *Self, tree: *zzz.ZTree(1, 1000)) !void {
     var root = try tree.addNode(null, .Null);
     try zPutKeyString(tree, root, "name", self.name);
+    var ver_str = try std.fmt.allocPrint(&self.arena.allocator, "{}", .{self.version});
     try zPutKeyString(tree, root, "version", ver_str);
 
     inline for (std.meta.fields(Self)) |field| {
@@ -126,23 +127,17 @@ fn createManifest(self: *Self, tree: *zzz.ZTree(1, 1000), ver_str: []const u8) !
     }
 }
 
+pub fn filename(self: Self, allocator: *Allocator) ![]const u8 {
+    return std.fmt.allocPrint(allocator, "{s}-{}.tar", .{ self.name, self.version });
+}
+
 pub fn bundle(self: *Self, root: std.fs.Dir, output_dir: std.fs.Dir) !void {
-    var ver_buf: [1024]u8 = undefined;
-    var ver_str = std.io.fixedBufferStream(&ver_buf);
-    try ver_str.writer().print("{}", .{self.version});
-
-    var buf: [std.mem.page_size]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buf);
-    try stream.writer().print("{s}-{s}.tar", .{
-        self.name,
-        ver_str.getWritten(),
-    });
-
-    const file = try output_dir.createFile(stream.getWritten(), .{
+    const fname = try self.filename(&self.arena.allocator);
+    const file = try output_dir.createFile(fname, .{
         .truncate = true,
         .read = true,
     });
-    errdefer output_dir.deleteFile(stream.getWritten()) catch {};
+    errdefer output_dir.deleteFile(fname) catch {};
     defer file.close();
 
     var tarball = tar.builder(self.arena.child_allocator, file.writer());
@@ -155,7 +150,7 @@ pub fn bundle(self: *Self, root: std.fs.Dir, output_dir: std.fs.Dir) !void {
     defer fifo.deinit();
 
     var manifest = zzz.ZTree(1, 1000){};
-    try self.createManifest(&manifest, ver_str.getWritten());
+    try self.createManifest(&manifest);
     try manifest.rootSlice()[0].stringify(fifo.writer());
     try fifo.writer().writeByte('\n');
     try tarball.addSlice(fifo.readableSlice(0), "manifest.zzz");
