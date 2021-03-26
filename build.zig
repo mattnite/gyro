@@ -110,6 +110,7 @@ pub fn build(b: *Builder) !void {
     const tests = b.addTest("src/main.zig");
     tests.setBuildMode(mode);
     addAllPkgs(tests);
+    tests.addBuildOption([]const u8, "default_repo", repository orelse "astrolabe.pm");
     tests.step.dependOn(b.getInstallStep());
 
     const test_step = b.step("test", "Run tests");
