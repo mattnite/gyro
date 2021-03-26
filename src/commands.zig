@@ -475,7 +475,12 @@ pub fn publish(allocator: *Allocator, pkg: ?[]const u8) !void {
     const client_id = "ea14bba19a49f4cba053";
     const scope = "read:user user:email";
 
-    const file = try std.fs.cwd().openFile("gyro.zzz", .{ .read = true });
+    const file = std.fs.cwd().openFile("gyro.zzz", .{ .read = true }) catch |err| {
+        if (err == error.FileNotFound) {
+            std.log.err("missing gyro.zzz file", .{});
+            return error.Explained;
+        } else return err;
+    };
     defer file.close();
 
     var project = try Project.fromFile(allocator, file);
@@ -500,24 +505,33 @@ pub fn publish(allocator: *Allocator, pkg: ?[]const u8) !void {
         return error.Explained;
     };
 
-    var access_token: ?[]const u8 = blk: {
-        var dir = if (try known_folders.open(allocator, .cache, .{ .access_sub_paths = true })) |d|
-            d
+    var access_token: ?[]const u8 = std.process.getEnvVarOwned(allocator, "GYRO_ACCESS_TOKEN") catch |err| blk: {
+        if (err == error.EnvironmentVariableNotFound)
+            break :blk null
         else
-            break :blk null;
-        defer dir.close();
-
-        const cache_file = dir.openFile("gyro-access-token", .{}) catch |err| {
-            if (err == error.FileNotFound)
-                break :blk null
-            else
-                return err;
-        };
-        defer cache_file.close();
-
-        break :blk try cache_file.reader().readAllAlloc(allocator, std.math.maxInt(usize));
+            return err;
     };
     defer if (access_token) |at| allocator.free(at);
+
+    if (access_token == null) {
+        access_token = blk: {
+            var dir = if (try known_folders.open(allocator, .cache, .{ .access_sub_paths = true })) |d|
+                d
+            else
+                break :blk null;
+            defer dir.close();
+
+            const cache_file = dir.openFile("gyro-access-token", .{}) catch |err| {
+                if (err == error.FileNotFound)
+                    break :blk null
+                else
+                    return err;
+            };
+            defer cache_file.close();
+
+            break :blk try cache_file.reader().readAllAlloc(allocator, std.math.maxInt(usize));
+        };
+    }
 
     if (access_token == null) {
         const open_program: []const u8 = switch (builtin.os.tag) {

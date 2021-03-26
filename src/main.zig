@@ -6,6 +6,7 @@ usingnamespace @import("commands.zig");
 
 //pub const io_mode = .evented;
 pub const zfetch_use_buffered_io = false;
+pub const log_level: std.log.Level = .info;
 
 const Command = enum {
     init,
