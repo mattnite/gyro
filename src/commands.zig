@@ -535,24 +535,22 @@ pub fn publish(allocator: *Allocator, pkg: ?[]const u8) !void {
 
     if (access_token == null) {
         const open_program: []const u8 = switch (builtin.os.tag) {
-            .windows => "",
+            .windows => "explorer",
             .macos => "open",
             else => "xdg-open",
         };
         var browser = try std.ChildProcess.init(&.{ open_program, "https://github.com/login/device" }, allocator);
         defer browser.deinit();
 
-        _ = browser.spawnAndWait() catch |err| {
-            if (err == error.FileNotFound) {
-                try std.io.getStdErr().writer().print("Not sure how to open your browser, please go to https://github.com/login/device", .{});
-            } else return err;
+        _ = browser.spawnAndWait() catch {
+            try std.io.getStdErr().writer().print("Failed to open your browser, please go to https://github.com/login/device", .{});
         };
 
         var device_code_resp = try api.postDeviceCode(allocator, client_id, scope);
         defer std.json.parseFree(api.DeviceCodeResponse, device_code_resp, .{ .allocator = allocator });
 
         const stderr = std.io.getStdErr().writer();
-        try stderr.print("your code: {s}\nwaiting for github authentication...\n", .{device_code_resp.user_code});
+        try stderr.print("enter this code: {s}\nwaiting for github authentication...\n", .{device_code_resp.user_code});
 
         const end_time = device_code_resp.expires_in + @intCast(u64, std.time.timestamp());
         const interval_ns = device_code_resp.interval * std.time.ns_per_s;
