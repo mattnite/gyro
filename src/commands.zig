@@ -187,7 +187,6 @@ pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
     defer b.destroy();
 
     const deps_file = try std.fs.cwd().createFile("deps.zig", .{ .truncate = true });
-    errdefer std.fs.cwd().deleteFile("deps.zig") catch {};
     defer deps_file.close();
 
     try ctx.dep_tree.printZig(deps_file.writer());

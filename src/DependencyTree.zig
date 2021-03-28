@@ -189,6 +189,28 @@ pub fn printZig(self: *Self, writer: anytype) !void {
         \\    }}
         \\}};
         \\
+        \\
+    , .{});
+
+    // basedirs
+    try writer.print(
+        \\pub const base_dirs = struct {{
+        \\
+    , .{});
+
+    for (self.root.edges.items) |edge| {
+        const alias = try escape(self.arena.child_allocator, edge.dep.alias);
+        defer self.arena.child_allocator.free(alias);
+
+        try writer.print("    pub const {s} = \"{s}\";\n", .{
+            alias,
+            try edge.to.entry.getEscapedPackageDir(&self.arena),
+        });
+    }
+
+    try writer.print(
+        \\}};
+        \\
     , .{});
 }
 

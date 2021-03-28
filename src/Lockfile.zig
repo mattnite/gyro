@@ -256,6 +256,24 @@ pub const Entry = union(enum) {
             root_path;
     }
 
+    pub fn getEscapedPackageDir(self: Entry, arena: *std.heap.ArenaAllocator) ![]const u8 {
+        var package_path = try std.fs.path.join(
+            &arena.allocator,
+            &.{ try self.packagePath(&arena.allocator), "pkg" },
+        );
+
+        return if (std.fs.path.sep == std.fs.path.sep_windows)
+            try std.mem.replaceOwned(
+                u8,
+                &arena.allocator,
+                package_path,
+                "\\",
+                "\\\\",
+            )
+        else
+            package_path;
+    }
+
     pub fn packagePath(self: Entry, allocator: *Allocator) ![]const u8 {
         var tree = zzz.ZTree(1, 1000){};
         var root = try tree.addNode(null, .{ .Null = {} });
