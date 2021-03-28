@@ -266,7 +266,7 @@ pub const Entry = union(enum) {
             try std.mem.replaceOwned(
                 u8,
                 &arena.allocator,
-                root_path,
+                package_path,
                 "\\",
                 "\\\\",
             )
