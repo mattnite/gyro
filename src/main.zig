@@ -2,6 +2,7 @@ const std = @import("std");
 const clap = @import("clap");
 const zfetch = @import("zfetch");
 const build_options = @import("build_options");
+const Dependency = @import("Dependency.zig");
 usingnamespace @import("commands.zig");
 
 //pub const io_mode = .evented;
@@ -11,11 +12,11 @@ pub const log_level: std.log.Level = .info;
 const Command = enum {
     init,
     add,
-    package,
-    fetch,
-    update,
+    remove,
     build,
+    update,
     publish,
+    redirect,
 };
 
 fn printUsage() noreturn {
@@ -24,13 +25,13 @@ fn printUsage() noreturn {
         \\gyro <cmd> [cmd specific options]
         \\
         \\cmds:
-        \\  init     Initialize a gyro.zzz with a link to a github repo
-        \\  add      Add dependencies to the project
-        \\  build    Build your project with build dependencies
-        \\  fetch    Download any undownloaded dependencies
-        \\  package  Bundle package(s) into a ziglet 
-        \\  update   Delete lock file and fetch new package versions
-        \\  publish  Publish package to {s}
+        \\  init      Initialize a gyro.zzz with a link to a github repo
+        \\  add       Add dependencies to the project
+        \\  remove    Remove dependency from project
+        \\  build     Use exactly like 'zig build', automatically downloads dependencies
+        \\  update    Update dependencies to latest
+        \\  publish   Publish package to {s}, requires github account
+        \\  redirect  Manage local development
         \\
         \\for more information: gyro <cmd> --help
         \\
@@ -104,11 +105,8 @@ fn runCommands(allocator: *std.mem.Allocator) !void {
         printUsage();
     };
 
-    @setEvalBranchQuota(2000);
+    @setEvalBranchQuota(3000);
     switch (cmd) {
-        .build => try build(allocator, &iter),
-        .fetch => try fetch(allocator),
-        .update => try update(allocator),
         .init => {
             const summary = "Initialize a gyro.zzz with a link to a github repo";
             const params = comptime [_]clap.Param(clap.Help){
@@ -130,12 +128,14 @@ fn runCommands(allocator: *std.mem.Allocator) !void {
             try init(allocator, if (num == 1) args.positionals()[0] else null);
         },
         .add => {
-            // TODO: add more arguments
             const summary = "Add dependencies to the project";
             const params = comptime [_]clap.Param(clap.Help){
-                clap.parseParam("-h, --help              Display help") catch unreachable,
-                clap.parseParam("-b, --build-dep         Add a build dependency") catch unreachable,
-                clap.parseParam("-g, --github            Get dependency from a git repo") catch unreachable,
+                clap.parseParam("-h, --help           Display help") catch unreachable,
+                clap.parseParam("-s, --src <SRC>      Set type of dependency, default is 'pkg', others are 'github', 'url', or 'local'") catch unreachable,
+                clap.parseParam("-a, --alias <ALIAS>  Override what string the package is imported with") catch unreachable,
+                clap.parseParam("-b, --build-dep      Add this as a build dependency") catch unreachable,
+                clap.parseParam("-r, --root <PATH>    Set root path with respect to the project root, default is 'src/main.zig'") catch unreachable,
+                clap.parseParam("-t, --to <PKG>       Add this as a scoped dependency to a specific exported package") catch unreachable,
                 clap.Param(clap.Help){
                     .takes_value = .Many,
                 },
@@ -144,13 +144,30 @@ fn runCommands(allocator: *std.mem.Allocator) !void {
             var args = parseHandlingHelpAndErrors(allocator, summary, &params, &iter);
             defer args.deinit();
 
-            try add(allocator, args.positionals(), args.flag("--build-dep"), args.flag("--github"));
+            const src_str = args.option("--src") orelse "pkg";
+            const src_tag = inline for (std.meta.fields(Dependency.SourceType)) |field| {
+                if (std.mem.eql(u8, src_str, field.name))
+                    break @field(Dependency.SourceType, field.name);
+            } else {
+                std.log.err("{s} is not a valid source type", .{src_str});
+                return error.Explained;
+            };
+
+            try add(
+                allocator,
+                src_tag,
+                args.option("--alias"),
+                args.flag("--build-dep"),
+                args.option("--root"),
+                args.option("--to"),
+                args.positionals(),
+            );
         },
-        .package => {
-            const summary = "Bundle package(s) into a ziglet";
+        .remove => {
+            const summary = "Remove dependency from project";
             const params = comptime [_]clap.Param(clap.Help){
-                clap.parseParam("-h, --help              Display help") catch unreachable,
-                clap.parseParam("-o, --output-dir <DIR>  Directory to put tarballs in") catch unreachable,
+                clap.parseParam("-h, --help        Display help") catch unreachable,
+                clap.parseParam("-f, --from <PKG>  Remove a scoped dependency") catch unreachable,
                 clap.Param(clap.Help){
                     .takes_value = .Many,
                 },
@@ -159,7 +176,23 @@ fn runCommands(allocator: *std.mem.Allocator) !void {
             var args = parseHandlingHelpAndErrors(allocator, summary, &params, &iter);
             defer args.deinit();
 
-            try package(allocator, args.option("--output-dir"), args.positionals());
+            try remove(allocator, args.option("--from"), args.positionals());
+        },
+        .build => try build(allocator, &iter),
+        .update => {
+            const summary = "Update dependencies to latest";
+            const params = comptime [_]clap.Param(clap.Help){
+                clap.parseParam("-h, --help      Display help") catch unreachable,
+                clap.parseParam("-i, --in <PKG>  Update a scoped dependency") catch unreachable,
+                clap.Param(clap.Help){
+                    .takes_value = .Many,
+                },
+            };
+
+            var args = parseHandlingHelpAndErrors(allocator, summary, &params, &iter);
+            defer args.deinit();
+
+            try update(allocator, args.option("--in"), args.positionals());
         },
         .publish => {
             const summary = "Publish package to astrolabe.pm";
@@ -174,6 +207,18 @@ fn runCommands(allocator: *std.mem.Allocator) !void {
             defer args.deinit();
 
             try publish(allocator, if (args.positionals().len > 0) args.positionals()[0] else null);
+        },
+        .redirect => {
+            const summary = "Manage local development";
+            const params = comptime [_]clap.Param(clap.Help){
+                clap.parseParam("-h, --help   Display help") catch unreachable,
+                clap.parseParam("-c, --clean  undo all local redirects") catch unreachable,
+                clap.Param(clap.Help){
+                    .takes_value = .Many,
+                },
+            };
+
+            return error.Todo;
         },
     }
 }

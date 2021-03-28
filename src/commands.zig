@@ -90,7 +90,15 @@ pub fn fetch(allocator: *Allocator) !void {
     defer ctx.deinit();
 }
 
-pub fn update(allocator: *Allocator) !void {
+pub fn update(
+    allocator: *Allocator,
+    in: ?[]const u8,
+    targets: []const []const u8,
+) !void {
+    if (in != null or targets.len > 0) {
+        return error.Todo;
+    }
+
     try std.fs.cwd().deleteFile("gyro.lock");
     try fetch(allocator);
 }
@@ -364,7 +372,19 @@ pub fn init(
     , .{});
 }
 
-pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool, github: bool) !void {
+pub fn add(
+    allocator: *Allocator,
+    src_tag: Dependency.SourceType,
+    alias: ?[]const u8,
+    build_deps: bool,
+    root_path: ?[]const u8,
+    to: ?[]const u8,
+    targets: []const []const u8,
+) !void {
+    if (src_tag != .pkg or alias != null or root_path != null or to != null) {
+        return error.Todo;
+    }
+
     const repository = build_options.default_repo;
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
@@ -402,7 +422,7 @@ pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool,
 
     for (targets) |target| {
         const info = try parseUserRepo(target);
-        const dep = if (github) blk: {
+        const dep = if (src_tag == .github) blk: {
             var value_tree = try api.getGithubRepo(&arena.allocator, info.user, info.repo);
             if (value_tree.root != .Object) {
                 std.log.err("Invalid JSON response from Github", .{});
@@ -469,6 +489,14 @@ pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool,
 
     try file.seekTo(0);
     try root.stringifyPretty(file.writer());
+}
+
+pub fn remove(
+    allocator: *Allocator,
+    from: ?[]const u8,
+    targets: []const []const u8,
+) !void {
+    return error.Todo;
 }
 
 pub fn publish(allocator: *Allocator, pkg: ?[]const u8) !void {
