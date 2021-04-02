@@ -12,7 +12,7 @@ const Self = @This();
 const Allocator = std.mem.Allocator;
 const mem = std.mem;
 const testing = std.testing;
-const SourceType = std.meta.Tag(Lockfile.Entry);
+pub const SourceType = std.meta.Tag(Lockfile.Entry);
 
 alias: []const u8,
 src: Source,

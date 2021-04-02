@@ -4,6 +4,7 @@ const version = @import("version");
 const Package = @import("Package.zig");
 const Dependency = @import("Dependency.zig");
 const Allocator = std.mem.Allocator;
+const ArenaAllocator = std.heap.ArenaAllocator;
 
 usingnamespace @import("common.zig");
 
@@ -12,8 +13,8 @@ const Self = @This();
 allocator: *Allocator,
 text: []const u8,
 packages: std.StringHashMap(Package),
-dependencies: std.ArrayList(Dependency),
-build_dependencies: std.ArrayList(Dependency),
+deps: std.ArrayList(Dependency),
+build_deps: std.ArrayList(Dependency),
 
 pub const Iterator = struct {
     inner: std.StringHashMap(Package).Iterator,
@@ -23,27 +24,32 @@ pub const Iterator = struct {
     }
 };
 
-pub fn init(allocator: *Allocator, file: std.fs.File) !Self {
+fn init(allocator: *Allocator, file: std.fs.File) !Self {
     return Self{
         .allocator = allocator,
         .text = try file.readToEndAlloc(allocator, std.math.maxInt(usize)),
         .packages = std.StringHashMap(Package).init(allocator),
-        .dependencies = std.ArrayList(Dependency).init(allocator),
-        .build_dependencies = std.ArrayList(Dependency).init(allocator),
+        .deps = std.ArrayList(Dependency).init(allocator),
+        .build_deps = std.ArrayList(Dependency).init(allocator),
     };
 }
 
-pub fn deinit(self: *Self) void {
+fn deinit(self: *Self) void {
     var it = self.packages.iterator();
     while (it.next()) |entry| {
         entry.value.deinit();
         self.packages.removeAssertDiscard(entry.key);
     }
 
-    self.dependencies.deinit();
-    self.build_dependencies.deinit();
+    self.deps.deinit();
+    self.build_deps.deinit();
     self.packages.deinit();
     self.allocator.free(self.text);
+}
+
+pub fn destroy(self: *Self) void {
+    self.deinit();
+    self.allocator.destroy(self);
 }
 
 pub fn contains(self: Self, name: []const u8) bool {
@@ -58,15 +64,19 @@ pub fn iterator(self: Self) Iterator {
     return Iterator{ .inner = self.packages.iterator() };
 }
 
-pub fn fromText(allocator: *Allocator, text: []const u8) !Self {
-    var ret = Self{
+pub fn fromText(allocator: *Allocator, text: []const u8) !*Self {
+    var ret = try allocator.create(Self);
+    ret.* = Self{
         .allocator = allocator,
         .text = text,
         .packages = std.StringHashMap(Package).init(allocator),
-        .dependencies = std.ArrayList(Dependency).init(allocator),
-        .build_dependencies = std.ArrayList(Dependency).init(allocator),
+        .deps = std.ArrayList(Dependency).init(allocator),
+        .build_deps = std.ArrayList(Dependency).init(allocator),
     };
-    errdefer ret.deinit();
+    errdefer {
+        ret.deinit();
+        allocator.destroy(ret);
+    }
 
     if (std.mem.indexOf(u8, ret.text, "\r\n") != null) {
         std.log.err("gyro.zzz requires LF line endings, not CRLF", .{});
@@ -75,37 +85,6 @@ pub fn fromText(allocator: *Allocator, text: []const u8) !Self {
 
     var tree = zzz.ZTree(1, 1000){};
     var root = try tree.appendText(ret.text);
-
-    if (zFindChild(root, "deps")) |deps| {
-        var it = ZChildIterator.init(deps);
-        while (it.next()) |dep_node| {
-            const dep = try Dependency.fromZNode(dep_node);
-            for (ret.dependencies.items) |other| {
-                if (std.mem.eql(u8, dep.alias, other.alias)) {
-                    std.log.err("'{s}' alias in 'deps' is declared multiple times", .{dep.alias});
-                    return error.Explained;
-                }
-            } else {
-                try ret.dependencies.append(dep);
-            }
-        }
-    }
-
-    if (zFindChild(root, "build_deps")) |build_deps| {
-        var it = ZChildIterator.init(build_deps);
-        while (it.next()) |dep_node| {
-            const dep = try Dependency.fromZNode(dep_node);
-            for (ret.build_dependencies.items) |other| {
-                if (std.mem.eql(u8, dep.alias, other.alias)) {
-                    std.log.err("'{s}' alias in 'build_deps' is declared multiple times", .{dep.alias});
-                    return error.Explained;
-                }
-            } else {
-                try ret.build_dependencies.append(dep);
-            }
-        }
-    }
-
     if (zFindChild(root, "pkgs")) |pkgs| {
         var it = ZChildIterator.init(pkgs);
         while (it.next()) |node| {
@@ -131,17 +110,75 @@ pub fn fromText(allocator: *Allocator, text: []const u8) !Self {
                 allocator,
                 name,
                 ver,
-                ret.dependencies.items,
-                ret.build_dependencies.items,
+                ret,
+                ret.build_deps.items,
             );
 
             try res.entry.value.fillFromZNode(node);
         }
     }
 
+    if (zFindChild(root, "deps")) |deps| {
+        var it = ZChildIterator.init(deps);
+        while (it.next()) |dep_node| {
+            const dep = try Dependency.fromZNode(dep_node);
+            for (ret.deps.items) |other| {
+                if (std.mem.eql(u8, dep.alias, other.alias)) {
+                    std.log.err("'{s}' alias in 'deps' is declared multiple times", .{dep.alias});
+                    return error.Explained;
+                }
+            } else {
+                try ret.deps.append(dep);
+            }
+        }
+    }
+
+    if (zFindChild(root, "build_deps")) |build_deps| {
+        var it = ZChildIterator.init(build_deps);
+        while (it.next()) |dep_node| {
+            const dep = try Dependency.fromZNode(dep_node);
+            for (ret.build_deps.items) |other| {
+                if (std.mem.eql(u8, dep.alias, other.alias)) {
+                    std.log.err("'{s}' alias in 'build_deps' is declared multiple times", .{dep.alias});
+                    return error.Explained;
+                }
+            } else {
+                try ret.build_deps.append(dep);
+            }
+        }
+    }
+
     return ret;
 }
 
-pub fn fromFile(allocator: *Allocator, file: std.fs.File) !Self {
+pub fn fromFile(allocator: *Allocator, file: std.fs.File) !*Self {
     return fromText(allocator, try file.reader().readAllAlloc(allocator, std.math.maxInt(usize)));
+}
+
+pub fn toFile(self: *Self, file: std.fs.File) !void {
+    var tree = zzz.ZTree(1, 1000){};
+    var root = try tree.addNode(null, .Null);
+
+    var arena = ArenaAllocator.init(self.allocator);
+    defer arena.deinit();
+
+    try file.setEndPos(0);
+    try file.seekTo(0);
+    if (self.packages.count() > 0) {
+        var pkgs = try tree.addNode(root, .{ .String = "pkgs" });
+        var it = self.packages.iterator();
+        while (it.next()) |entry| _ = try entry.value.addToZNode(&arena, &tree, pkgs, false);
+    }
+
+    if (self.deps.items.len > 0) {
+        var deps = try tree.addNode(root, .{ .String = "deps" });
+        for (self.deps.items) |dep| try dep.addToZNode(&arena, &tree, deps, false);
+    }
+
+    if (self.build_deps.items.len > 0) {
+        var build_deps = try tree.addNode(root, .{ .String = "build_deps" });
+        for (self.build_deps.items) |dep| try dep.addToZNode(&arena, &tree, build_deps, false);
+    }
+
+    try root.stringifyPretty(file.writer());
 }

@@ -4,6 +4,7 @@ const tar = @import("tar");
 const glob = @import("glob");
 const zzz = @import("zzz");
 const Dependency = @import("Dependency.zig");
+const Project = @import("Project.zig");
 
 usingnamespace @import("common.zig");
 
@@ -13,10 +14,10 @@ const Allocator = std.mem.Allocator;
 arena: std.heap.ArenaAllocator,
 name: []const u8,
 version: version.Semver,
+project: *Project,
 root: ?[]const u8,
 files: std.ArrayList([]const u8),
 deps: std.ArrayList(Dependency),
-build_deps: []Dependency,
 
 // meta info
 description: ?[]const u8,
@@ -29,15 +30,15 @@ pub fn init(
     allocator: *Allocator,
     name: []const u8,
     ver: version.Semver,
+    project: *Project,
     deps: []Dependency,
-    build_deps: []Dependency,
 ) !Self {
     var ret = Self{
         .arena = std.heap.ArenaAllocator.init(allocator),
         .name = name,
         .version = ver,
+        .project = project,
         .deps = std.ArrayList(Dependency).init(allocator),
-        .build_deps = build_deps,
         .files = std.ArrayList([]const u8).init(allocator),
         .tags = std.ArrayList([]const u8).init(allocator),
 
@@ -116,14 +117,16 @@ fn createManifest(self: *Self, tree: *zzz.ZTree(1, 1000)) !void {
         for (self.tags.items) |tag| _ = try tree.addNode(tags, .{ .String = tag });
     }
 
-    if (self.deps.items.len > 0) {
+    // TODO: check for collisions between different deps sets
+    if (self.deps.items.len > 0 or self.project.deps.items.len > 0) {
         var deps = try tree.addNode(root, .{ .String = "deps" });
         for (self.deps.items) |dep| try dep.addToZNode(&self.arena, tree, deps, true);
+        for (self.project.deps.items) |dep| try dep.addToZNode(&self.arena, tree, deps, true);
     }
 
-    if (self.build_deps.len > 0) {
+    if (self.project.build_deps.items.len > 0) {
         var build_deps = try tree.addNode(root, .{ .String = "build_deps" });
-        for (self.build_deps) |dep| try dep.addToZNode(&self.arena, tree, build_deps, true);
+        for (self.project.build_deps.items) |dep| try dep.addToZNode(&self.arena, tree, build_deps, true);
     }
 }
 
@@ -194,5 +197,37 @@ pub fn bundle(self: *Self, root: std.fs.Dir, output_dir: std.fs.Dir) !void {
                 } else err;
             };
         }
+    }
+}
+
+pub fn addToZNode(
+    self: Self,
+    arena: *std.heap.ArenaAllocator,
+    tree: *zzz.ZTree(1, 1000),
+    parent: *zzz.ZNode,
+    explicit: bool,
+) !void {
+    var node = try tree.addNode(parent, .{ .String = self.name });
+    var ver_str = try std.fmt.allocPrint(&arena.allocator, "{}", .{self.version});
+    try zPutKeyString(tree, node, "version", ver_str);
+
+    inline for (std.meta.fields(Self)) |field| {
+        if (@TypeOf(@field(self, field.name)) == ?[]const u8) {
+            if (@field(self, field.name)) |value| {
+                try zPutKeyString(tree, node, field.name, value);
+            } else if (std.mem.eql(u8, field.name, "node")) {
+                try zPutKeyString(tree, node, field.name, "src/main.zig");
+            }
+        }
+    }
+
+    if (self.tags.items.len > 0) {
+        var tags = try tree.addNode(node, .{ .String = "tags" });
+        for (self.tags.items) |tag| _ = try tree.addNode(tags, .{ .String = tag });
+    }
+
+    if (self.deps.items.len > 0) {
+        var deps = try tree.addNode(node, .{ .String = "deps" });
+        for (self.deps.items) |dep| try dep.addToZNode(arena, tree, deps, explicit);
     }
 }

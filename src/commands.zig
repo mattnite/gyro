@@ -18,7 +18,7 @@ const FetchContext = struct {
     project_file: std.fs.File,
     lock_file: std.fs.File,
 
-    project: Project,
+    project: *Project,
     lockfile: Lockfile,
     dep_tree: *DependencyTree,
     build_dep_tree: *DependencyTree,
@@ -28,7 +28,7 @@ const FetchContext = struct {
         self.build_dep_tree.destroy();
         self.dep_tree.destroy();
         self.lockfile.deinit();
-        self.project.deinit();
+        self.project.destroy();
 
         // TODO: delete lockfile if it doesn't have anything in it
         self.lock_file.close();
@@ -55,7 +55,7 @@ pub fn fetchImpl(allocator: *Allocator) !FetchContext {
     errdefer lock_file.close();
 
     var project = try Project.fromFile(allocator, project_file);
-    errdefer project.deinit();
+    errdefer project.destroy();
 
     var lockfile = try Lockfile.fromFile(allocator, lock_file);
     errdefer lockfile.deinit();
@@ -63,14 +63,14 @@ pub fn fetchImpl(allocator: *Allocator) !FetchContext {
     const dep_tree = try DependencyTree.generate(
         allocator,
         &lockfile,
-        project.dependencies,
+        project.deps,
     );
     errdefer dep_tree.destroy();
 
     const build_dep_tree = try DependencyTree.generate(
         allocator,
         &lockfile,
-        project.build_dependencies,
+        project.build_deps,
     );
     errdefer build_dep_tree.destroy();
 
@@ -90,7 +90,15 @@ pub fn fetch(allocator: *Allocator) !void {
     defer ctx.deinit();
 }
 
-pub fn update(allocator: *Allocator) !void {
+pub fn update(
+    allocator: *Allocator,
+    in: ?[]const u8,
+    targets: []const []const u8,
+) !void {
+    if (in != null or targets.len > 0) {
+        return error.Todo;
+    }
+
     try std.fs.cwd().deleteFile("gyro.lock");
     try fetch(allocator);
 }
@@ -233,7 +241,7 @@ pub fn package(
     defer file.close();
 
     var project = try Project.fromFile(allocator, file);
-    defer project.deinit();
+    defer project.destroy();
 
     if (project.packages.count() == 0) {
         std.log.err("there are no packages to package!", .{});
@@ -363,7 +371,20 @@ pub fn init(
     , .{});
 }
 
-pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool, github: bool) !void {
+pub fn add(
+    allocator: *Allocator,
+    src_tag: Dependency.SourceType,
+    alias: ?[]const u8,
+    build_deps: bool,
+    root_path: ?[]const u8,
+    to: ?[]const u8,
+    targets: []const []const u8,
+) !void {
+    if (src_tag != .pkg and src_tag != .github) {
+        return error.Todo;
+    }
+
+    // TODO: detect collisions in subpackages (both directions)
     const repository = build_options.default_repo;
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
@@ -375,33 +396,47 @@ pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool,
     });
     defer file.close();
 
-    const text = try file.reader().readAllAlloc(&arena.allocator, std.math.maxInt(usize));
-    var tree = zzz.ZTree(1, 1000){};
-    var root = try tree.appendText(text);
-    const deps_key = if (build_deps) "build_deps" else "deps";
-    var deps = zFindChild(root, deps_key) orelse try tree.addNode(root, .{ .String = deps_key });
+    var project = try Project.fromFile(allocator, file);
+    defer project.destroy();
 
-    var aliases = std.StringHashMap(void).init(allocator);
-    defer aliases.deinit();
+    const dep_list = if (to) |t|
+        if (project.packages.getEntry(t)) |entry| &entry.value.deps else {
+            std.log.err("{s} is not a an exported package", .{t});
+            return error.Explained;
+        }
+    else if (build_deps)
+        &project.build_deps
+    else
+        &project.deps;
 
-    var it = ZChildIterator.init(deps);
-    while (it.next()) |dep_node| {
-        var dep = try Dependency.fromZNode(dep_node);
-        try aliases.put(dep.alias, {});
+    // TODO: handle user/pkg in targets
+
+    // make sure targets are unique
+    for (targets[0 .. targets.len - 1]) |_, i| {
+        for (targets[i + 1 ..]) |_, j| {
+            if (std.mem.eql(u8, targets[i], targets[j])) {
+                std.log.err("duplicated target: {s}", .{targets[i]});
+                return error.Explained;
+            }
+        }
     }
 
-    // TODO: needs to be prettier later
+    // ensure all targets are valid
     for (targets) |target| {
-        const info = try parseUserRepo(target);
-        if (aliases.contains(try normalizeName(info.repo))) {
-            std.log.err("'{s}' alias exists in gyro.zzz", .{info.repo});
-            return error.Explained;
+        for (dep_list.items) |dep| {
+            if (std.mem.eql(u8, target, dep.alias)) {
+                if (to) |t|
+                    std.log.err("{s} is already a dependency of {s}", .{ target, t })
+                else
+                    std.log.err("{s} is already a dependency", .{target});
+                return error.Explained;
+            }
         }
     }
 
     for (targets) |target| {
         const info = try parseUserRepo(target);
-        const dep = if (github) blk: {
+        const dep = if (src_tag == .github) blk: {
             var value_tree = try api.getGithubRepo(&arena.allocator, info.user, info.repo);
             if (value_tree.root != .Object) {
                 std.log.err("Invalid JSON response from Github", .{});
@@ -421,11 +456,15 @@ pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool,
                 try api.getHeadCommit(&arena.allocator, info.user, info.repo, default_branch),
             );
 
-            const root_file = if (text_opt) |t| get_root: {
-                const project = try Project.fromText(&arena.allocator, t);
+            const root_file = if (root_path) |rp| rp else if (text_opt) |t| get_root: {
+                const subproject = try Project.fromText(&arena.allocator, t);
+                defer subproject.destroy();
+
                 var ret: []const u8 = default_root;
-                if (project.packages.count() == 1)
-                    ret = project.packages.iterator().next().?.value.root orelse default_root;
+                if (subproject.packages.count() == 1)
+                    ret = subproject.packages.iterator().next().?.value.root orelse default_root;
+
+                // TODO try other matching methods
 
                 break :get_root ret;
             } else default_root;
@@ -463,11 +502,86 @@ pub fn add(allocator: *Allocator, targets: []const []const u8, build_deps: bool,
             };
         };
 
-        try dep.addToZNode(&arena, &tree, deps, false);
+        try dep_list.append(dep);
     }
 
-    try file.seekTo(0);
-    try root.stringifyPretty(file.writer());
+    try project.toFile(file);
+}
+
+pub fn remove(
+    allocator: *Allocator,
+    build_deps: bool,
+    from: ?[]const u8,
+    targets: []const []const u8,
+) !void {
+    if (build_deps and from != null) {
+        std.log.err("packages can't have build subdependencies", .{});
+        return error.Explained;
+    }
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const file = try std.fs.cwd().createFile("gyro.zzz", .{
+        .truncate = false,
+        .read = true,
+        .exclusive = false,
+    });
+    defer file.close();
+
+    var project = try Project.fromFile(allocator, file);
+    defer project.destroy();
+
+    std.log.debug("packages at start: {}", .{project.packages.count()});
+
+    const dep_list = if (from) |f|
+        if (project.packages.getEntry(f)) |entry| &entry.value.deps else {
+            std.log.err("{s} is not a an exported package", .{f});
+            return error.Explained;
+        }
+    else if (build_deps)
+        &project.build_deps
+    else
+        &project.deps;
+
+    // make sure targets are unique
+    for (targets[0 .. targets.len - 1]) |_, i| {
+        for (targets[i + 1 ..]) |_, j| {
+            if (std.mem.eql(u8, targets[i], targets[j])) {
+                std.log.err("duplicated target: {s}", .{targets[i]});
+                return error.Explained;
+            }
+        }
+    }
+
+    // ensure all targets are valid
+    for (targets) |target| {
+        for (dep_list.items) |dep| {
+            if (std.mem.eql(u8, target, dep.alias)) break;
+        } else {
+            if (from) |f|
+                std.log.err("{s} is not a dependency of {s}", .{ target, f })
+            else
+                std.log.err("{s} is not a dependency", .{target});
+
+            return error.Explained;
+        }
+    }
+
+    // remove targets
+    for (targets) |target| {
+        for (dep_list.items) |dep, i| {
+            if (std.mem.eql(u8, target, dep.alias)) {
+                std.log.debug("removing target: {s}", .{target});
+                _ = dep_list.swapRemove(i);
+                break;
+            }
+        }
+    }
+
+    std.log.debug("packages: {}", .{project.packages.count()});
+
+    try project.toFile(file);
 }
 
 pub fn publish(allocator: *Allocator, pkg: ?[]const u8) !void {
@@ -483,7 +597,7 @@ pub fn publish(allocator: *Allocator, pkg: ?[]const u8) !void {
     defer file.close();
 
     var project = try Project.fromFile(allocator, file);
-    defer project.deinit();
+    defer project.destroy();
 
     if (project.packages.count() == 0) {
         std.log.err("there are no packages to publish!", .{});
