@@ -46,7 +46,7 @@ pub fn getLatest(
     try headers.set("User-Agent", "gyro");
     try headers.set("Host", link.host orelse return error.NoHost);
 
-    var req = try zfetch.Request.init(allocator, url);
+    var req = try zfetch.Request.init(allocator, url, null);
     defer req.deinit();
 
     try req.commit(.GET, headers, null);
@@ -104,7 +104,7 @@ pub fn getHeadCommit(
     var headers = http.Headers.init(allocator);
     defer headers.deinit();
 
-    var req = try zfetch.Request.init(allocator, url);
+    var req = try zfetch.Request.init(allocator, url, null);
     defer req.deinit();
 
     try headers.set("Host", "codeload.github.com");
@@ -161,7 +161,7 @@ fn getTarGzImpl(
     defer headers.deinit();
 
     std.log.info("fetching tarball: {s}", .{url});
-    var req = try zfetch.Request.init(allocator, url);
+    var req = try zfetch.Request.init(allocator, url, null);
     defer req.deinit();
 
     const link = try uri.parse(url);
@@ -229,7 +229,7 @@ pub fn getGithubRepo(
     var headers = http.Headers.init(allocator);
     defer headers.deinit();
 
-    var req = try zfetch.Request.init(allocator, url);
+    var req = try zfetch.Request.init(allocator, url, null);
     defer req.deinit();
 
     try headers.set("Host", "api.github.com");
@@ -264,7 +264,7 @@ pub fn getGithubTopics(
     var headers = http.Headers.init(allocator);
     defer headers.deinit();
 
-    var req = try zfetch.Request.init(allocator, url);
+    var req = try zfetch.Request.init(allocator, url, null);
     defer req.deinit();
 
     try headers.set("Host", "api.github.com");
@@ -311,7 +311,7 @@ pub fn getGithubGyroFile(
     defer headers.deinit();
 
     std.log.info("fetching tarball: {s}", .{url});
-    var req = try zfetch.Request.init(allocator, url);
+    var req = try zfetch.Request.init(allocator, url, null);
     defer req.deinit();
 
     const link = try uri.parse(url);
@@ -355,7 +355,7 @@ pub fn postDeviceCode(
     const payload = try std.fmt.allocPrint(allocator, "client_id={s}&scope={s}", .{ client_id, scope });
     defer allocator.free(payload);
 
-    var req = try zfetch.Request.init(allocator, url);
+    var req = try zfetch.Request.init(allocator, url, null);
     defer req.deinit();
 
     const link = try uri.parse(url);
@@ -398,7 +398,7 @@ pub fn pollDeviceCode(
     );
     defer allocator.free(payload);
 
-    var req = try zfetch.Request.init(allocator, url);
+    var req = try zfetch.Request.init(allocator, url, null);
     defer req.deinit();
 
     const link = try uri.parse(url);
@@ -451,7 +451,7 @@ pub fn postPublish(
     defer allocator.free(authorization);
 
     const url = "https://" ++ @import("build_options").default_repo ++ "/publish";
-    var req = try zfetch.Request.init(allocator, url);
+    var req = try zfetch.Request.init(allocator, url, null);
     defer req.deinit();
 
     const link = try uri.parse(url);

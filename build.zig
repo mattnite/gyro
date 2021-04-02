@@ -50,7 +50,7 @@ const zfetch = .{
             .path = "libs/zig-network/network.zig",
         },
         .{
-            .name = "iguanatls",
+            .name = "iguanaTLS",
             .path = "libs/iguanaTLS/src/main.zig",
         },
     },
