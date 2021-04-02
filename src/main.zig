@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const clap = @import("clap");
 const zfetch = @import("zfetch");
 const build_options = @import("build_options");
@@ -7,13 +8,14 @@ usingnamespace @import("commands.zig");
 
 //pub const io_mode = .evented;
 pub const zfetch_use_buffered_io = false;
-pub const log_level: std.log.Level = .info;
+pub const log_level: std.log.Level = if (builtin.mode == .Debug) .debug else .info;
 
 const Command = enum {
     init,
     add,
     remove,
     build,
+    fetch,
     update,
     publish,
     redirect,
@@ -29,6 +31,7 @@ fn printUsage() noreturn {
         \\  add       Add dependencies to the project
         \\  remove    Remove dependency from project
         \\  build     Use exactly like 'zig build', automatically downloads dependencies
+        \\  fetch     Manually download dependencies and generate deps.zig file
         \\  update    Update dependencies to latest
         \\  publish   Publish package to {s}, requires github account
         \\  redirect  Manage local development
@@ -167,6 +170,7 @@ fn runCommands(allocator: *std.mem.Allocator) !void {
             const summary = "Remove dependency from project";
             const params = comptime [_]clap.Param(clap.Help){
                 clap.parseParam("-h, --help        Display help") catch unreachable,
+                clap.parseParam("-b, --build-dep   Remove a scoped dependency") catch unreachable,
                 clap.parseParam("-f, --from <PKG>  Remove a scoped dependency") catch unreachable,
                 clap.Param(clap.Help){
                     .takes_value = .Many,
@@ -176,9 +180,10 @@ fn runCommands(allocator: *std.mem.Allocator) !void {
             var args = parseHandlingHelpAndErrors(allocator, summary, &params, &iter);
             defer args.deinit();
 
-            try remove(allocator, args.option("--from"), args.positionals());
+            try remove(allocator, args.flag("--build-dep"), args.option("--from"), args.positionals());
         },
         .build => try build(allocator, &iter),
+        .fetch => try fetch(allocator),
         .update => {
             const summary = "Update dependencies to latest";
             const params = comptime [_]clap.Param(clap.Help){
