@@ -1,10 +1,10 @@
 deps:
-  gyro/clap: ^0.4.0
-  gyro/hzzp: ^0.0.0
-  gyro/zfetch: ^0.0.0
-  gyro/zzz: ^0.0.0
-  gyro/glob: ^0.0.0
-  gyro/tar: ^0.0.0
-  gyro/version: ^0.0.0
-  gyro/uri: ^0.0.0
-  ziglibs/known-folders: ^0.0.0
+  mattnite/clap: ^0.4.0
+  mattnite/hzzp: ^0.0.0
+  mattnite/zfetch: ^0.0.2
+  mattnite/zzz: ^0.0.0
+  mattnite/glob: ^0.0.0
+  mattnite/tar: ^0.0.0
+  mattnite/version: ^0.0.0
+  mattnite/uri: ^0.0.0
+  mattnite/known-folders: ^0.0.0

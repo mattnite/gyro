@@ -117,7 +117,8 @@ fn createManifest(self: *Self, tree: *zzz.ZTree(1, 1000)) !void {
         for (self.tags.items) |tag| _ = try tree.addNode(tags, .{ .String = tag });
     }
 
-    if (self.deps.items.len > 0) {
+    // TODO: check for collisions between different deps sets
+    if (self.deps.items.len > 0 or self.project.deps.items.len > 0) {
         var deps = try tree.addNode(root, .{ .String = "deps" });
         for (self.deps.items) |dep| try dep.addToZNode(&self.arena, tree, deps, true);
         for (self.project.deps.items) |dep| try dep.addToZNode(&self.arena, tree, deps, true);
