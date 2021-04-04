@@ -35,10 +35,10 @@ Table of Contents
     * [Package C Libraries](#package-c-libraries)
     * [Use gyro in github actions](#use-gyro-in-github-actions)
   * [Generated files](#generated-files)
-    * [gyro.zzz](#gyro.zzz)
-    * [gyro.lock](#gyro.lock)
-    * [deps.zig](#deps.zig)
-    * [.gyro/](#.gyro)
+    * [gyro.zzz](#gyrozzz)
+    * [gyro.lock](#gyrolock)
+    * [deps.zig](#depszig)
+    * [.gyro/](#gyro)
 
 ## Introduction
 
