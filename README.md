@@ -16,39 +16,38 @@ Table of Contents
   * [Installation](#installation)
     * [Building](#building)
   * [Design philosophy](#design-philosophy)
-  * [Generated files](#generated-files)
-    * [gyro.zzz]()
-    * [gyro.lock]()
-    * [deps.zig]()
-    * [.gyro/]()
-  * [Consuming packages](#consuming-packages)
-    * [Build pependencies](#build-dependencies)
-  * [Producing packages](#producing-packages)
   * [How tos](#how-tos)
-    * [Initialize project]()
-      * [Existing project]()
-    * [Produce a Package]()
-      * [Export multiple packages]()
-    * [Publishing a package to astrolabe.pm]()
-    * [Adding dependencies]()
-      * [From package index]()
-      * [From Github]()
-      * [From raw url (tar.gz)]()
-      * [Build dependencies]()
-      * [Subdependencies]()
-      * [Remove dependency via cli]()
-    * [Building your project]()
-    * [Local development]()
-    * [Update dependences -- for package consumers]()
-    * [Package C Libraries]()
-    * [Use gyro in github actions]()
+    * [Initialize project](#initialize-project)
+      * [Existing project](#existing-project)
+    * [Produce a Package](#produce-a-package)
+      * [Export multiple packages](#export-multiple-packages)
+    * [Publishing a package to astrolabe.pm](#publish-a-package-to-astrolabe.pm)
+    * [Adding dependencies](#adding-dependencies)
+      * [From package index](#from-package-index)
+      * [From Github](#from-github)
+      * [From raw url (tar.gz)](#from-raw-url)
+      * [Build dependencies](#build-dependencies)
+      * [Scoped dependencies](#scoped-dependencies)
+      * [Remove dependency via cli](#remove-dependency-via-cli)
+    * [Building your project](#building-your-dependency)
+    * [Local development](#local-development)
+    * [Update dependencies -- for package consumers](#update-dependencies)
+    * [Package C Libraries](#package-c-libraries)
+    * [Use gyro in github actions](#use-gyro-in-github-actions)
+  * [Generated files](#generated-files)
+    * [gyro.zzz](#gyro.zzz)
+    * [gyro.lock](#gyro.lock)
+    * [deps.zig](#deps.zig)
+    * [.gyro/](#.gyro)
 
 ## Introduction
 
-Gyro is an unofficial package manager for the Zig programming language.
-It improves a developer's life by giving them a package experience similar to cargo.
-Dependencies are declared in a `gyro.zzz` file in the root of your project, and are exposed to you programmatically in the `build.zig` file by importing `@import("gyro").pkgs`.
-In short, all that's needed on your part is how you want to add packages to different objects you're building:
+Gyro is an unofficial package manager for the Zig programming language.  It
+improves a developer's life by giving them a package experience similar to
+cargo.  Dependencies are declared in a `gyro.zzz` file in the root of your
+project, and are exposed to you programmatically in the `build.zig` file by
+importing `@import("deps.zig").pkgs`.  In short, all that's needed on your part
+is how you want to add packages to different objects you're building:
 
 ```zig
 const Builder = @import("std").build.Builder;
@@ -61,50 +60,94 @@ pub fn build(b: *Builder) void {
 }
 ```
 
-To make the job of finding suitable packages to use in your project easier, gyro is paired with a package index located at [astrolabe.pm](https://astrolabe.pm).
-A simple `gyro add alexnask/iguanaTLS` will add the latest version of `iguanaTLS` (pure zig TLS library) as a dependency.
-To build your project all that's needed is `gyro build` which works exactly like `zig build`, you can append the same arguments, except it automatically downloads any missing dependencies.
-To learn about other 
-If you want to use a dependency from github, you can add it by explicitly with `github add -s github <user>/<repo> [<ref>]`.
-`<ref>` is an optional arg which can be a branch, tag, or commit hash, if not specified, gyro uses the default branch.
+To make the job of finding suitable packages to use in your project easier,
+gyro is paired with a package index located at
+[astrolabe.pm](https://astrolabe.pm).  A simple `gyro add alexnask/iguanaTLS`
+will add the latest version of `iguanaTLS` (pure zig TLS library) as a
+dependency.  To build your project all that's needed is `gyro build` which
+works exactly like `zig build`, you can append the same arguments, except it
+automatically downloads any missing dependencies.  To learn about other If you
+want to use a dependency from github, you can add it by explicitly with `github
+add -s github <user>/<repo> [<ref>]`.  `<ref>` is an optional arg which can be
+a branch, tag, or commit hash, if not specified, gyro uses the default branch.
 
 ## Installation
 
-In order to install gyro, all you need to do is extract one of the [release tarballs](https://github.com/mattnite/gyro/releases) for your system and add the single static binary to your PATH.
+In order to install gyro, all you need to do is extract one of the [release
+tarballs](https://github.com/mattnite/gyro/releases) for your system and add
+the single static binary to your PATH.
 
 ### Building
 
-If you'd like to build from source, the only thing you need is the zig compiler:
+If you'd like to build from source, the only thing you need is the zig
+compiler:
 
 ```
-git clone https://github.com/mattnite/gyro.git --recursive
+git clone --recursive https://github.com/mattnite/gyro.git
 zig build -Dbootstrap
 ```
 
-The `-Dbootstrap` is required because gyro uses git submodules to do the initial build. 
-After that one can build gyro with gyro, this will pull packages from the package index instead of using git submodules.
+The `-Dbootstrap` is required because gyro uses git submodules to do the
+initial build.  After that one can build gyro with gyro, this will pull
+packages from the package index instead of using git submodules.
 
 ```
 gyro build
 ```
 
-(Note: you might need to move the original gyro binary from the `zig-cache` first).
-This command wraps `zig build`, so you can pass arguements like you normally would, like `gyro build test` to run your unit tests.
+(Note: you might need to move the original gyro binary from the `zig-cache`
+first).  This command wraps `zig build`, so you can pass arguements like you
+normally would, like `gyro build test` to run your unit tests.
 
-## Design Philosophy
+## Design philosophy
 
-## Consuming packages
+The two main motivations for gyro are providing a great user experience and
+creating a platform for members of the community to get their hands dirty with
+package management.
+
+
+
+## How tos
+
+### Initialize project
+
+The easiest way for an existing project to adopt gyro is to start by running
+`gyro init <user>/<repo>` to grab metadata from their Github project.  From
+there the package maintainer to finish the init process by defining a few more
+things:
+- the root file, it is `src/main.zig` by default
+- file globs describing which files are actually part of the package. It is
+  encouraged to include the license and readme, as well as testing code.
+- any other packages if the repo exports multiple repos (and their
+  corresponding root files of course)
+- dependencies (see previous section).
+
+#### Existing project
+
+### Export a package
+
+#### Export multiple packages
+
+### Publishing a package to astrolabe.pm
+
+### Adding dependencies
 
 To find potential zig packages you'd like to use:
 - [astrolabe.pm](https://astrolabe.pm), the default package index
-- [zpm](https://zpm.random-projects.net), a site that lists cool zig projects and where to find them
+- [zpm](https://zpm.random-projects.net), a site that lists cool zig projects
+  and where to find them
 - search github for `#zig` and `#zig-package` tags
 
-If you want to use code from a package from astrolabe, then all you need to do is `gyro add <package name>`, else if you want to use a Github repository as a dependency then all that's required is `gyro add <user>/<repo>`.
+If you want to use code from a package from astrolabe, then all you need to do
+is `gyro add <package name>`, else if you want to use a Github repository as a
+dependency then all that's required is `gyro add <user>/<repo>`.
 
-Packages are exposed to your `build.zig` file through a struct in `@import("gyro")`, and you can simply add them using a `addAllTo()` function, and then `@import()` in your code.
+Packages are exposed to your `build.zig` file through a struct in
+`@import("gyro")`, and you can simply add them using a `addAllTo()` function,
+and then `@import()` in your code.
 
-Assume there is a `hello_world` package available to on the index, we'd add it to our project like so:
+Assume there is a `hello_world` package available to on the index, we'd add it
+to our project like so:
 
 ```
 gyro add hello_world
@@ -133,14 +176,27 @@ pub fn main() !void {
 }
 ```
 
-If you want to "link" a specific package to an object, the packages you depend on are accessed like `pkgs.<package name>` so in the example above you could instead do `exe.addPackage(pkgs.hello_world)`.
+If you want to "link" a specific package to an object, the packages you depend
+on are accessed like `pkgs.<package name>` so in the example above you could
+instead do `exe.addPackage(pkgs.hello_world)`.
 
-### Build dependencies
 
-It's also possible to use packaged code in your `build.zig`, since this would only run at build time and most likely not required in your application or library these are kept separate from your regular dependencies in your project file.
+#### From package index
 
-When you want to add a dependency as a build dep, all you need to do is add `--build-dep` to the gyro invocation. 
-For example, let's assume I need to do some parsing with a package called `mecha`:
+#### From Github
+
+#### From raw url (tar.gz)
+
+#### Build dependencies
+
+It's also possible to use packaged code in your `build.zig`, since this would
+only run at build time and most likely not required in your application or
+library these are kept separate from your regular dependencies in your project
+file.
+
+When you want to add a dependency as a build dep, all you need to do is add
+`--build-dep` to the gyro invocation.  For example, let's assume I need to do
+some parsing with a package called `mecha`:
 
 ```
 gyro add --build-dep mecha
@@ -160,16 +216,24 @@ pub fn build(b: *Builder) void {
 }
 ```
 
-## Producing packages
+#### Scoped dependencies
 
-The easiest way for an existing project to adopt gyro is to start by running `gyro init <user>/<repo>` to grab metadata from their Github project.
-From there the package maintainer to finish the init process by defining a few more things:
-- the root file, it is `src/main.zig` by default
-- file globs describing which files are actually part of the package. It is encouraged to include the license and readme, as well as testing code.
-- any other packages if the repo exports multiple repos (and their corresponding root files of course)
-- dependencies (see previous section).
+### Removing dependencies
 
-### A note on projects and dependencies
+### Local development
 
-A project may export multiple packages, each with their own root file.
-For the sake of simplicity all packages in a project share the same dependencies.
+### Update dependencies -- for package consumers
+
+### C libraries
+
+### Use gyro in Github Actions 
+
+## Generated files
+
+### gyro.zzz
+
+### gyro.lock
+
+### deps.zig
+
+### ./gyro/
