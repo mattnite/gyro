@@ -21,7 +21,7 @@ Table of Contents
       * [Existing project](#existing-project)
     * [Produce a Package](#produce-a-package)
       * [Export multiple packages](#export-multiple-packages)
-    * [Publishing a package to astrolabe.pm](#publish-a-package-to-astrolabe.pm)
+    * [Publishing a package to astrolabe.pm](#publish-a-package-to-astrolabepm)
     * [Adding dependencies](#adding-dependencies)
       * [From package index](#from-package-index)
       * [From Github](#from-github)
@@ -63,7 +63,7 @@ pub fn build(b: *Builder) void {
 To make the job of finding suitable packages to use in your project easier,
 gyro is paired with a package index located at
 [astrolabe.pm](https://astrolabe.pm).  A simple `gyro add alexnask/iguanaTLS`
-will add the latest version of `iguanaTLS` (pure zig TLS library) as a
+will add the latest version of `iguanaTLS` (pure Zig TLS library) as a
 dependency.  To build your project all that's needed is `gyro build` which
 works exactly like `zig build`, you can append the same arguments, except it
 automatically downloads any missing dependencies.  To learn about other If you
@@ -79,8 +79,7 @@ the single static binary to your PATH.
 
 ### Building
 
-If you'd like to build from source, the only thing you need is the zig
-compiler:
+If you'd like to build from source, the only thing you need is the Zig compiler:
 
 ```
 git clone --recursive https://github.com/mattnite/gyro.git
@@ -101,13 +100,50 @@ normally would, like `gyro build test` to run your unit tests.
 
 ## Design philosophy
 
-The two main motivations for gyro are providing a great user experience and
+The two main obectives for gyro are providing a great user experience and
 creating a platform for members of the community to get their hands dirty with
-package management.
+Zig package management. The hope here is that this experience will better
+inform the development of the official package manager.
 
+To create a great user experience, gyro is inspired by Rust's package manager,
+Cargo. It does this by taking over the build runner so that `zig build` is
+effectively replaced with `gyro build`, and this automatically downloads missing
+dependencies and allows for [build dependencies](#build-dependencies). Other
+features include easy [addition of dependencies](#adding-dependencies) through
+the cli, [publishing packages on
+astrolabe.pm](#publishing-packages-to-astrolabepm), as well as local development.
 
+Similar to how the Zig compiler is meant to be dependency 0, gyro is intended to
+work as dependency 1. This means that there are no runtime dependencies, (Eg.
+git), and no dynamic libraries. Instead of statically linking to every VCS
+library in existence, the more strategic route was to instead use tarballs
+(tar.gz) for everything. The cost of this approach is that not every
+repository is accessible, however:
+
+- Most projects release source in a tarball (think C libraries here)
+- Github's api allows for downloading a tarball for a repo given a commit, tag,
+  or branch
+- Gyro's packaging system uses tarballs
+- Stdlib has gzip decompression
+- Easy to keep Gyro as a pure Zig codebase (no cross compilation pains)
+
+It lifts a considerable amount of work off the project in order to focus on the
+two main objectives while covering most codebases. I'm also willing to bet that
+most users that don't publish code on Github may not even want to use a package
+manager.
+
+The official Zig package manager is going to be decentralized, meaning that
+there will be no official package index. Gyro has a centralized feel in that the
+best UX is to use Astrolabe, but you can use it without interacting with the
+package index. It again comes down to not spending effort on supporting
+everything imaginable, and instead focus on experimenting with big design
+decisions around package management.
 
 ## How tos
+
+Instead of just documenting all the different subcommands, this documentation
+just lists out all the different scenarios that Gyro was built for. And if you
+wanted to learn more about the cli you can simply `gyro <subcommand> --help`.
 
 ### Initialize project
 
@@ -132,9 +168,9 @@ things:
 
 ### Adding dependencies
 
-To find potential zig packages you'd like to use:
+To find potential Zig packages you'd like to use:
 - [astrolabe.pm](https://astrolabe.pm), the default package index
-- [zpm](https://zpm.random-projects.net), a site that lists cool zig projects
+- [zpm](https://zpm.random-projects.net), a site that lists cool Zig projects
   and where to find them
 - search github for `#zig` and `#zig-package` tags
 
