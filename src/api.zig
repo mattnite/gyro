@@ -1,7 +1,6 @@
 const std = @import("std");
 const version = @import("version");
 const zfetch = @import("zfetch");
-const http = @import("hzzp");
 const tar = @import("tar");
 const zzz = @import("zzz");
 const uri = @import("uri");
@@ -35,7 +34,7 @@ pub fn getLatest(
         });
     defer allocator.free(url);
 
-    var headers = http.Headers.init(allocator);
+    var headers = zfetch.Headers.init(allocator);
     defer headers.deinit();
 
     const link = try uri.parse(url);
@@ -101,7 +100,7 @@ pub fn getHeadCommit(
     );
     defer allocator.free(url);
 
-    var headers = http.Headers.init(allocator);
+    var headers = zfetch.Headers.init(allocator);
     defer headers.deinit();
 
     var req = try zfetch.Request.init(allocator, url, null);
@@ -157,7 +156,7 @@ fn getTarGzImpl(
     dir: std.fs.Dir,
     skip_depth: usize,
 ) !void {
-    var headers = http.Headers.init(allocator);
+    var headers = zfetch.Headers.init(allocator);
     defer headers.deinit();
 
     std.log.info("fetching tarball: {s}", .{url});
@@ -226,7 +225,7 @@ pub fn getGithubRepo(
     );
     defer allocator.free(url);
 
-    var headers = http.Headers.init(allocator);
+    var headers = zfetch.Headers.init(allocator);
     defer headers.deinit();
 
     var req = try zfetch.Request.init(allocator, url, null);
@@ -261,7 +260,7 @@ pub fn getGithubTopics(
     const url = try std.fmt.allocPrint(allocator, "https://api.github.com/repos/{s}/{s}/topics", .{ user, repo });
     defer allocator.free(url);
 
-    var headers = http.Headers.init(allocator);
+    var headers = zfetch.Headers.init(allocator);
     defer headers.deinit();
 
     var req = try zfetch.Request.init(allocator, url, null);
@@ -307,7 +306,7 @@ pub fn getGithubGyroFile(
     );
     defer allocator.free(url);
 
-    var headers = http.Headers.init(allocator);
+    var headers = zfetch.Headers.init(allocator);
     defer headers.deinit();
 
     std.log.info("fetching tarball: {s}", .{url});
@@ -359,7 +358,7 @@ pub fn postDeviceCode(
     defer req.deinit();
 
     const link = try uri.parse(url);
-    var headers = http.Headers.init(allocator);
+    var headers = zfetch.Headers.init(allocator);
     defer headers.deinit();
 
     try headers.set("Host", link.host orelse return error.NoHost);
@@ -402,7 +401,7 @@ pub fn pollDeviceCode(
     defer req.deinit();
 
     const link = try uri.parse(url);
-    var headers = http.Headers.init(allocator);
+    var headers = zfetch.Headers.init(allocator);
     defer headers.deinit();
 
     try headers.set("Host", link.host orelse return error.NoHost);
@@ -450,12 +449,12 @@ pub fn postPublish(
     const authorization = try std.fmt.allocPrint(allocator, "Bearer github {s}", .{access_token});
     defer allocator.free(authorization);
 
-    const url = "https://" ++ @import("build_options").default_repo ++ "/publish";
+    const url = "http://" ++ @import("build_options").default_repo ++ "/publish";
     var req = try zfetch.Request.init(allocator, url, null);
     defer req.deinit();
 
     const link = try uri.parse(url);
-    var headers = http.Headers.init(allocator);
+    var headers = zfetch.Headers.init(allocator);
     defer headers.deinit();
 
     try headers.set("Host", link.host orelse return error.NoHost);

@@ -18,7 +18,8 @@ const Command = enum {
     fetch,
     update,
     publish,
-    redirect,
+    package,
+    //    redirect,
 };
 
 fn printUsage() noreturn {
@@ -34,7 +35,7 @@ fn printUsage() noreturn {
         \\  fetch     Manually download dependencies and generate deps.zig file
         \\  update    Update dependencies to latest
         \\  publish   Publish package to {s}, requires github account
-        \\  redirect  Manage local development
+        \\  package   Generate tar file that gets published
         \\
         \\for more information: gyro <cmd> --help
         \\
@@ -200,7 +201,7 @@ fn runCommands(allocator: *std.mem.Allocator) !void {
             try update(allocator, args.option("--in"), args.positionals());
         },
         .publish => {
-            const summary = "Publish package to astrolabe.pm";
+            const summary = "Generate tar file that gets published";
             const params = comptime [_]clap.Param(clap.Help){
                 clap.parseParam("-h, --help              Display help") catch unreachable,
                 clap.Param(clap.Help){
@@ -213,18 +214,33 @@ fn runCommands(allocator: *std.mem.Allocator) !void {
 
             try publish(allocator, if (args.positionals().len > 0) args.positionals()[0] else null);
         },
-        .redirect => {
+        .package => {
             const summary = "Manage local development";
             const params = comptime [_]clap.Param(clap.Help){
-                clap.parseParam("-h, --help   Display help") catch unreachable,
-                clap.parseParam("-c, --clean  undo all local redirects") catch unreachable,
+                clap.parseParam("-h, --help              Display help") catch unreachable,
+                clap.parseParam("-o, --output-dir <DIR>  output directory") catch unreachable,
                 clap.Param(clap.Help){
                     .takes_value = .Many,
                 },
             };
 
-            return error.Todo;
+            var args = parseHandlingHelpAndErrors(allocator, summary, &params, &iter);
+            defer args.deinit();
+
+            try package(allocator, args.option("--output-dir"), args.positionals());
         },
+        //.redirect => {
+        //    const summary = "Manage local development";
+        //    const params = comptime [_]clap.Param(clap.Help){
+        //        clap.parseParam("-h, --help   Display help") catch unreachable,
+        //        clap.parseParam("-c, --clean  undo all local redirects") catch unreachable,
+        //        clap.Param(clap.Help){
+        //            .takes_value = .Many,
+        //        },
+        //    };
+
+        //    return error.Todo;
+        //},
     }
 }
 

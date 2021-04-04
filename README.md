@@ -15,9 +15,33 @@ Table of Contents
   * [Introduction](#introduction)
   * [Installation](#installation)
     * [Building](#building)
-  * [Consuming Packages](#consuming-packages)
-    * [Build Dependencies](#build-dependencies)
-  * [Producing Packages](#producing-packages)
+  * [Design philosophy](#design-philosophy)
+  * [Generated files](#generated-files)
+    * [gyro.zzz]()
+    * [gyro.lock]()
+    * [deps.zig]()
+    * [.gyro/]()
+  * [Consuming packages](#consuming-packages)
+    * [Build pependencies](#build-dependencies)
+  * [Producing packages](#producing-packages)
+  * [How tos](#how-tos)
+    * [Initialize project]()
+      * [Existing project]()
+    * [Produce a Package]()
+      * [Export multiple packages]()
+    * [Publishing a package to astrolabe.pm]()
+    * [Adding dependencies]()
+      * [From package index]()
+      * [From Github]()
+      * [From raw url (tar.gz)]()
+      * [Build dependencies]()
+      * [Subdependencies]()
+      * [Remove dependency via cli]()
+    * [Building your project]()
+    * [Local development]()
+    * [Update dependences -- for package consumers]()
+    * [Package C Libraries]()
+    * [Use gyro in github actions]()
 
 ## Introduction
 
@@ -28,7 +52,7 @@ In short, all that's needed on your part is how you want to add packages to diff
 
 ```zig
 const Builder = @import("std").build.Builder;
-const pkgs = @import("gyro").pkgs;
+const pkgs = @import("deps.zig").pkgs;
 
 pub fn build(b: *Builder) void {
     const exe = b.addExecutable("main", "src/main.zig");
@@ -38,10 +62,11 @@ pub fn build(b: *Builder) void {
 ```
 
 To make the job of finding suitable packages to use in your project easier, gyro is paired with a package index located at [astrolabe.pm](https://astrolabe.pm).
-A simple `gyro add Hejsil/mecha` will add the latest version of `mecha` (parser combinator library) as a dependency.
-To build your project all that's needed is `gyro build` and gyro will fetch anything that hasn't been downloaded.
-
-If you want code that's not in the package index don't fret because I have you covered, if it's in a github repository, then all you have to do is `gyro add --github <user>/<repo>` (or `-g` instead of `--github`), and if it's located elsewhere gyro supports downloading `tar.gz` archives over https (see "How To" section).
+A simple `gyro add alexnask/iguanaTLS` will add the latest version of `iguanaTLS` (pure zig TLS library) as a dependency.
+To build your project all that's needed is `gyro build` which works exactly like `zig build`, you can append the same arguments, except it automatically downloads any missing dependencies.
+To learn about other 
+If you want to use a dependency from github, you can add it by explicitly with `github add -s github <user>/<repo> [<ref>]`.
+`<ref>` is an optional arg which can be a branch, tag, or commit hash, if not specified, gyro uses the default branch.
 
 ## Installation
 
@@ -65,6 +90,8 @@ gyro build
 
 (Note: you might need to move the original gyro binary from the `zig-cache` first).
 This command wraps `zig build`, so you can pass arguements like you normally would, like `gyro build test` to run your unit tests.
+
+## Design Philosophy
 
 ## Consuming packages
 
