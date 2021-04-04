@@ -15,13 +15,12 @@ Table of Contents
   * [Introduction](#introduction)
   * [Installation](#installation)
     * [Building](#building)
-  * [Design philosophy](#design-philosophy)
   * [How tos](#how-tos)
     * [Initialize project](#initialize-project)
       * [Existing project](#existing-project)
     * [Produce a Package](#produce-a-package)
       * [Export multiple packages](#export-multiple-packages)
-    * [Publishing a package to astrolabe.pm](#publish-a-package-to-astrolabepm)
+    * [Publishing a package to astrolabe.pm](#publishing-a-package-to-astrolabepm)
     * [Adding dependencies](#adding-dependencies)
       * [From package index](#from-package-index)
       * [From Github](#from-github)
@@ -34,6 +33,7 @@ Table of Contents
     * [Update dependencies -- for package consumers](#update-dependencies)
     * [Package C Libraries](#package-c-libraries)
     * [Use gyro in github actions](#use-gyro-in-github-actions)
+  * [Design philosophy](#design-philosophy)
   * [Generated files](#generated-files)
     * [gyro.zzz](#gyrozzz)
     * [gyro.lock](#gyrolock)
@@ -98,46 +98,6 @@ gyro build
 first).  This command wraps `zig build`, so you can pass arguements like you
 normally would, like `gyro build test` to run your unit tests.
 
-## Design philosophy
-
-The two main obectives for gyro are providing a great user experience and
-creating a platform for members of the community to get their hands dirty with
-Zig package management. The hope here is that this experience will better
-inform the development of the official package manager.
-
-To create a great user experience, gyro is inspired by Rust's package manager,
-Cargo. It does this by taking over the build runner so that `zig build` is
-effectively replaced with `gyro build`, and this automatically downloads missing
-dependencies and allows for [build dependencies](#build-dependencies). Other
-features include easy [addition of dependencies](#adding-dependencies) through
-the cli, [publishing packages on
-astrolabe.pm](#publishing-packages-to-astrolabepm), as well as local development.
-
-Similar to how the Zig compiler is meant to be dependency 0, gyro is intended to
-work as dependency 1. This means that there are no runtime dependencies, (Eg.
-git), and no dynamic libraries. Instead of statically linking to every VCS
-library in existence, the more strategic route was to instead use tarballs
-(tar.gz) for everything. The cost of this approach is that not every
-repository is accessible, however:
-
-- Most projects release source in a tarball (think C libraries here)
-- Github's api allows for downloading a tarball for a repo given a commit, tag,
-  or branch
-- Gyro's packaging system uses tarballs
-- Stdlib has gzip decompression
-- Easy to keep Gyro as a pure Zig codebase (no cross compilation pains)
-
-It lifts a considerable amount of work off the project in order to focus on the
-two main objectives while covering most codebases. I'm also willing to bet that
-most users that don't publish code on Github may not even want to use a package
-manager.
-
-The official Zig package manager is going to be decentralized, meaning that
-there will be no official package index. Gyro has a centralized feel in that the
-best UX is to use Astrolabe, but you can use it without interacting with the
-package index. It again comes down to not spending effort on supporting
-everything imaginable, and instead focus on experimenting with big design
-decisions around package management.
 
 ## How tos
 
@@ -151,6 +111,7 @@ The easiest way for an existing project to adopt gyro is to start by running
 `gyro init <user>/<repo>` to grab metadata from their Github project.  From
 there the package maintainer to finish the init process by defining a few more
 things:
+
 - the root file, it is `src/main.zig` by default
 - file globs describing which files are actually part of the package. It is
   encouraged to include the license and readme, as well as testing code.
@@ -175,25 +136,25 @@ To find potential Zig packages you'd like to use:
 - search github for `#zig` and `#zig-package` tags
 
 If you want to use code from a package from astrolabe, then all you need to do
-is `gyro add <package name>`, else if you want to use a Github repository as a
-dependency then all that's required is `gyro add <user>/<repo>`.
+is `gyro add <user>/<package>`, else if you want to use a Github repository as a
+dependency then all that's required is `gyro add --src github <user>/<repo>`.
 
 Packages are exposed to your `build.zig` file through a struct in
-`@import("gyro")`, and you can simply add them using a `addAllTo()` function,
+`@import("deps.zig")`, and you can simply add them using a `addAllTo()` function,
 and then `@import()` in your code.
 
-Assume there is a `hello_world` package available to on the index, we'd add it
-to our project like so:
+Assume there is a `hello_world` package available on the index, published by
+`some_user` we'd add it to our project like so:
 
 ```
-gyro add hello_world
+gyro add some_user/hello_world
 ```
 
 build.zig:
 
 ```zig
 const Builder = @import("std").build.Builder;
-const pkgs = @import("gyro").pkgs;
+const pkgs = @import("deps.zig").pkgs;
 
 pub fn build(b: *Builder) void {
     const exe = b.addExecutable("main", "src/main.zig");
@@ -235,7 +196,7 @@ When you want to add a dependency as a build dep, all you need to do is add
 some parsing with a package called `mecha`:
 
 ```
-gyro add --build-dep mecha
+gyro add --build-dep mattnite/zzz
 ```
 
 and in my `build.zig`:
@@ -263,6 +224,49 @@ pub fn build(b: *Builder) void {
 ### C libraries
 
 ### Use gyro in Github Actions 
+
+You can get your hands on Gyro for github actions
+[here](https://github.com/marketplace/actions/setup-gyro), it does not install
+the zig compiler so remember to include that as well!
+
+## Design philosophy
+
+The two main obectives for gyro are providing a great user experience and
+creating a platform for members of the community to get their hands dirty with
+Zig package management. The hope here is that this experience will better
+inform the development of the official package manager.
+
+To create a great user experience, gyro is inspired by Rust's package manager,
+Cargo. It does this by taking over the build runner so that `zig build` is
+effectively replaced with `gyro build`, and this automatically downloads missing
+dependencies and allows for [build dependencies](#build-dependencies). Other
+features include easy [addition of dependencies](#adding-dependencies) through
+the cli, [publishing packages on
+astrolabe.pm](#publishing-a-package-to-astrolabepm), as well as local development.
+
+Similar to how the Zig compiler is meant to be dependency 0, gyro is intended to
+work as dependency 1. This means that there are no runtime dependencies, (Eg.
+git), and no dynamic libraries. Instead of statically linking to every VCS
+library in existence, the more strategic route was to instead use tarballs
+(tar.gz) for everything. The cost of this approach is that not every
+repository is accessible, however:
+
+- Most projects release source in a tarball (think C libraries here)
+- Github's api allows for downloading a tarball for a repo given a commit, tag,
+  or branch
+- Gyro's packaging system uses tarballs
+- Stdlib has gzip decompression
+- Easy to keep Gyro as a pure Zig codebase (no cross compilation pains)
+
+It lifts a considerable amount of work off the project in order to focus on the
+two main objectives while covering most codebases. 
+
+The official Zig package manager is going to be decentralized, meaning that
+there will be no official package index. Gyro has a centralized feel in that the
+best UX is to use Astrolabe, but you can use it without interacting with the
+package index. It again comes down to not spending effort on supporting
+everything imaginable, and instead focus on experimenting with big design
+decisions around package management.
 
 ## Generated files
 
