@@ -211,16 +211,21 @@ instead do `exe.addPackage(pkgs.hello_world)`.
 
 #### From package index
 
+```
+gyro add <user>/<pkg>
+```
+
 #### From Github
 
-#### From raw url (tar.gz)
+```
+gyro add --src github <user>/<repo>
+```
 
 #### Build dependencies
 
 It's also possible to use packaged code in your `build.zig`, since this would
-only run at build time and most likely not required in your application or
-library these are kept separate from your regular dependencies in your project
-file.
+only run at build time and not required in your application or library these are
+kept separate from your regular dependencies in your project file.
 
 When you want to add a dependency as a build dep, all you need to do is add
 `--build-dep` to the gyro invocation.  For example, let's assume I need to do
@@ -235,12 +240,16 @@ and in my `build.zig`:
 ```zig
 const Builder = @import("std").build.Builder;
 const pkgs = @import("gyro").pkgs;
-const mecha = @import("mecha");
+const zzz = @import("zzz");
 
 pub fn build(b: *Builder) void {
     const exe = b.addExecutable("main", "src/main.zig");
     pkgs.addAllTo(exe);
     exe.install();
+
+    // maybe do some workflow based on gyro.zzz
+    var tree = zzz.ZTree(1, 100){};
+    ...
 }
 ```
 
@@ -273,6 +282,36 @@ gyro remove iguanaTLS --from some_package
 ```
 
 ### Local development
+
+Right now local development requires editing gyro.zzz, there will be a cli
+workflow in a future release.
+
+Let's say you have a dependency, `iguanaTLS`, and you have it cloned next to
+your project. Your gyro.zzz will look something like this:
+
+```
+deps:
+  alexnask/iguanaTLS: ^0.0.1
+```
+
+You can comment out the package and replace it with a local one:
+
+```
+deps:
+  #alexnask/iguanaTLS: ^0.0.1
+  iguanaTLS: src: local: "../iguanaTLS"
+```
+
+If the package had more than one exported package then you'd need to specify the
+root file:
+
+```
+deps:
+  #alexnask/iguanaTLS: ^0.0.1
+  iguanaTLS:
+    root: src/blarg.zig
+    src: local: "../iguanaTLS"
+```
 
 ### Update dependencies -- for package consumers
 
