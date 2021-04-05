@@ -313,6 +313,9 @@ deps:
     src: local: "../iguanaTLS"
 ```
 
+It is possible to go down the dependency tree further by doing this to the
+`gyro.zzz` file in the local dependency.
+
 ### Update dependencies -- for package consumers
 
 Updating dependencies only works for package consumers as it modifies
