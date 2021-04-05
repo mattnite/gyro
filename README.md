@@ -10,32 +10,6 @@
 
 ---
 
-Table of Contents
-=================
-  * [Introduction](#introduction)
-  * [Installation](#installation)
-    * [Building](#building)
-  * [How tos](#how-tos)
-    * [Initialize project](#initialize-project)
-      * [Existing project](#existing-project)
-    * [Export a package](#export-a-package)
-    * [Publishing a package to astrolabe.pm](#publishing-a-package-to-astrolabepm)
-    * [Adding dependencies](#adding-dependencies)
-      * [From package index](#from-package-index)
-      * [From Github](#from-github)
-      * [Scoped dependencies](#scoped-dependencies)
-      * [Remove dependency via cli](#remove-dependency-via-cli)
-    * [Local development](#local-development)
-    * [Update dependencies -- for package consumers](#update-dependencies)
-    * [Package C Libraries](#package-c-libraries)
-    * [Use gyro in github actions](#use-gyro-in-github-actions)
-  * [Design philosophy](#design-philosophy)
-  * [Generated files](#generated-files)
-    * [gyro.zzz](#gyrozzz)
-    * [gyro.lock](#gyrolock)
-    * [deps.zig](#depszig)
-    * [.gyro/](#gyro)
-
 ## Introduction
 
 Gyro is an unofficial package manager for the Zig programming language.  It
@@ -152,62 +126,30 @@ still probably needs some attention:
 - the root file, it is `src/main.zig` by default
 - the version
 - file globs describing which files are actually part of the package. It is
-  encouraged to include the license and readme, as well as testing code.
+  encouraged to include the license and readme.
 - metadata: description, tags, source\_url, etc.
 - [dependencies](#adding-dependencies)
 
 ### Publishing a package to astrolabe.pm
 
+In order to publish to astrolabe you need a Github account and a browser. If
+your project exports multiple packages you'll need to append the name, otherwise
+you can simply:
+
+```
+gyro publish
+```
+
+This should open your browser to a page asking for a alphanumeric code which you
+can find printed on the command line. Enter this code, this will open another
+page to confirm read access to your user and your email from your Github
+account. Once that is complete, Gyro will publish your package and if successful
+a link to it will be printed to stdout.
+
+An access token is cached so that this browser sign-on process only needs to be
+done once for a given dev machine.
+
 ### Adding dependencies
-
-To find potential Zig packages you'd like to use:
-- [astrolabe.pm](https://astrolabe.pm), the default package index
-- [zpm](https://zpm.random-projects.net), a site that lists cool Zig projects
-  and where to find them
-- search github for `#zig` and `#zig-package` tags
-
-If you want to use code from a package from astrolabe, then all you need to do
-is `gyro add <user>/<package>`, else if you want to use a Github repository as a
-dependency then all that's required is `gyro add --src github <user>/<repo>`.
-
-Packages are exposed to your `build.zig` file through a struct in
-`@import("deps.zig")`, and you can simply add them using a `addAllTo()` function,
-and then `@import()` in your code.
-
-Assume there is a `hello_world` package available on the index, published by
-`some_user` we'd add it to our project like so:
-
-```
-gyro add some_user/hello_world
-```
-
-build.zig:
-
-```zig
-const Builder = @import("std").build.Builder;
-const pkgs = @import("deps.zig").pkgs;
-
-pub fn build(b: *Builder) void {
-    const exe = b.addExecutable("main", "src/main.zig");
-    pkgs.addAllTo(exe);
-    exe.install();
-}
-``` 
-
-main.zig:
-
-```zig
-const hw = @import("hello_world");
-
-pub fn main() !void {
-    try hw.greet();
-}
-```
-
-If you want to "link" a specific package to an object, the packages you depend
-on are accessed like `pkgs.<package name>` so in the example above you could
-instead do `exe.addPackage(pkgs.hello_world)`.
-
 
 #### From package index
 
@@ -380,6 +322,73 @@ decisions around package management.
 This is your project file, it contains the packages you export (if any),
 dependencies, and build dependencies. `zzz` is a file format similar to yaml but
 has a stricter spec and is implemented in zig.
+
+A map of a gyro.zzz file looks something like this:
+```
+pkgs:
+  <pkg_a>:
+    version: 0.0.0
+    description: the description field
+    license: spdix-id
+    homepage_url: https://straight.forward
+    sourse_url: https://straight.forward
+
+    # these are shown on astrolabe
+    tags:
+      http
+      cli
+
+    # allows for globbing, doesn't do recursive globbing yet
+    files:
+      LICENSE
+      README.md # this is displayed on the astrolabe
+      build.zig
+      src/*.zig
+
+    # scoped dependencies, look the same as root deps
+    deps:
+      ...
+
+  # exporting a second package
+  <pkg_b>:
+    version: 0.0.0
+    ...
+
+# like 'deps' but these can be directly imported in build.zig
+build_deps:
+  ...
+
+# most 'keys' are the string used to import in zig code, the exception being
+# packages from the default package index which have a shortend version
+deps:
+  # a package from the defalt package index, user is 'bruh', its name is 'blarg'
+  # and is imported with the same string
+  bruh/blarg: ^0.1.0
+
+  # importing blarg from a different package index, have to use a different
+  # import string, I'll use 'flarp'
+  flarp:
+    src:
+      pkg:
+        name: blarg
+        user: loris
+        version: ^0.3.0
+        repository: something.gg
+
+  # a github package, imported with string 'mecha'
+  mecha:
+    root: mecha.zig
+    src:
+      github:
+        user: Hejsil
+        repo: mecha
+        ref: zig-master
+
+  # a raw url, imported with string 'raw' (remember its gotta be a tar.gz)
+  raw:
+    root: bar.zig
+    src: url: "https://example.com/foo.tar.gz"
+```
 
 ### gyro.lock
 
