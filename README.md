@@ -140,21 +140,24 @@ be individually added:
 lib.addPackage(pkgs.mecha)
 ```
 
+#### Ignoring gyro.lock
+
+`gyro.lock` is intended for reproducible builds. It is advised to add it to
+`.gitignore` if your project is a library.
+
 ### Export a package
 
-The easiest way for an existing project to adopt gyro is to start by running
-`gyro init <user>/<repo>` to grab metadata from their Github project.  From
-there the package maintainer to finish the init process by defining a few more
-things:
+This operation doesn't have a cli equivalent so editing of [gyro.zzz](#gyrozzz)
+is required, if you followed [initializing a project](#intialize-project) and
+grabbed metadata from Github, then a lot of this work is done for you -- but
+still probably needs some attention:
 
 - the root file, it is `src/main.zig` by default
+- the version
 - file globs describing which files are actually part of the package. It is
   encouraged to include the license and readme, as well as testing code.
-- any other packages if the repo exports multiple repos (and their
-  corresponding root files of course)
-- dependencies (see previous section).
-
-#### Export multiple packages
+- metadata: description, tags, source\_url, etc.
+- [dependencies](#adding-dependencies)
 
 ### Publishing a package to astrolabe.pm
 
