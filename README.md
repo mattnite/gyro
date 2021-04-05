@@ -41,7 +41,7 @@ Table of contents
 
 Gyro is an unofficial package manager for the Zig programming language.  It
 improves a developer's life by giving them a package experience similar to
-cargo.  Dependencies are declared in a `gyro.zzz` file in the root of your
+cargo.  Dependencies are declared in a [gyro.zzz](#gyrozzz) file in the root of your
 project, and are exposed to you programmatically in the `build.zig` file by
 importing `@import("deps.zig").pkgs`.  In short, all that's needed on your part
 is how you want to add packages to different objects you're building:
@@ -104,7 +104,7 @@ wanted to learn more about the cli you can simply `gyro <subcommand> --help`.
 ### Initialize project
 
 If you have an existing project on Github that's a library then you can populate
-`gyro.zzz` file with metadata:
+[gyro.zzz](#gyrozzz) file with metadata:
 
 ```
 gyro init <user>/<repo>
@@ -140,13 +140,13 @@ lib.addPackage(pkgs.mecha)
 
 #### Ignoring gyro.lock
 
-`gyro.lock` is intended for reproducible builds. It is advised to add it to
+[gyro.lock](#gyrolock) is intended for reproducible builds. It is advised to add it to
 `.gitignore` if your project is a library.
 
 ### Export a package
 
 This operation doesn't have a cli equivalent so editing of [gyro.zzz](#gyrozzz)
-is required, if you followed [initializing a project](#intialize-project) and
+is required, if you followed [initializing a project](#initialize-project) and
 grabbed metadata from Github, then a lot of this work is done for you -- but
 still probably needs some attention:
 
@@ -252,7 +252,7 @@ gyro remove iguanaTLS --from some_package
 
 ### Local development
 
-Right now local development requires editing gyro.zzz, there will be a cli
+Right now local development requires editing [gyro.zzz](#gyrozzz), there will be a cli
 workflow in a future release.
 
 Let's say you have a dependency, `iguanaTLS`, and you have it cloned next to
@@ -288,7 +288,7 @@ It is possible to go down the dependency tree further by doing this to the
 ### Update dependencies -- for package consumers
 
 Updating dependencies only works for package consumers as it modifies
-`gyro.lock`. It does not change dependency requirements, merely resolves the
+[gyro.lock](#gyrolock). It does not change dependency requirements, merely resolves the
 dependencies to their latest versions. Simply:
 
 ```
@@ -399,7 +399,7 @@ deps:
     src:
       pkg:
         name: blarg
-        user: loris
+        user: arst
         version: ^0.3.0
         repository: something.gg
 
