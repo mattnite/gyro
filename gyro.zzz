@@ -1,7 +1,6 @@
 deps:
   mattnite/clap: ^0.4.0
-  mattnite/hzzp: ^0.0.0
-  mattnite/zfetch: ^0.0.2
+  truemedian/zfetch: ^0.0.2
   mattnite/zzz: ^0.0.0
   mattnite/glob: ^0.0.0
   mattnite/tar: ^0.0.0

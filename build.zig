@@ -72,7 +72,6 @@ fn addAllPkgs(lib: *LibExeObjStep) void {
     lib.addPackage(tar);
     lib.addPackage(zzz);
     lib.addPackage(glob);
-    lib.addPackage(hzzp);
     lib.addPackage(zfetch);
     lib.addPackage(uri);
     lib.addPackage(known_folders);
