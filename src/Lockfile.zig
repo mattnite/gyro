@@ -257,10 +257,13 @@ pub const Entry = union(enum) {
     }
 
     pub fn getEscapedPackageDir(self: Entry, arena: *std.heap.ArenaAllocator) ![]const u8 {
-        var package_path = try std.fs.path.join(
-            &arena.allocator,
-            &.{ try self.packagePath(&arena.allocator), "pkg" },
-        );
+        var package_path = switch (self) {
+            .local => try self.packagePath(&arena.allocator),
+            else => try std.fs.path.join(&arena.allocator, &.{
+                try self.packagePath(&arena.allocator),
+                "pkg",
+            }),
+        };
 
         return if (std.fs.path.sep == std.fs.path.sep_windows)
             try std.mem.replaceOwned(
@@ -277,7 +280,7 @@ pub const Entry = union(enum) {
     pub fn packagePath(self: Entry, allocator: *Allocator) ![]const u8 {
         var tree = zzz.ZTree(1, 1000){};
         var root = try tree.addNode(null, .{ .Null = {} });
-        var ver_buf: [8]u8 = undefined;
+        var ver_buf: [80]u8 = undefined;
 
         switch (self) {
             .pkg => |pkg| {
@@ -299,9 +302,7 @@ pub const Entry = union(enum) {
             .url => |url| {
                 try zPutKeyString(&tree, root, "url", url.str);
             },
-            .local => |local| {
-                try zPutKeyString(&tree, root, "local", local.path);
-            },
+            .local => |local| return try allocator.dupe(u8, local.path),
         }
 
         var buf: [std.mem.page_size]u8 = undefined;
