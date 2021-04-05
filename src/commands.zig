@@ -462,7 +462,10 @@ pub fn add(
 
                 var ret: []const u8 = default_root;
                 if (subproject.packages.count() == 1)
-                    ret = subproject.packages.iterator().next().?.value.root orelse default_root;
+                    ret = if (subproject.packages.iterator().next().?.value.root) |r|
+                        try arena.allocator.dupe(u8, r)
+                    else
+                        default_root;
 
                 // TODO try other matching methods
 
