@@ -258,14 +258,14 @@ workflow in a future release.
 Let's say you have a dependency, `iguanaTLS`, and you have it cloned next to
 your project. Your gyro.zzz will look something like this:
 
-```
+```yaml
 deps:
   alexnask/iguanaTLS: ^0.0.1
 ```
 
 You can comment out the package and replace it with a local one:
 
-```
+```yaml
 deps:
   #alexnask/iguanaTLS: ^0.0.1
   iguanaTLS: src: local: "../iguanaTLS"
@@ -274,7 +274,7 @@ deps:
 If the package had more than one exported package then you'd need to specify the
 root file:
 
-```
+```yaml
 deps:
   #alexnask/iguanaTLS: ^0.0.1
   iguanaTLS:
@@ -316,14 +316,15 @@ effectively replaced with `gyro build`, and this automatically downloads missing
 dependencies and allows for [build dependencies](#build-dependencies). Other
 features include easy [addition of dependencies](#adding-dependencies) through
 the cli, [publishing packages on
-astrolabe.pm](#publishing-a-package-to-astrolabepm), as well as local development.
+astrolabe.pm](#publishing-a-package-to-astrolabepm), as well as local
+development.
 
 Similar to how the Zig compiler is meant to be dependency 0, gyro is intended to
 work as dependency 1. This means that there are no runtime dependencies, (Eg.
 git), and no dynamic libraries. Instead of statically linking to every VCS
 library in existence, the more strategic route was to instead use tarballs
-(tar.gz) for everything. The cost of this approach is that not every
-repository is accessible, however:
+(tar.gz) for everything. The cost of this approach is that not every repository
+is accessible, however:
 
 - Most projects release source in a tarball (think C libraries here)
 - Github's api allows for downloading a tarball for a repo given a commit, tag,
@@ -351,7 +352,7 @@ dependencies, and build dependencies. `zzz` is a file format similar to yaml but
 has a stricter spec and is implemented in zig.
 
 A map of a gyro.zzz file looks something like this:
-```zzz
+```yaml
 pkgs:
   pkg_a:
     version: 0.0.0
