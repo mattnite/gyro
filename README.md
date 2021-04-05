@@ -10,6 +10,33 @@
 
 ---
 
+Table of contents
+=================
+* [Introduction](#introduction)
+* [Installation](#installation)
+  * [Building](#building)
+* [How tos](#how-tos)
+  * [Initialize project](#initialize-project)
+    * [Setting up build.zig](#setting-up-buildzig)
+    * [Ignoring gyro.lock](#ignoring-gyrolock)
+  * [Export a package](#export-a-package)
+  * [Publishing a package to astrolabe.pm](#publishing-a-package-to-astrolabepm)
+  * [Adding dependencies](#adding-dependencies)
+    * [From package index](#from-package-index)
+    * [From Github](#from-github)
+    * [Build dependencies](#build-dependencies)
+    * [Scoped dependencies](#scoped-dependencies)
+  * [Removing dependencies](#removing-dependencies)
+  * [Local development](#local-development)
+  * [Update dependencies -- for package consumers](#update-dependencies----for-package-consumers)
+  * [Use gyro in Github Actions](#use-gyro-in-github-actions)
+* [Design philosophy](#design-philosophy)
+* [Generated files](#generated-files)
+  * [gyro.zzz](#gyrozzz)
+  * [gyro.lock](#gyrolock)
+  * [deps.zig](#depszig)
+  * [./gyro/](#-gyro-)
+
 ## Introduction
 
 Gyro is an unofficial package manager for the Zig programming language.  It
