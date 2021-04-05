@@ -351,9 +351,9 @@ dependencies, and build dependencies. `zzz` is a file format similar to yaml but
 has a stricter spec and is implemented in zig.
 
 A map of a gyro.zzz file looks something like this:
-```yaml
+```zzz
 pkgs:
-  <pkg_a>:
+  pkg_a:
     version: 0.0.0
     description: the description field
     license: spdix-id
@@ -377,7 +377,7 @@ pkgs:
       ...
 
   # exporting a second package
-  <pkg_b>:
+  pkg_b:
     version: 0.0.0
     ...
 
