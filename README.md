@@ -25,7 +25,6 @@ Table of Contents
       * [From package index](#from-package-index)
       * [From Github](#from-github)
       * [From raw url (tar.gz)](#from-raw-url)
-      * [Build dependencies](#build-dependencies)
       * [Scoped dependencies](#scoped-dependencies)
       * [Remove dependency via cli](#remove-dependency-via-cli)
     * [Building your project](#building-your-dependency)
@@ -95,9 +94,8 @@ gyro build
 ```
 
 (Note: you might need to move the original gyro binary from the `zig-cache`
-first).  This command wraps `zig build`, so you can pass arguements like you
+first). This command wraps `zig build`, so you can pass arguements like you
 normally would, like `gyro build test` to run your unit tests.
-
 
 ## How tos
 
@@ -106,6 +104,41 @@ just lists out all the different scenarios that Gyro was built for. And if you
 wanted to learn more about the cli you can simply `gyro <subcommand> --help`.
 
 ### Initialize project
+
+If you have an existing project on Github that's a library then you can populate
+`gyro.zzz` file with metadata:
+
+```
+gyro init <user>/<repo>
+```
+
+If it's a brand new project that's a library, the steps are outlined in [export
+a package](#export-a-package). For projects that are an executable or considered
+the 'root' of the dependency tree, all you need to do is [add
+dependencies](#adding-dependencies).
+
+#### Setting up build.zig
+
+In build.zig, the dependency tree can be imported with
+
+```zig
+const pkgs = @import("deps.zig").pkgs;
+```
+
+then in the build function all the packages can be added to an artifact with:
+
+```zig
+pkgs.addAllTo(lib);
+```
+
+individual packages exist in the pkgs namespace, so a package named `mecha` can
+be individually added:
+
+```zig
+lib.addPackage(pkgs.mecha)
+```
+
+### Export a package
 
 The easiest way for an existing project to adopt gyro is to start by running
 `gyro init <user>/<repo>` to grab metadata from their Github project.  From
@@ -118,10 +151,6 @@ things:
 - any other packages if the repo exports multiple repos (and their
   corresponding root files of course)
 - dependencies (see previous section).
-
-#### Existing project
-
-### Export a package
 
 #### Export multiple packages
 
