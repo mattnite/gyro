@@ -18,16 +18,13 @@ Table of Contents
   * [How tos](#how-tos)
     * [Initialize project](#initialize-project)
       * [Existing project](#existing-project)
-    * [Produce a Package](#produce-a-package)
-      * [Export multiple packages](#export-multiple-packages)
+    * [Export a package](#export-a-package)
     * [Publishing a package to astrolabe.pm](#publishing-a-package-to-astrolabepm)
     * [Adding dependencies](#adding-dependencies)
       * [From package index](#from-package-index)
       * [From Github](#from-github)
-      * [From raw url (tar.gz)](#from-raw-url)
       * [Scoped dependencies](#scoped-dependencies)
       * [Remove dependency via cli](#remove-dependency-via-cli)
-    * [Building your project](#building-your-dependency)
     * [Local development](#local-development)
     * [Update dependencies -- for package consumers](#update-dependencies)
     * [Package C Libraries](#package-c-libraries)
@@ -249,13 +246,45 @@ pub fn build(b: *Builder) void {
 
 #### Scoped dependencies
 
+Dependencies added to a project are dependencies of all exported packages. In
+some cases you might want to add a dependency to only one package, and this can
+be done with the `--to` argument:
+
+```
+gyro add alexnask/iguanaTLS --to some_package
+```
+
+Build dependecies cannot be scoped to an exported package because build
+dependencies only affect the current project.
+
 ### Removing dependencies
+
+Removing a dependency only requires the alias (string used to import):
+
+```
+gyro remove iguanaTLS
+```
+
+Removing [scoped dependencies](#scoped-dependencies) requires the `--from`
+argument:
+
+```
+gyro remove iguanaTLS --from some_package
+```
 
 ### Local development
 
 ### Update dependencies -- for package consumers
 
-### C libraries
+Updating dependencies only works for package consumers as it modifies
+`gyro.lock`. It does not change dependency requirements, merely resolves the
+dependencies to their latest versions. Simply:
+
+```
+gyro update
+```
+
+Updating single dependencies will come soon, right now everything is updated.
 
 ### Use gyro in Github Actions 
 
@@ -306,8 +335,29 @@ decisions around package management.
 
 ### gyro.zzz
 
+This is your project file, it contains the packages you export (if any),
+dependencies, and build dependencies. `zzz` is a file format similar to yaml but
+has a stricter spec and is implemented in zig.
+
 ### gyro.lock
+
+This contains a lockfile for reproducible builds, it is only useful in compiled
+projects, not libraries. Adding gyro.lock to your package will not affect
+resolved versions of dependencies for your users -- it is suggested to add this
+file to your `.gitignore` for libraries.
 
 ### deps.zig
 
+This is the generated file that's imported by `build.zig`, it can be imported
+with `@import("deps.zig")` or `@import("gyro")`. Unless you are vendoring your
+dependencies, this should should be added to `.gitignore`.
+
 ### ./gyro/
+
+This directory holds the source code of all your dependencies. Path names are
+human readable and look something like `<package>-<user>-<hash>` so in many
+cases it is possible to navigate to dependencies and make small edits if you run
+into bugs. For a more robust way to edit dependencies see [local
+development](#local-development)
+
+It is suggested to add this to `.gitignore` as well.
