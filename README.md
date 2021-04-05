@@ -112,8 +112,10 @@ If you have an existing project on Github that's a library then you can populate
 gyro init <user>/<repo>
 ```
 
-If it's a brand new project that's a library, the steps are outlined in [export
-a package](#export-a-package). For projects that are an executable or considered
+For both new and existing libraries you'd want to check out [export a
+package](#export-a-package), if you don't plan on [publishing to
+astrolabe](#publishing-a-package-to-astrolabepm) then ensuring the root file is
+declared is all that's needed. For projects that are an executable or considered
 the 'root' of the dependency tree, all you need to do is [add
 dependencies](#adding-dependencies).
 
