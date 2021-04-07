@@ -48,9 +48,7 @@ pub fn getLatest(
     var req = try zfetch.Request.init(allocator, url, null);
     defer req.deinit();
 
-    try req.commit(.GET, headers, null);
-    try req.fulfill();
-
+    try req.do(.GET, headers, null);
     switch (req.status.code) {
         200 => {},
         404 => {
@@ -72,8 +70,13 @@ pub fn getLatest(
             return error.Explained;
         },
         else => |code| {
-            std.log.err("got http status code {} for {s}", .{ code, url });
-            return error.FailedRequest;
+            const body = try req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
+            defer allocator.free(body);
+
+            const stderr = std.io.getStdErr().writer();
+            try stderr.print("got http status code for {s}: {}", .{ url, req.status.code });
+            try stderr.print("{s}\n", .{body});
+            return error.Explained;
         },
     }
 
@@ -110,12 +113,15 @@ pub fn getHeadCommit(
     try headers.set("Accept", "*/*");
     try headers.set("User-Agent", "gyro");
 
-    try req.commit(.GET, headers, null);
-    try req.fulfill();
-
+    try req.do(.GET, headers, null);
     if (req.status.code != 200) {
-        std.log.err("got http status code for {s}: {}", .{ url, req.status.code });
-        return error.FailedRequest;
+        const body = try req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
+        defer allocator.free(body);
+
+        const stderr = std.io.getStdErr().writer();
+        try stderr.print("got http status code for {s}: {}", .{ url, req.status.code });
+        try stderr.print("{s}\n", .{body});
+        return error.Explained;
     }
 
     var gzip = try std.compress.gzip.gzipStream(allocator, req.reader());
@@ -168,12 +174,15 @@ fn getTarGzImpl(
     try headers.set("Accept", "*/*");
     try headers.set("User-Agent", "gyro");
 
-    try req.commit(.GET, headers, null);
-    try req.fulfill();
-
+    try req.do(.GET, headers, null);
     if (req.status.code != 200) {
-        std.log.err("got http status code for {s}: {}", .{ url, req.status.code });
-        return error.FailedRequest;
+        const body = try req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
+        defer allocator.free(body);
+
+        const stderr = std.io.getStdErr().writer();
+        try stderr.print("got http status code for {s}: {}", .{ url, req.status.code });
+        try stderr.print("{s}\n", .{body});
+        return error.Explained;
     }
 
     var gzip = try std.compress.gzip.gzipStream(allocator, req.reader());
@@ -235,14 +244,17 @@ pub fn getGithubRepo(
     try headers.set("Accept", "application/vnd.github.v3+json");
     try headers.set("User-Agent", "gyro");
 
-    try req.commit(.GET, headers, null);
-    try req.fulfill();
-
+    try req.do(.GET, headers, null);
     var text = try req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
     defer allocator.free(text);
 
     if (req.status.code != 200) {
-        std.log.err("got http status code: {}\n{s}", .{ req.status.code, text });
+        const body = try req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
+        defer allocator.free(body);
+
+        const stderr = std.io.getStdErr().writer();
+        try stderr.print("got http status code for {s}: {}", .{ url, req.status.code });
+        try stderr.print("{s}\n", .{body});
         return error.Explained;
     }
 
@@ -270,21 +282,21 @@ pub fn getGithubTopics(
     try headers.set("Accept", "application/vnd.github.mercy-preview+json");
     try headers.set("User-Agent", "gyro");
 
-    try req.commit(.GET, headers, null);
-    try req.fulfill();
+    try req.do(.GET, headers, null);
+    var body = try req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
+    defer allocator.free(body);
 
     if (req.status.code != 200) {
-        std.log.err("got http status code {s}: {}", .{ url, req.status.code });
+        const stderr = std.io.getStdErr().writer();
+        try stderr.print("got http status code for {s}: {}", .{ url, req.status.code });
+        try stderr.print("{s}\n", .{body});
         return error.Explained;
     }
-
-    var text = try req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
-    defer allocator.free(text);
 
     var parser = std.json.Parser.init(allocator, true);
     defer parser.deinit();
 
-    return try parser.parse(text);
+    return try parser.parse(body);
 }
 
 pub fn getGithubGyroFile(
@@ -318,12 +330,15 @@ pub fn getGithubGyroFile(
     try headers.set("Accept", "*/*");
     try headers.set("User-Agent", "gyro");
 
-    try req.commit(.GET, headers, null);
-    try req.fulfill();
-
+    try req.do(.GET, headers, null);
     if (req.status.code != 200) {
-        std.log.err("got http status code for {s}: {}", .{ url, req.status.code });
-        return error.FailedRequest;
+        const body = try req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
+        defer allocator.free(body);
+
+        const stderr = std.io.getStdErr().writer();
+        try stderr.print("got http status code for {s}: {}", .{ url, req.status.code });
+        try stderr.print("{s}\n", .{body});
+        return error.Explained;
     }
 
     const subpath = try std.fmt.allocPrint(allocator, "{s}-{s}-{s}/gyro.zzz", .{ user, repo, commit[0..7] });
@@ -366,13 +381,14 @@ pub fn postDeviceCode(
     try headers.set("User-Agent", "gyro");
 
     try req.do(.POST, headers, payload);
-    if (req.status.code != 200) {
-        std.log.err("got http status code for {s}: {}", .{ url, req.status.code });
-        return error.FailedRequest;
-    }
-
     const body = try req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
     defer allocator.free(body);
+    if (req.status.code != 200) {
+        const stderr = std.io.getStdErr().writer();
+        try stderr.print("got http status code for {s}: {}", .{ url, req.status.code });
+        try stderr.print("{s}\n", .{body});
+        return error.Explained;
+    }
 
     var token_stream = std.json.TokenStream.init(body);
     return std.json.parse(DeviceCodeResponse, &token_stream, .{ .allocator = allocator });
@@ -410,8 +426,13 @@ pub fn pollDeviceCode(
 
     try req.do(.POST, headers, payload);
     if (req.status.code != 200) {
-        std.log.err("got http status code for {s}: {}", .{ url, req.status.code });
-        return error.FailedRequest;
+        const body = try req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
+        defer allocator.free(body);
+
+        const stderr = std.io.getStdErr().writer();
+        try stderr.print("got http status code for {s}: {}", .{ url, req.status.code });
+        try stderr.print("{s}\n", .{body});
+        return error.Explained;
     }
 
     const body = try req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
