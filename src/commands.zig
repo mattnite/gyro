@@ -548,8 +548,9 @@ pub fn remove(
         &project.deps;
 
     // make sure targets are unique
-    for (targets[0 .. targets.len - 1]) |_, i| {
-        for (targets[i + 1 ..]) |_, j| {
+    for (targets) |_, i| {
+        var j: usize = i + 1;
+        while (j < targets.len) : (j += 1) {
             if (std.mem.eql(u8, targets[i], targets[j])) {
                 std.log.err("duplicated target: {s}", .{targets[i]});
                 return error.Explained;

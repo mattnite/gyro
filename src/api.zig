@@ -92,37 +92,17 @@ pub fn getHeadCommit(
 ) ![]const u8 {
     const url = try std.fmt.allocPrint(
         allocator,
-        // TODO: fix api call once Http redirects are handled
-        //"https://api.github.com/repos/{s}/{s}/tarball/{s}",
-        "https://codeload.github.com/{s}/{s}/legacy.tar.gz/{s}",
-        .{
-            user,
-            repo,
-            ref,
-        },
+        "https://api.github.com/repos/{s}/{s}/tarball/{s}",
+        .{ user, repo, ref },
     );
     defer allocator.free(url);
 
     var headers = zfetch.Headers.init(allocator);
     defer headers.deinit();
 
-    var req = try zfetch.Request.init(allocator, url, null);
-    defer req.deinit();
-
-    try headers.set("Host", "codeload.github.com");
     try headers.set("Accept", "*/*");
-    try headers.set("User-Agent", "gyro");
-
-    try req.do(.GET, headers, null);
-    if (req.status.code != 200) {
-        const body = try req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
-        defer allocator.free(body);
-
-        const stderr = std.io.getStdErr().writer();
-        try stderr.print("got http status code for {s}: {}", .{ url, req.status.code });
-        try stderr.print("{s}\n", .{body});
-        return error.Explained;
-    }
+    var req = try request(allocator, .GET, url, &headers, null);
+    defer req.deinit();
 
     var gzip = try std.compress.gzip.gzipStream(allocator, req.reader());
     defer gzip.deinit();
@@ -291,14 +271,8 @@ pub fn getGithubGyroFile(
 ) !?[]const u8 {
     const url = try std.fmt.allocPrint(
         allocator,
-        // TODO: fix api call once Http redirects are handled
-        //"https://api.github.com/repos/{s}/{s}/tarball/{s}",
-        "https://codeload.github.com/{s}/{s}/legacy.tar.gz/{s}",
-        .{
-            user,
-            repo,
-            commit,
-        },
+        "https://api.github.com/repos/{s}/{s}/tarball/{s}",
+        .{ user, repo, commit },
     );
     defer allocator.free(url);
 
@@ -306,24 +280,9 @@ pub fn getGithubGyroFile(
     defer headers.deinit();
 
     std.log.info("fetching tarball: {s}", .{url});
-    var req = try zfetch.Request.init(allocator, url, null);
-    defer req.deinit();
-
-    const link = try uri.parse(url);
-    try headers.set("Host", link.host orelse return error.NoHost);
     try headers.set("Accept", "*/*");
-    try headers.set("User-Agent", "gyro");
-
-    try req.do(.GET, headers, null);
-    if (req.status.code != 200) {
-        const body = try req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
-        defer allocator.free(body);
-
-        const stderr = std.io.getStdErr().writer();
-        try stderr.print("got http status code for {s}: {}", .{ url, req.status.code });
-        try stderr.print("{s}\n", .{body});
-        return error.Explained;
-    }
+    var req = try request(allocator, .GET, url, &headers, null);
+    defer req.deinit();
 
     const subpath = try std.fmt.allocPrint(allocator, "{s}-{s}-{s}/gyro.zzz", .{ user, repo, commit[0..7] });
     defer allocator.free(subpath);
@@ -492,8 +451,6 @@ fn request(
     headers: *zfetch.Headers,
     payload: ?[]const u8,
 ) !*zfetch.Request {
-    std.log.info("fetching tarball: {s}", .{url});
-
     try headers.set("User-Agent", "gyro");
 
     var real_url = try allocator.dupe(u8, url);
@@ -517,11 +474,11 @@ fn request(
                 ret.deinit();
             },
             else => {
-                const body = try req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
+                const body = try ret.reader().readAllAlloc(allocator, std.math.maxInt(usize));
                 defer allocator.free(body);
 
                 const stderr = std.io.getStdErr().writer();
-                try stderr.print("got http status code for {s}: {}", .{ url, req.status.code });
+                try stderr.print("got http status code for {s}: {}", .{ url, ret.status.code });
                 try stderr.print("{s}\n", .{body});
                 return error.Explained;
             },
