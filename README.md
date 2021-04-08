@@ -30,6 +30,7 @@ Table of contents
   * [Local development](#local-development)
   * [Update dependencies -- for package consumers](#update-dependencies----for-package-consumers)
   * [Use gyro in Github Actions](#use-gyro-in-github-actions)
+    * [Publishing from an action](#publishing-from-an-action)
 * [Design philosophy](#design-philosophy)
 * [Generated files](#generated-files)
   * [gyro.zzz](#gyrozzz)
@@ -176,6 +177,9 @@ a link to it will be printed to stdout.
 An access token is cached so that this browser sign-on process only needs to be
 done once for a given dev machine.
 
+If you'd like to add publishing from a CI system see [Publishing from an
+action](#publishing-from-an-action).
+
 ### Adding dependencies
 
 #### From package index
@@ -302,6 +306,35 @@ Updating single dependencies will come soon, right now everything is updated.
 You can get your hands on Gyro for github actions
 [here](https://github.com/marketplace/actions/setup-gyro), it does not install
 the zig compiler so remember to include that as well!
+
+#### Publishing from an action
+
+It's possible to publish your package in an action or other CI system. If the
+environment variable `GYRO_ACCESS_TOKEN` exists, Gyro will use that for the
+authenticated publish request instead of using Github's device flow. For Github
+actions this requires [creating a personal access
+token](https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token)
+with scope `read:user` and `user:email` and [adding it to an
+Environment](https://docs.github.com/en/actions/reference/encrypted-secrets#creating-encrypted-secrets-for-a-repository),
+and adding that Environment to your job. This allows you to access your token in
+the `secrets` namespace. Here's an example publish job:
+
+```yaml
+name: Publish
+
+on: workflow_dispatch
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: publish
+    steps:
+      - uses: mattnite/setup-gyro@v1
+      - uses: actions/checkout@v2
+      - run: gyro publish
+        env:
+          GYRO_ACCESS_TOKEN: ${{ secrets.GYRO_ACCESS_TOKEN }}
+```
 
 ## Design philosophy
 
