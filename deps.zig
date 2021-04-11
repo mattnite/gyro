@@ -7,7 +7,7 @@ pub const pkgs = struct {
 
     pub const zfetch = std.build.Pkg{
         .name = "zfetch",
-        .path = ".gyro/zfetch-truemedian-0.0.2-dd0562001638038c5db9417734768032/pkg/src/main.zig",
+        .path = ".gyro/zfetch-truemedian-0.0.3-32b5d807a3444ca8d1c76955dc448668/pkg/src/main.zig",
         .dependencies = &[_]std.build.Pkg{
             std.build.Pkg{
                 .name = "iguanaTLS",
@@ -23,7 +23,7 @@ pub const pkgs = struct {
             },
             std.build.Pkg{
                 .name = "hzzp",
-                .path = ".gyro/hzzp-truemedian-0.0.2-4888b8d09a0d5cca27871c42328a74a7/pkg/src/main.zig",
+                .path = ".gyro/hzzp-truemedian-0.0.3-8baaab77884a746b7a2638681cc66144/pkg/src/main.zig",
             },
         },
     };
@@ -45,7 +45,7 @@ pub const pkgs = struct {
 
     pub const version = std.build.Pkg{
         .name = "version",
-        .path = ".gyro/version-mattnite-0.0.0-071bc17b548751447d1a3a39307c9593/pkg/src/main.zig",
+        .path = ".gyro/version-mattnite-0.0.3-554ac332599433185d7241275269278a/pkg/src/main.zig",
         .dependencies = &[_]std.build.Pkg{
             std.build.Pkg{
                 .name = "mecha",
@@ -76,11 +76,11 @@ pub const pkgs = struct {
 
 pub const base_dirs = struct {
     pub const clap = ".gyro/clap-mattnite-0.4.0-54d7cbbdb9bc1d8a78583857764d0888/pkg";
-    pub const zfetch = ".gyro/zfetch-truemedian-0.0.2-dd0562001638038c5db9417734768032/pkg";
+    pub const zfetch = ".gyro/zfetch-truemedian-0.0.3-32b5d807a3444ca8d1c76955dc448668/pkg";
     pub const zzz = ".gyro/zzz-mattnite-0.0.1-549813427325d6937837db763750658a/pkg";
     pub const glob = ".gyro/glob-mattnite-0.0.0-aa0421127a95407237771b289dc32883/pkg";
     pub const tar = ".gyro/tar-mattnite-0.0.1-0584a099318b69726aa5c99c7d15c58b/pkg";
-    pub const version = ".gyro/version-mattnite-0.0.0-071bc17b548751447d1a3a39307c9593/pkg";
+    pub const version = ".gyro/version-mattnite-0.0.3-554ac332599433185d7241275269278a/pkg";
     pub const uri = ".gyro/uri-mattnite-0.0.0-b13185702852c80a6772a8d1bda35496/pkg";
     pub const @"known-folders" = ".gyro/known-folders-mattnite-0.0.0-a10b67a6d7187957d537839131b9d1b6/pkg";
 };
