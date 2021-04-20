@@ -464,7 +464,7 @@ This is the generated file that's imported by `build.zig`, it can be imported
 with `@import("deps.zig")` or `@import("gyro")`. Unless you are vendoring your
 dependencies, this should should be added to `.gitignore`.
 
-### ./gyro/
+### .gyro/
 
 This directory holds the source code of all your dependencies. Path names are
 human readable and look something like `<package>-<user>-<hash>` so in many
