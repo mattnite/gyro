@@ -422,7 +422,7 @@ build_deps:
 # most 'keys' are the string used to import in zig code, the exception being
 # packages from the default package index which have a shortend version
 deps:
-  # a package from the defalt package index, user is 'bruh', its name is 'blarg'
+  # a package from the default package index, user is 'bruh', its name is 'blarg'
   # and is imported with the same string
   bruh/blarg: ^0.1.0
 
