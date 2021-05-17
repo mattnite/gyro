@@ -1,4 +1,4 @@
 zig-cache
-zig-deps
+zig-out
 deps.zig
 .gyro
