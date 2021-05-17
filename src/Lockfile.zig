@@ -448,31 +448,31 @@ pub fn fetchAll(self: Self) !void {
         try entry.fetch(self.arena.child_allocator);
 }
 
-fn expectEntryEqual(expected: Entry, actual: Entry) void {
+fn expectEntryEqual(expected: Entry, actual: Entry) !void {
     const SourceType = std.meta.Tag(Entry);
-    testing.expectEqual(@as(SourceType, expected), @as(SourceType, actual));
+    try testing.expectEqual(@as(SourceType, expected), @as(SourceType, actual));
 
     switch (expected) {
         .pkg => |pkg| {
-            testing.expectEqualStrings(pkg.user, actual.pkg.user);
-            testing.expectEqualStrings(pkg.name, actual.pkg.name);
-            testing.expectEqualStrings(pkg.repository, actual.pkg.repository);
-            testing.expectEqual(pkg.version, actual.pkg.version);
+            try testing.expectEqualStrings(pkg.user, actual.pkg.user);
+            try testing.expectEqualStrings(pkg.name, actual.pkg.name);
+            try testing.expectEqualStrings(pkg.repository, actual.pkg.repository);
+            try testing.expectEqual(pkg.version, actual.pkg.version);
         },
         .github => |gh| {
-            testing.expectEqualStrings(gh.user, actual.github.user);
-            testing.expectEqualStrings(gh.repo, actual.github.repo);
-            testing.expectEqualStrings(gh.ref, actual.github.ref);
-            testing.expectEqualStrings(gh.commit, actual.github.commit);
-            testing.expectEqualStrings(gh.root, actual.github.root);
+            try testing.expectEqualStrings(gh.user, actual.github.user);
+            try testing.expectEqualStrings(gh.repo, actual.github.repo);
+            try testing.expectEqualStrings(gh.ref, actual.github.ref);
+            try testing.expectEqualStrings(gh.commit, actual.github.commit);
+            try testing.expectEqualStrings(gh.root, actual.github.root);
         },
         .url => |url| {
-            testing.expectEqualStrings(url.str, actual.url.str);
-            testing.expectEqualStrings(url.root, actual.url.root);
+            try testing.expectEqualStrings(url.str, actual.url.str);
+            try testing.expectEqualStrings(url.root, actual.url.root);
         },
         .local => |local| {
-            testing.expectEqualStrings(local.path, actual.local.path);
-            testing.expectEqualStrings(local.root, actual.local.root);
+            try testing.expectEqualStrings(local.path, actual.local.path);
+            try testing.expectEqualStrings(local.root, actual.local.root);
         },
     }
 }
@@ -492,7 +492,7 @@ test "entry from pkg: default repository" {
         },
     };
 
-    expectEntryEqual(expected, actual);
+    try expectEntryEqual(expected, actual);
 }
 
 test "entry from pkg: non-default repository" {
@@ -510,7 +510,7 @@ test "entry from pkg: non-default repository" {
         },
     };
 
-    expectEntryEqual(expected, actual);
+    try expectEntryEqual(expected, actual);
 }
 
 test "entry from github" {
@@ -525,7 +525,7 @@ test "entry from github" {
         },
     };
 
-    expectEntryEqual(expected, actual);
+    try expectEntryEqual(expected, actual);
 }
 
 test "entry from url" {
@@ -537,7 +537,7 @@ test "entry from url" {
         },
     };
 
-    expectEntryEqual(expected, actual);
+    try expectEntryEqual(expected, actual);
 }
 
 test "local entry" {
@@ -549,7 +549,7 @@ test "local entry" {
         },
     };
 
-    expectEntryEqual(expected, actual);
+    try expectEntryEqual(expected, actual);
 }
 
 test "lockfile with example of all" {
@@ -613,6 +613,6 @@ test "lockfile with example of all" {
     };
 
     for (expected) |exp, i| {
-        expectEntryEqual(exp, actual.entries.items[i].*);
+        try expectEntryEqual(exp, actual.entries.items[i].*);
     }
 }

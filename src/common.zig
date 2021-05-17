@@ -95,29 +95,29 @@ pub fn normalizeName(name: []const u8) ![]const u8 {
 }
 
 test "normalize zig-zig" {
-    std.testing.expectError(error.Overlap, normalizeName("zig-zig"));
+    try std.testing.expectError(error.Overlap, normalizeName("zig-zig"));
 }
 
 test "normalize zig-.zig" {
-    std.testing.expectError(error.Empty, normalizeName("zig-.zig"));
+    try std.testing.expectError(error.Empty, normalizeName("zig-.zig"));
 }
 
 test "normalize SDL.zig" {
-    std.testing.expectEqualStrings("SDL", try normalizeName("SDL.zig"));
+    try std.testing.expectEqualStrings("SDL", try normalizeName("SDL.zig"));
 }
 
 test "normalize zgl" {
-    std.testing.expectEqualStrings("zgl", try normalizeName("zgl"));
+    try std.testing.expectEqualStrings("zgl", try normalizeName("zgl"));
 }
 
 test "normalize zig-args" {
-    std.testing.expectEqualStrings("args", try normalizeName("zig-args"));
+    try std.testing.expectEqualStrings("args", try normalizeName("zig-args"));
 }
 
 test "normalize vulkan-zig" {
-    std.testing.expectEqualStrings("vulkan", try normalizeName("vulkan-zig"));
+    try std.testing.expectEqualStrings("vulkan", try normalizeName("vulkan-zig"));
 }
 
 test "normalize known-folders" {
-    std.testing.expectEqualStrings("known-folders", try normalizeName("known-folders"));
+    try std.testing.expectEqualStrings("known-folders", try normalizeName("known-folders"));
 }

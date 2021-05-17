@@ -273,37 +273,37 @@ fn fromString(str: []const u8) !Self {
     return Self.fromZNode(root.*.child.?);
 }
 
-fn expectDepEqual(expected: Self, actual: Self) void {
-    testing.expectEqualStrings(expected.alias, actual.alias);
-    testing.expectEqual(@as(SourceType, expected.src), @as(SourceType, actual.src));
+fn expectDepEqual(expected: Self, actual: Self) !void {
+    try testing.expectEqualStrings(expected.alias, actual.alias);
+    try testing.expectEqual(@as(SourceType, expected.src), @as(SourceType, actual.src));
 
     return switch (expected.src) {
         .pkg => |pkg| {
-            testing.expectEqualStrings(pkg.user, actual.src.pkg.user);
-            testing.expectEqualStrings(pkg.name, actual.src.pkg.name);
-            testing.expectEqualStrings(pkg.repository, actual.src.pkg.repository);
-            testing.expectEqualStrings(pkg.ver_str, actual.src.pkg.ver_str);
-            testing.expectEqual(pkg.version, actual.src.pkg.version);
+            try testing.expectEqualStrings(pkg.user, actual.src.pkg.user);
+            try testing.expectEqualStrings(pkg.name, actual.src.pkg.name);
+            try testing.expectEqualStrings(pkg.repository, actual.src.pkg.repository);
+            try testing.expectEqualStrings(pkg.ver_str, actual.src.pkg.ver_str);
+            try testing.expectEqual(pkg.version, actual.src.pkg.version);
         },
         .github => |gh| {
-            testing.expectEqualStrings(gh.user, actual.src.github.user);
-            testing.expectEqualStrings(gh.repo, actual.src.github.repo);
-            testing.expectEqualStrings(gh.ref, actual.src.github.ref);
-            testing.expectEqualStrings(gh.root, actual.src.github.root);
+            try testing.expectEqualStrings(gh.user, actual.src.github.user);
+            try testing.expectEqualStrings(gh.repo, actual.src.github.repo);
+            try testing.expectEqualStrings(gh.ref, actual.src.github.ref);
+            try testing.expectEqualStrings(gh.root, actual.src.github.root);
         },
         .url => |url| {
-            testing.expectEqualStrings(url.str, actual.src.url.str);
-            testing.expectEqualStrings(url.root, actual.src.url.root);
+            try testing.expectEqualStrings(url.str, actual.src.url.str);
+            try testing.expectEqualStrings(url.root, actual.src.url.root);
         },
         .local => |local| {
-            testing.expectEqualStrings(local.path, actual.src.local.path);
-            testing.expectEqualStrings(local.root, actual.src.local.root);
+            try testing.expectEqualStrings(local.path, actual.src.local.path);
+            try testing.expectEqualStrings(local.root, actual.src.local.root);
         },
     };
 }
 
 test "default repo pkg" {
-    expectDepEqual(Self{
+    try expectDepEqual(Self{
         .alias = "something",
         .src = .{
             .pkg = .{
@@ -340,7 +340,7 @@ test "aliased, default repo pkg" {
         },
     };
 
-    expectDepEqual(expected, actual);
+    try expectDepEqual(expected, actual);
 }
 
 test "error if pkg has any other keys" {
@@ -378,7 +378,7 @@ test "non-default repo pkg" {
         },
     };
 
-    expectDepEqual(expected, actual);
+    try expectDepEqual(expected, actual);
 }
 
 test "aliased, non-default repo pkg" {
@@ -405,7 +405,7 @@ test "aliased, non-default repo pkg" {
         },
     };
 
-    expectDepEqual(expected, actual);
+    try expectDepEqual(expected, actual);
 }
 
 test "github default root" {
@@ -430,7 +430,7 @@ test "github default root" {
         },
     };
 
-    expectDepEqual(expected, actual);
+    try expectDepEqual(expected, actual);
 }
 
 test "github explicit root" {
@@ -456,7 +456,7 @@ test "github explicit root" {
         },
     };
 
-    expectDepEqual(expected, actual);
+    try expectDepEqual(expected, actual);
 }
 
 test "raw default root" {
@@ -476,7 +476,7 @@ test "raw default root" {
         },
     };
 
-    expectDepEqual(expected, actual);
+    try expectDepEqual(expected, actual);
 }
 
 test "raw explicit root" {
@@ -497,7 +497,7 @@ test "raw explicit root" {
         },
     };
 
-    expectDepEqual(expected, actual);
+    try expectDepEqual(expected, actual);
 }
 
 test "local with default root" {
@@ -517,7 +517,7 @@ test "local with default root" {
         },
     };
 
-    expectDepEqual(expected, actual);
+    try expectDepEqual(expected, actual);
 }
 
 test "local with explicit root" {
@@ -538,7 +538,7 @@ test "local with explicit root" {
         },
     };
 
-    expectDepEqual(expected, actual);
+    try expectDepEqual(expected, actual);
 }
 
 test "pkg can't take a root" {
@@ -616,7 +616,7 @@ pub fn addToZNode(
     }
 }
 
-fn expectZzzEqual(expected: *zzz.ZNode, actual: *zzz.ZNode) void {
+fn expectZzzEqual(expected: *zzz.ZNode, actual: *zzz.ZNode) !void {
     var expected_it: *zzz.ZNode = expected;
     var actual_it: *zzz.ZNode = actual;
 
@@ -627,20 +627,20 @@ fn expectZzzEqual(expected: *zzz.ZNode, actual: *zzz.ZNode) void {
         if (actual_it.next(&actual_depth)) |act| {
             defer actual_it = act;
 
-            testing.expectEqual(expected_depth, actual_depth);
+            try testing.expectEqual(expected_depth, actual_depth);
             switch (exp.value) {
-                .String => |str| testing.expectEqualStrings(str, act.value.String),
-                .Int => |int| testing.expectEqual(int, act.value.Int),
-                .Float => |float| testing.expectEqual(float, act.value.Float),
-                .Bool => |b| testing.expectEqual(b, act.value.Bool),
+                .String => |str| try testing.expectEqualStrings(str, act.value.String),
+                .Int => |int| try testing.expectEqual(int, act.value.Int),
+                .Float => |float| try testing.expectEqual(float, act.value.Float),
+                .Bool => |b| try testing.expectEqual(b, act.value.Bool),
                 else => {},
             }
         } else {
-            testing.expect(false);
+            try testing.expect(false);
         }
     }
 
-    testing.expectEqual(
+    try testing.expectEqual(
         expected_it.next(&expected_depth),
         actual_it.next(&actual_depth),
     );
@@ -656,7 +656,7 @@ fn serializeTest(from: []const u8, to: []const u8, explicit: bool) !void {
     var expected = zzz.ZTree(1, 1000){};
     const expected_root = try expected.appendText(to);
 
-    expectZzzEqual(expected_root, actual_root);
+    try expectZzzEqual(expected_root, actual_root);
 }
 
 test "serialize pkg non-explicit" {
