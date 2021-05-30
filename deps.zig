@@ -11,7 +11,7 @@ pub const pkgs = struct {
         .dependencies = &[_]std.build.Pkg{
             std.build.Pkg{
                 .name = "iguanaTLS",
-                .path = ".gyro/iguanaTLS-alexnask-0.0.1-37c1311658622b9a68d1b5793c078531/pkg/src/main.zig",
+                .path = ".gyro/iguanaTLS-alexnask-0.0.2-98a13724228037251a70a27d82790580/pkg/src/main.zig",
             },
             std.build.Pkg{
                 .name = "network",
