@@ -380,8 +380,9 @@ pub fn add(
     to: ?[]const u8,
     targets: []const []const u8,
 ) !void {
-    if (src_tag != .pkg and src_tag != .github) {
-        return error.Todo;
+    switch (src_tag) {
+        .pkg, .github, .local => {},
+        else => return error.Todo,
     }
 
     // TODO: detect collisions in subpackages (both directions)
@@ -436,73 +437,169 @@ pub fn add(
 
     for (targets) |target| {
         const info = try parseUserRepo(target);
-        const dep = if (src_tag == .github) blk: {
-            var value_tree = try api.getGithubRepo(&arena.allocator, info.user, info.repo);
-            if (value_tree.root != .Object) {
-                std.log.err("Invalid JSON response from Github", .{});
-                return error.Explained;
-            }
+        const dep = switch (src_tag) {
+            .github => blk: {
+                var value_tree = try api.getGithubRepo(&arena.allocator, info.user, info.repo);
+                if (value_tree.root != .Object) {
+                    std.log.err("Invalid JSON response from Github", .{});
+                    return error.Explained;
+                }
 
-            const root_json = value_tree.root.Object;
-            const default_branch = if (root_json.get("default_branch")) |val| switch (val) {
-                .String => |str| str,
-                else => "main",
-            } else "main";
+                const root_json = value_tree.root.Object;
+                const default_branch = if (root_json.get("default_branch")) |val| switch (val) {
+                    .String => |str| str,
+                    else => "main",
+                } else "main";
 
-            const text_opt = try api.getGithubGyroFile(
-                &arena.allocator,
-                info.user,
-                info.repo,
-                try api.getHeadCommit(&arena.allocator, info.user, info.repo, default_branch),
-            );
+                const text_opt = try api.getGithubGyroFile(
+                    &arena.allocator,
+                    info.user,
+                    info.repo,
+                    try api.getHeadCommit(&arena.allocator, info.user, info.repo, default_branch),
+                );
 
-            const root_file = if (root_path) |rp| rp else if (text_opt) |t| get_root: {
-                const subproject = try Project.fromText(&arena.allocator, t);
+                const root_file = if (root_path) |rp| rp else if (text_opt) |t| get_root: {
+                    const subproject = try Project.fromText(&arena.allocator, t);
+                    defer subproject.destroy();
+
+                    var ret: []const u8 = default_root;
+                    if (subproject.packages.count() == 1)
+                        ret = if (subproject.packages.iterator().next().?.value.root) |r|
+                            try arena.allocator.dupe(u8, r)
+                        else
+                            default_root;
+
+                    // TODO try other matching methods
+
+                    break :get_root ret;
+                } else default_root;
+
+                // check for alias collisions
+                const name = try normalizeName(info.repo);
+                for (dep_list.items) |dep| {
+                    if (std.mem.eql(u8, name, dep.alias)) {
+                        if (to) |t|
+                            std.log.err("The alias '{s}' is already in use for a subdependency of '{s}'", .{
+                                name,
+                                t,
+                            })
+                        else
+                            std.log.err("The alias '{s}' is already in use for this project", .{name});
+                        return error.Explained;
+                    }
+                }
+
+                break :blk Dependency{
+                    .alias = try normalizeName(info.repo),
+                    .src = .{
+                        .github = .{
+                            .user = info.user,
+                            .repo = info.repo,
+                            .ref = default_branch,
+                            .root = root_file,
+                        },
+                    },
+                };
+            },
+            .pkg => blk: {
+                const latest = try api.getLatest(&arena.allocator, repository, info.user, info.repo, null);
+                var buf = try arena.allocator.alloc(u8, 80);
+                var stream = std.io.fixedBufferStream(buf);
+                try stream.writer().print("^{}", .{latest});
+
+                // check for alias collisions
+                for (dep_list.items) |dep| {
+                    if (std.mem.eql(u8, info.repo, dep.alias)) {
+                        if (to) |t|
+                            std.log.err("The alias '{s}' is already in use for a subdependency of '{s}'", .{
+                                info.repo,
+                                t,
+                            })
+                        else
+                            std.log.err("The alias '{s}' is already in use for this project", .{info.repo});
+                        return error.Explained;
+                    }
+                }
+
+                break :blk Dependency{
+                    .alias = info.repo,
+                    .src = .{
+                        .pkg = .{
+                            .user = info.user,
+                            .name = info.repo,
+                            .version = version.Range{
+                                .min = latest,
+                                .kind = .caret,
+                            },
+                            .repository = build_options.default_repo,
+                            .ver_str = stream.getWritten(),
+                        },
+                    },
+                };
+            },
+            .local => blk: {
+                const path = try std.fs.path.join(allocator, &.{ target, "gyro.zzz" });
+                defer allocator.free(path);
+
+                const project_file = try std.fs.cwd().openFile(path, .{});
+                defer project_file.close();
+
+                const text = try project_file.readToEndAlloc(&arena.allocator, std.math.maxInt(usize));
+                const subproject = try Project.fromText(&arena.allocator, text);
                 defer subproject.destroy();
 
-                var ret: []const u8 = default_root;
-                if (subproject.packages.count() == 1)
-                    ret = if (subproject.packages.iterator().next().?.value.root) |r|
+                const detected_root = if (subproject.packages.count() == 1)
+                    if (subproject.packages.iterator().next().?.value.root) |r|
                         try arena.allocator.dupe(u8, r)
                     else
-                        default_root;
+                        null
+                else
+                    null;
 
-                // TODO try other matching methods
+                const detected_alias = if (subproject.packages.count() == 1)
+                    try arena.allocator.dupe(u8, subproject.packages.iterator().next().?.value.name)
+                else
+                    null;
 
-                break :get_root ret;
-            } else default_root;
+                const a = alias orelse (detected_alias orelse {
+                    if (subproject.packages.count() == 0) {
+                        std.log.err("no exported packages in '{s}', need an explicit alias, use -a", .{target});
+                    } else if (subproject.packages.count() > 1) {
+                        std.log.err("don't know which package to use from '{s}', need an explicit alias, use -a", .{target});
+                    }
 
-            break :blk Dependency{
-                .alias = try normalizeName(info.repo),
-                .src = .{
-                    .github = .{
-                        .user = info.user,
-                        .repo = info.repo,
-                        .ref = default_branch,
-                        .root = root_file,
-                    },
-                },
-            };
-        } else blk: {
-            const latest = try api.getLatest(&arena.allocator, repository, info.user, info.repo, null);
-            var buf = try arena.allocator.alloc(u8, 80);
-            var stream = std.io.fixedBufferStream(buf);
-            try stream.writer().print("^{}", .{latest});
-            break :blk Dependency{
-                .alias = info.repo,
-                .src = .{
-                    .pkg = .{
-                        .user = info.user,
-                        .name = info.repo,
-                        .version = version.Range{
-                            .min = latest,
-                            .kind = .caret,
+                    return error.Explained;
+                });
+
+                // check for alias collisions
+                for (dep_list.items) |dep| {
+                    if (std.mem.eql(u8, a, dep.alias)) {
+                        if (to) |t|
+                            std.log.err("The alias '{s}' is already in use for a subdependency of '{s}'", .{ a, t })
+                        else
+                            std.log.err("The alias '{s}' is already in use for this project", .{a});
+                        return error.Explained;
+                    }
+                }
+
+                const r = root_path orelse (detected_root orelse root_blk: {
+                    std.log.info("no explicit or detected root path for '{s}', using default: " ++ default_root, .{
+                        target,
+                    });
+                    break :root_blk default_root;
+                });
+                break :blk Dependency{
+                    .alias = a,
+
+                    .src = .{
+                        .local = .{
+                            .path = target,
+                            .root = r,
                         },
-                        .repository = build_options.default_repo,
-                        .ver_str = stream.getWritten(),
                     },
-                },
-            };
+                };
+            },
+            else => return error.Todo,
         };
 
         try dep_list.append(dep);
@@ -511,7 +608,7 @@ pub fn add(
     try project.toFile(file);
 }
 
-pub fn remove(
+pub fn rm(
     allocator: *Allocator,
     build_deps: bool,
     from: ?[]const u8,

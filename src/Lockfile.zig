@@ -336,11 +336,7 @@ pub const Entry = union(enum) {
     }
 
     pub fn fetch(self: Entry, allocator: *Allocator) !void {
-        switch (self) {
-            .url => |url| if (std.mem.startsWith(u8, url.str, "file://"))
-                return,
-            else => {},
-        }
+        if (self == .local) return;
 
         const base_path = try self.packagePath(allocator);
         defer allocator.free(base_path);
@@ -374,11 +370,10 @@ pub const Entry = union(enum) {
 
                 try api.getTarGz(allocator, url.str, pkg_dir);
             },
-            .local => {},
+            .local => unreachable,
         }
 
-        const ok = try base_dir.createFile("ok", .{ .read = true });
-        defer ok.close();
+        (try base_dir.createFile("ok", .{ .read = true })).close();
     }
 
     pub fn write(self: Entry, writer: anytype) !void {
