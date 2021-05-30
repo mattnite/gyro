@@ -13,7 +13,7 @@ pub const log_level: std.log.Level = if (builtin.mode == .Debug) .debug else .in
 const Command = enum {
     init,
     add,
-    remove,
+    rm,
     build,
     fetch,
     update,
@@ -30,7 +30,7 @@ fn printUsage() noreturn {
         \\cmds:
         \\  init      Initialize a gyro.zzz with a link to a github repo
         \\  add       Add dependencies to the project
-        \\  remove    Remove dependency from project
+        \\  rm        Remove dependency from project
         \\  build     Use exactly like 'zig build', automatically downloads dependencies
         \\  fetch     Manually download dependencies and generate deps.zig file
         \\  update    Update dependencies to latest
@@ -167,7 +167,7 @@ fn runCommands(allocator: *std.mem.Allocator) !void {
                 args.positionals(),
             );
         },
-        .remove => {
+        .rm => {
             const summary = "Remove dependency from project";
             const params = comptime [_]clap.Param(clap.Help){
                 clap.parseParam("-h, --help        Display help") catch unreachable,
@@ -181,7 +181,7 @@ fn runCommands(allocator: *std.mem.Allocator) !void {
             var args = parseHandlingHelpAndErrors(allocator, summary, &params, &iter);
             defer args.deinit();
 
-            try remove(allocator, args.flag("--build-dep"), args.option("--from"), args.positionals());
+            try rm(allocator, args.flag("--build-dep"), args.option("--from"), args.positionals());
         },
         .build => try build(allocator, &iter),
         .fetch => try fetch(allocator),
