@@ -78,13 +78,6 @@ fn addAllPkgs(lib: *LibExeObjStep) void {
 }
 pub fn build(b: *Builder) !void {
     var target = b.standardTargetOptions(.{});
-    if (target.abi == null) {
-        target.abi = switch (std.builtin.os.tag) {
-            .windows => .gnu,
-            else => .musl,
-        };
-    }
-
     const mode = b.standardReleaseOptions();
 
     const bootstrap = b.option(bool, "bootstrap", "bootstrapping with just the zig compiler");
