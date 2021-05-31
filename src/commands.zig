@@ -374,16 +374,16 @@ pub fn init(
 }
 
 // check for alias collisions
-fn verifyNoAliasCollisions(deps: []const Dependency, name: []const u8, to: ?[]const u8) !void {
+fn verifyUniqueAlias(alias: []const u8, deps: []const Dependency, to: ?[]const u8) !void {
     for (deps) |dep| {
-        if (std.mem.eql(u8, name, dep.alias)) {
+        if (std.mem.eql(u8, alias, dep.alias)) {
             if (to) |t|
                 std.log.err("The alias '{s}' is already in use for a subdependency of '{s}'", .{
-                    name,
+                    alias,
                     t,
                 })
             else
-                std.log.err("The alias '{s}' is already in use for this project", .{name});
+                std.log.err("The alias '{s}' is already in use for this project", .{alias});
             return error.Explained;
         }
     }
@@ -492,10 +492,11 @@ pub fn add(
                     break :get_root ret;
                 } else default_root;
 
-                try verifyNoAliasCollisions(dep_list.items, try normalizeName(info.repo), to);
+                const name = try normalizeName(info.repo);
+                try verifyUniqueAlias(name, dep_list.items, to);
 
                 break :blk Dependency{
-                    .alias = try normalizeName(info.repo),
+                    .alias = name,
                     .src = .{
                         .github = .{
                             .user = info.user,
@@ -512,7 +513,7 @@ pub fn add(
                 var stream = std.io.fixedBufferStream(buf);
                 try stream.writer().print("^{}", .{latest});
 
-                try verifyNoAliasCollisions(dep_list.items, info.repo, to);
+                try verifyUniqueAlias(info.repo, dep_list.items, to);
 
                 break :blk Dependency{
                     .alias = info.repo,
@@ -564,7 +565,7 @@ pub fn add(
                     return error.Explained;
                 });
 
-                try verifyNoAliasCollisions(dep_list.items, a, to);
+                try verifyUniqueAlias(a, dep_list.items, to);
 
                 const r = root_path orelse (detected_root orelse root_blk: {
                     std.log.info("no explicit or detected root path for '{s}', using default: " ++ default_root, .{
