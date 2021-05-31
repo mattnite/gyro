@@ -1,6 +1,9 @@
 const std = @import("std");
 const Dependency = @import("Dependency.zig");
 const Lockfile = @import("Lockfile.zig");
+const Project = @import("Project.zig");
+const Package = @import("Package.zig");
+usingnamespace @import("common.zig");
 
 const Self = @This();
 const Allocator = std.mem.Allocator;
@@ -12,6 +15,7 @@ const DepQueue = std.TailQueue(struct {
 arena: std.heap.ArenaAllocator,
 node_pool: std.ArrayList(*Node),
 root: Node,
+project: *Project,
 
 const Node = struct {
     entry: *const Lockfile.Entry,
@@ -28,12 +32,14 @@ const Edge = struct {
 pub fn generate(
     gpa: *Allocator,
     lockfile: *Lockfile,
-    deps: std.ArrayList(Dependency),
+    project: *Project,
+    build_deps: bool,
 ) !*Self {
     var ret = try gpa.create(Self);
     ret.* = Self{
         .arena = std.heap.ArenaAllocator.init(gpa),
         .node_pool = std.ArrayList(*Node).init(gpa),
+        .project = project,
         .root = .{
             .entry = undefined,
             .depth = 0,
@@ -45,7 +51,10 @@ pub fn generate(
     var queue = DepQueue{};
     defer while (queue.popFirst()) |node| gpa.destroy(node);
 
-    var init_deps = try ret.arena.allocator.dupe(Dependency, deps.items);
+    var init_deps = try ret.arena.allocator.dupe(Dependency, if (build_deps)
+        project.build_deps.items
+    else
+        project.deps.items);
     for (init_deps) |*dep| {
         var node = try gpa.create(DepQueue.Node);
         node.data = .{
@@ -189,6 +198,48 @@ pub fn printZig(self: *Self, writer: anytype) !void {
         \\    }}
         \\}};
         \\
+        \\
+    , .{});
+
+    // access exported packages
+    try writer.print(
+        \\pub const exports = struct {{
+        \\
+    , .{});
+
+    var it = self.project.packages.iterator();
+    while (it.next()) |entry| {
+        const alias = try escape(self.arena.child_allocator, entry.value.name);
+        defer self.arena.child_allocator.free(alias);
+
+        const root = entry.value.root orelse default_root;
+        try writer.print(
+            \\    pub const {s} = std.build.Pkg{{
+            \\        .name = "{s}",
+            \\        .path = "{s}",
+            \\        .dependencies = &.{{
+            \\
+        , .{
+            alias,
+            entry.value.name,
+            root,
+        });
+
+        for (self.project.deps.items) |dep|
+            try writer.print(
+                \\            pkgs.{s},
+                \\
+            , .{dep.alias});
+
+        try writer.print(
+            \\        }},
+            \\    }};
+            \\
+        , .{});
+    }
+
+    try writer.print(
+        \\}};
         \\
     , .{});
 
