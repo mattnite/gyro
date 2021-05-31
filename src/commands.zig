@@ -373,6 +373,22 @@ pub fn init(
     , .{});
 }
 
+// check for alias collisions
+fn verifyUniqueAlias(alias: []const u8, deps: []const Dependency, to: ?[]const u8) !void {
+    for (deps) |dep| {
+        if (std.mem.eql(u8, alias, dep.alias)) {
+            if (to) |t|
+                std.log.err("The alias '{s}' is already in use for a subdependency of '{s}'", .{
+                    alias,
+                    t,
+                })
+            else
+                std.log.err("The alias '{s}' is already in use for this project", .{alias});
+            return error.Explained;
+        }
+    }
+}
+
 pub fn add(
     allocator: *Allocator,
     src_tag: Dependency.SourceType,
@@ -476,23 +492,11 @@ pub fn add(
                     break :get_root ret;
                 } else default_root;
 
-                // check for alias collisions
                 const name = try normalizeName(info.repo);
-                for (dep_list.items) |dep| {
-                    if (std.mem.eql(u8, name, dep.alias)) {
-                        if (to) |t|
-                            std.log.err("The alias '{s}' is already in use for a subdependency of '{s}'", .{
-                                name,
-                                t,
-                            })
-                        else
-                            std.log.err("The alias '{s}' is already in use for this project", .{name});
-                        return error.Explained;
-                    }
-                }
+                try verifyUniqueAlias(name, dep_list.items, to);
 
                 break :blk Dependency{
-                    .alias = try normalizeName(info.repo),
+                    .alias = name,
                     .src = .{
                         .github = .{
                             .user = info.user,
@@ -509,19 +513,7 @@ pub fn add(
                 var stream = std.io.fixedBufferStream(buf);
                 try stream.writer().print("^{}", .{latest});
 
-                // check for alias collisions
-                for (dep_list.items) |dep| {
-                    if (std.mem.eql(u8, info.repo, dep.alias)) {
-                        if (to) |t|
-                            std.log.err("The alias '{s}' is already in use for a subdependency of '{s}'", .{
-                                info.repo,
-                                t,
-                            })
-                        else
-                            std.log.err("The alias '{s}' is already in use for this project", .{info.repo});
-                        return error.Explained;
-                    }
-                }
+                try verifyUniqueAlias(info.repo, dep_list.items, to);
 
                 break :blk Dependency{
                     .alias = info.repo,
@@ -573,16 +565,7 @@ pub fn add(
                     return error.Explained;
                 });
 
-                // check for alias collisions
-                for (dep_list.items) |dep| {
-                    if (std.mem.eql(u8, a, dep.alias)) {
-                        if (to) |t|
-                            std.log.err("The alias '{s}' is already in use for a subdependency of '{s}'", .{ a, t })
-                        else
-                            std.log.err("The alias '{s}' is already in use for this project", .{a});
-                        return error.Explained;
-                    }
-                }
+                try verifyUniqueAlias(a, dep_list.items, to);
 
                 const r = root_path orelse (detected_root orelse root_blk: {
                     std.log.info("no explicit or detected root path for '{s}', using default: " ++ default_root, .{
