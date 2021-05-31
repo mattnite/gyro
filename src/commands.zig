@@ -63,14 +63,16 @@ pub fn fetchImpl(allocator: *Allocator) !FetchContext {
     const dep_tree = try DependencyTree.generate(
         allocator,
         &lockfile,
-        project.deps,
+        project,
+        false,
     );
     errdefer dep_tree.destroy();
 
     const build_dep_tree = try DependencyTree.generate(
         allocator,
         &lockfile,
-        project.build_deps,
+        project,
+        true,
     );
     errdefer build_dep_tree.destroy();
 
