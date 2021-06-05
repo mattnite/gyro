@@ -419,7 +419,7 @@ pub fn add(
     defer project.destroy();
 
     const dep_list = if (to) |t|
-        if (project.packages.getEntry(t)) |entry| &entry.value.deps else {
+        if (project.packages.getEntry(t)) |entry| &entry.value_ptr.deps else {
             std.log.err("{s} is not a an exported package", .{t});
             return error.Explained;
         }
@@ -482,7 +482,7 @@ pub fn add(
 
                     var ret: []const u8 = default_root;
                     if (subproject.packages.count() == 1)
-                        ret = if (subproject.packages.iterator().next().?.value.root) |r|
+                        ret = if (subproject.packages.iterator().next().?.value_ptr.root) |r|
                             try arena.allocator.dupe(u8, r)
                         else
                             default_root;
@@ -543,7 +543,7 @@ pub fn add(
                 defer subproject.destroy();
 
                 const detected_root = if (subproject.packages.count() == 1)
-                    if (subproject.packages.iterator().next().?.value.root) |r|
+                    if (subproject.packages.iterator().next().?.value_ptr.root) |r|
                         try arena.allocator.dupe(u8, r)
                     else
                         null
@@ -551,7 +551,7 @@ pub fn add(
                     null;
 
                 const detected_alias = if (subproject.packages.count() == 1)
-                    try arena.allocator.dupe(u8, subproject.packages.iterator().next().?.value.name)
+                    try arena.allocator.dupe(u8, subproject.packages.iterator().next().?.value_ptr.name)
                 else
                     null;
 
@@ -620,7 +620,7 @@ pub fn rm(
     std.log.debug("packages at start: {}", .{project.packages.count()});
 
     const dep_list = if (from) |f|
-        if (project.packages.getEntry(f)) |entry| &entry.value.deps else {
+        if (project.packages.getEntry(f)) |entry| &entry.value_ptr.deps else {
             std.log.err("{s} is not a an exported package", .{f});
             return error.Explained;
         }
