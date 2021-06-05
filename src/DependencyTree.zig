@@ -209,10 +209,10 @@ pub fn printZig(self: *Self, writer: anytype) !void {
 
     var it = self.project.packages.iterator();
     while (it.next()) |entry| {
-        const alias = try escape(self.arena.child_allocator, entry.value.name);
+        const alias = try escape(self.arena.child_allocator, entry.value_ptr.name);
         defer self.arena.child_allocator.free(alias);
 
-        const root = entry.value.root orelse default_root;
+        const root = entry.value_ptr.root orelse default_root;
         try writer.print(
             \\    pub const {s} = std.build.Pkg{{
             \\        .name = "{s}",
@@ -221,7 +221,7 @@ pub fn printZig(self: *Self, writer: anytype) !void {
             \\
         , .{
             alias,
-            entry.value.name,
+            entry.value_ptr.name,
             root,
         });
 

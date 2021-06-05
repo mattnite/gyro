@@ -20,7 +20,7 @@ pub const Iterator = struct {
     inner: std.StringHashMap(Package).Iterator,
 
     pub fn next(self: *Iterator) ?*Package {
-        return if (self.inner.next()) |entry| &entry.value else null;
+        return if (self.inner.next()) |entry| &entry.value_ptr.* else null;
     }
 };
 
@@ -37,8 +37,8 @@ fn init(allocator: *Allocator, file: std.fs.File) !Self {
 fn deinit(self: *Self) void {
     var it = self.packages.iterator();
     while (it.next()) |entry| {
-        entry.value.deinit();
-        self.packages.removeAssertDiscard(entry.key);
+        entry.value_ptr.deinit();
+        _ = self.packages.remove(entry.key_ptr.*);
     }
 
     self.deps.deinit();
@@ -57,7 +57,7 @@ pub fn contains(self: Self, name: []const u8) bool {
 }
 
 pub fn get(self: Self, name: []const u8) ?*Package {
-    return if (self.packages.getEntry(name)) |entry| &entry.value else null;
+    return if (self.packages.getEntry(name)) |entry| &entry.value_ptr.* else null;
 }
 
 pub fn iterator(self: Self) Iterator {
@@ -106,7 +106,7 @@ pub fn fromText(allocator: *Allocator, text: []const u8) !*Self {
                 return error.Explained;
             }
 
-            res.entry.value = try Package.init(
+            res.value_ptr.* = try Package.init(
                 allocator,
                 name,
                 ver,
@@ -114,7 +114,7 @@ pub fn fromText(allocator: *Allocator, text: []const u8) !*Self {
                 ret.build_deps.items,
             );
 
-            try res.entry.value.fillFromZNode(node);
+            try res.value_ptr.fillFromZNode(node);
         }
     }
 
@@ -167,7 +167,7 @@ pub fn toFile(self: *Self, file: std.fs.File) !void {
     if (self.packages.count() > 0) {
         var pkgs = try tree.addNode(root, .{ .String = "pkgs" });
         var it = self.packages.iterator();
-        while (it.next()) |entry| _ = try entry.value.addToZNode(&arena, &tree, pkgs, false);
+        while (it.next()) |entry| _ = try entry.value_ptr.addToZNode(&arena, &tree, pkgs, false);
     }
 
     if (self.deps.items.len > 0) {
