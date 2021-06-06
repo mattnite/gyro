@@ -4,75 +4,10 @@ const clap = @import("clap");
 const zfetch = @import("zfetch");
 const build_options = @import("build_options");
 const Dependency = @import("Dependency.zig");
-usingnamespace @import("commands.zig");
+const cmds = @import("commands.zig");
 
 //pub const io_mode = .evented;
-pub const zfetch_use_buffered_io = false;
 pub const log_level: std.log.Level = if (builtin.mode == .Debug) .debug else .info;
-
-const Command = enum {
-    init,
-    add,
-    rm,
-    build,
-    fetch,
-    update,
-    publish,
-    package,
-    //    redirect,
-};
-
-fn printUsage() noreturn {
-    const stderr = std.io.getStdErr().writer();
-    _ = stderr.write(std.fmt.comptimePrint(
-        \\gyro <cmd> [cmd specific options]
-        \\
-        \\cmds:
-        \\  init      Initialize a gyro.zzz with a link to a github repo
-        \\  add       Add dependencies to the project
-        \\  rm        Remove dependency from project
-        \\  build     Use exactly like 'zig build', automatically downloads dependencies
-        \\  fetch     Manually download dependencies and generate deps.zig file
-        \\  update    Update dependencies to latest
-        \\  publish   Publish package to {s}, requires github account
-        \\  package   Generate tar file that gets published
-        \\
-        \\for more information: gyro <cmd> --help
-        \\
-        \\
-    , .{build_options.default_repo})) catch {};
-
-    std.os.exit(1);
-}
-
-fn showHelp(comptime summary: []const u8, comptime params: anytype) void {
-    const stderr = std.io.getStdErr().writer();
-    _ = stderr.write(summary ++ "\n\n") catch {};
-    clap.help(stderr, params) catch {};
-    _ = stderr.write("\n") catch {};
-}
-
-fn parseHandlingHelpAndErrors(
-    allocator: *std.mem.Allocator,
-    comptime summary: []const u8,
-    comptime params: anytype,
-    iter: anytype,
-) clap.ComptimeClap(clap.Help, params) {
-    var diag: clap.Diagnostic = undefined;
-    var args = clap.ComptimeClap(clap.Help, params).parse(allocator, iter, &diag) catch |err| {
-        // Report useful error and exit
-        const stderr = std.io.getStdErr().writer();
-        diag.report(stderr, err) catch {};
-        showHelp(summary, params);
-        std.os.exit(1);
-    };
-    // formerly checkHelp(summary, params, args);
-    if (args.flag("--help")) {
-        showHelp(summary, params);
-        std.os.exit(0);
-    }
-    return args;
-}
 
 pub fn main() !void {
     try zfetch.init();
@@ -90,64 +25,135 @@ pub fn main() !void {
     };
 }
 
+// prints gyro command usage to stderr
+fn usage() !void {
+    const stderr = std.io.getStdErr().writer();
+
+    try stderr.writeAll("Usage: gyro [command] [options]\n\n");
+    try stderr.writeAll("Commands:\n\n");
+
+    inline for (all_commands) |cmd| {
+        try stderr.print("  {s: <10}  {s}\n", .{ cmd.name, cmd.summary });
+    }
+
+    try stderr.writeAll("\nOptions:\n\n");
+    try stderr.print("  {s: <10}  Print command-specific usage\n\n", .{"-h, --help"});
+}
+
+// prints usage and help for a single command
+fn help(comptime command: completion.Command) !void {
+    const stderr = std.io.getStdErr().writer();
+
+    try stderr.writeAll("Usage: gyro " ++ command.name ++ " ");
+    try clap.usage(stderr, command.clap_params);
+    try stderr.writeAll("\n\nOptions:\n\n");
+
+    try clap.help(stderr, command.clap_params);
+    try stderr.writeAll("\n");
+}
+
 fn runCommands(allocator: *std.mem.Allocator) !void {
+    const stderr = std.io.getStdErr().writer();
+
     var iter = try clap.args.OsIterator.init(allocator);
     defer iter.deinit();
 
-    const stderr = std.io.getStdErr().writer();
-    const cmd_str = (try iter.next()) orelse {
-        try stderr.print("no command given\n", .{});
-        printUsage();
+    const command_name = (try iter.next()) orelse {
+        try usage();
+        std.log.err("expected command argument", .{});
+
+        return error.Explained;
     };
 
-    const cmd = inline for (std.meta.fields(Command)) |field| {
-        if (std.mem.eql(u8, cmd_str, field.name)) {
-            break @field(Command, field.name);
+    inline for (all_commands) |cmd| {
+        if (std.mem.eql(u8, command_name, cmd.name)) {
+            var args: cmd.parent.Args = undefined;
+            if (!cmd.passthrough) {
+                var diag: clap.Diagnostic = undefined;
+                args = cmd.parent.Args.parse(allocator, &iter, &diag) catch |err| {
+                    try diag.report(stderr, err);
+                    try help(cmd);
+
+                    return error.Explained;
+                };
+                defer args.deinit();
+
+                if (args.flag("--help")) {
+                    try help(cmd);
+
+                    return;
+                }
+            }
+
+            try cmd.parent.run(allocator, &args, &iter);
+
+            return;
         }
     } else {
-        try stderr.print("{s} is not a valid command\n", .{cmd_str});
-        printUsage();
-    };
+        try usage();
+        std.log.err("{s} is not a valid command", .{command_name});
 
-    @setEvalBranchQuota(3000);
-    switch (cmd) {
-        .init => {
-            const summary = "Initialize a gyro.zzz with a link to a github repo";
-            const params = comptime [_]clap.Param(clap.Help){
-                clap.parseParam("-h, --help              Display help") catch unreachable,
-                clap.Param(clap.Help){
-                    .takes_value = .One,
-                },
-            };
+        return error.Explained;
+    }
+}
 
-            var args = parseHandlingHelpAndErrors(allocator, summary, &params, &iter);
-            defer args.deinit();
+const completion = @import("completion.zig");
 
+pub const all_commands = blk: {
+    var list: []const completion.Command = &[_]completion.Command{};
+
+    for (std.meta.declarations(commands)) |decl| {
+        list = list ++ [_]completion.Command{
+            @field(commands, decl.name).info,
+        };
+    }
+
+    break :blk list;
+};
+
+pub const commands = struct {
+    pub const init = struct {
+        pub const info: completion.Command = blk: {
+            var cmd = completion.Command.init("init", "Initialize a gyro.zzz with a link to a github repo", init);
+
+            cmd.addFlag('h', "help", "Display help");
+            cmd.addPositional("repo", ?completion.Param.Repository, .One, "The repository to initialize this project with");
+
+            cmd.done();
+            break :blk cmd;
+        };
+
+        pub const Args = info.ClapComptime();
+        pub fn run(allocator: *std.mem.Allocator, args: *Args, iterator: *clap.args.OsIterator) !void {
             const num = args.positionals().len;
             if (num > 1) {
                 std.log.err("that's too many args, please just give me one in the form of a link to your github repo or just '<user>/<repo>'", .{});
                 return error.Explained;
             }
 
-            try init(allocator, if (num == 1) args.positionals()[0] else null);
-        },
-        .add => {
-            const summary = "Add dependencies to the project";
-            const params = comptime [_]clap.Param(clap.Help){
-                clap.parseParam("-h, --help           Display help") catch unreachable,
-                clap.parseParam("-s, --src <SRC>      Set type of dependency, default is 'pkg', others are 'github', 'url', or 'local'") catch unreachable,
-                clap.parseParam("-a, --alias <ALIAS>  Override what string the package is imported with") catch unreachable,
-                clap.parseParam("-b, --build-dep      Add this as a build dependency") catch unreachable,
-                clap.parseParam("-r, --root <PATH>    Set root path with respect to the project root, default is 'src/main.zig'") catch unreachable,
-                clap.parseParam("-t, --to <PKG>       Add this as a scoped dependency to a specific exported package") catch unreachable,
-                clap.Param(clap.Help){
-                    .takes_value = .Many,
-                },
-            };
+            const repo = if (num == 1) args.positionals()[0] else null;
+            try cmds.init(allocator, repo);
+        }
+    };
 
-            var args = parseHandlingHelpAndErrors(allocator, summary, &params, &iter);
-            defer args.deinit();
+    pub const add = struct {
+        pub const info: completion.Command = blk: {
+            var cmd = completion.Command.init("add", "Add dependencies to the project", add);
 
+            cmd.addFlag('h', "help", "Display help");
+            cmd.addOption('s', "src", "kind", enum { pkg, github, url, local }, "Set type of dependency, one of pkg, github, url, or local");
+            cmd.addOption('a', "alias", "package", completion.Param.Package, "Override what string the package is imported with");
+            cmd.addFlag('b', "build-dep", "Add this as a build dependency");
+            cmd.addOption('r', "root", "file", completion.Param.File, "Set root path with respect to the project root, default is 'src/main.zig'");
+            cmd.addOption('t', "to", "package", completion.Param.Package, "Add this as a scoped dependency to a specific exported package");
+            cmd.addPositional("package", completion.Param.Package, .Many, "The package(s) to add");
+
+            cmd.done();
+            break :blk cmd;
+        };
+
+        pub const Args = info.ClapComptime();
+        pub fn run(allocator: *std.mem.Allocator, args: *Args, iterator: *clap.args.OsIterator) !void {
             const src_str = args.option("--src") orelse "pkg";
             const src_tag = inline for (std.meta.fields(Dependency.SourceType)) |field| {
                 if (std.mem.eql(u8, src_str, field.name))
@@ -157,7 +163,7 @@ fn runCommands(allocator: *std.mem.Allocator) !void {
                 return error.Explained;
             };
 
-            try add(
+            try cmds.add(
                 allocator,
                 src_tag,
                 args.option("--alias"),
@@ -166,83 +172,182 @@ fn runCommands(allocator: *std.mem.Allocator) !void {
                 args.option("--to"),
                 args.positionals(),
             );
-        },
-        .rm => {
-            const summary = "Remove dependency from project";
-            const params = comptime [_]clap.Param(clap.Help){
-                clap.parseParam("-h, --help        Display help") catch unreachable,
-                clap.parseParam("-b, --build-dep   Remove a scoped dependency") catch unreachable,
-                clap.parseParam("-f, --from <PKG>  Remove a scoped dependency") catch unreachable,
-                clap.Param(clap.Help){
-                    .takes_value = .Many,
-                },
+        }
+    };
+
+    pub const rm = struct {
+        pub const info: completion.Command = blk: {
+            var cmd = completion.Command.init("rm", "Remove dependencies from the project", rm);
+
+            cmd.addFlag('h', "help", "Display help");
+            cmd.addFlag('b', "build-dep", "Remove this as a build dependency");
+            cmd.addOption('f', "from", "package", completion.Param.Package, "Remove this as a scoped dependency to a specific exported package");
+            cmd.addPositional("package", completion.Param.Package, .Many, "The package(s) to remove");
+
+            cmd.done();
+            break :blk cmd;
+        };
+
+        pub const Args = info.ClapComptime();
+        pub fn run(allocator: *std.mem.Allocator, args: *Args, iterator: *clap.args.OsIterator) !void {
+            try cmds.rm(allocator, args.flag("--build-dep"), args.option("--from"), args.positionals());
+        }
+    };
+
+    pub const build = struct {
+        pub const info: completion.Command = blk: {
+            var cmd = completion.Command.init("build", "Wrapper around 'zig build', automatically downloads dependencies", build);
+
+            cmd.addFlag('h', "help", "Display help");
+            cmd.addPositional("args", void, .Many, "arguments to pass to zig build");
+            cmd.passthrough = true;
+
+            cmd.done();
+            break :blk cmd;
+        };
+
+        pub const Args = info.ClapComptime();
+        pub fn run(allocator: *std.mem.Allocator, args: *Args, iterator: *clap.args.OsIterator) !void {
+            try cmds.build(allocator, iterator);
+        }
+    };
+
+    pub const fetch = struct {
+        pub const info: completion.Command = blk: {
+            var cmd = completion.Command.init("fetch", "Manually download dependencies and generate deps.zig file", fetch);
+
+            cmd.addFlag('h', "help", "Display help");
+
+            cmd.done();
+            break :blk cmd;
+        };
+
+        pub const Args = info.ClapComptime();
+        pub fn run(allocator: *std.mem.Allocator, args: *Args, iterator: *clap.args.OsIterator) !void {
+            try cmds.fetch(allocator);
+        }
+    };
+
+    pub const update = struct {
+        pub const info: completion.Command = blk: {
+            var cmd = completion.Command.init("update", "Update project dependencies to latest", update);
+
+            cmd.addFlag('h', "help", "Display help");
+            cmd.addOption('i', "in", "package", completion.Param.Package, "Update a scoped dependency");
+            cmd.addPositional("package", ?completion.Param.Package, .Many, "The package(s) to update");
+
+            cmd.done();
+            break :blk cmd;
+        };
+
+        pub const Args = info.ClapComptime();
+        pub fn run(allocator: *std.mem.Allocator, args: *Args, iterator: *clap.args.OsIterator) !void {
+            try cmds.update(allocator, args.option("--in"), args.positionals());
+        }
+    };
+
+    pub const publish = struct {
+        pub const info: completion.Command = blk: {
+            var cmd = completion.Command.init("publish", "Publish package to astrolabe.pm, requires github account", publish);
+
+            cmd.addFlag('h', "help", "Display help");
+            cmd.addPositional("package", ?completion.Param.Package, .One, "The package to publish");
+
+            cmd.done();
+            break :blk cmd;
+        };
+
+        pub const Args = info.ClapComptime();
+        pub fn run(allocator: *std.mem.Allocator, args: *Args, iterator: *clap.args.OsIterator) !void {
+            try cmds.publish(allocator, if (args.positionals().len > 0) args.positionals()[0] else null);
+        }
+    };
+
+    pub const package = struct {
+        pub const info: completion.Command = blk: {
+            var cmd = completion.Command.init("package", "Generate a tar file for publishing", package);
+
+            cmd.addFlag('h', "help", "Display help");
+            cmd.addOption('o', "output-dir", "dir", completion.Param.Directory, "Set package output directory");
+            cmd.addPositional("package", ?completion.Param.Package, .One, "The package(s) to package");
+
+            cmd.done();
+            break :blk cmd;
+        };
+
+        pub const Args = info.ClapComptime();
+        pub fn run(allocator: *std.mem.Allocator, args: *Args, iterator: *clap.args.OsIterator) !void {
+            try cmds.package(allocator, args.option("--output-dir"), args.positionals());
+        }
+    };
+
+    pub const redirect = struct {
+        pub const info: completion.Command = blk: {
+            var cmd = completion.Command.init("redirect", "Manage local development", redirect);
+
+            cmd.addFlag('h', "help", "Display help");
+            cmd.addFlag('c', "clean", "Undo all local redirects");
+            // cmd.addPositional("package", ?completion.Param.Package, .Many, "TODO");
+
+            cmd.done();
+            break :blk cmd;
+        };
+
+        pub const Args = info.ClapComptime();
+        pub fn run(allocator: *std.mem.Allocator, args: *Args, iterator: *clap.args.OsIterator) !void {
+            return error.Todo;
+        }
+    };
+
+    pub const install_completions = struct {
+        pub const info: completion.Command = blk: {
+            var cmd = completion.Command.init("completion", "Install shell completions", install_completions);
+
+            cmd.addFlag('h', "help", "Display help");
+            cmd.addOption('s', "shell", "shell", completion.shells.List, "The shell to install completions for. One of zsh");
+            cmd.addPositional("dir", completion.Param.Directory, .One, "Where to install the completion");
+
+            cmd.done();
+
+            break :blk cmd;
+        };
+
+        pub const Args = info.ClapComptime();
+        pub fn run(allocator: *std.mem.Allocator, args: *Args, iterator: *clap.args.OsIterator) !void {
+            const positionals = args.positionals();
+
+            if (positionals.len < 1) {
+                std.log.err("missing completion install path", .{});
+
+                return error.Explained;
+            }
+
+            const shell_name = args.option("--shell") orelse {
+                std.log.err("missing shell", .{});
+
+                return error.Explained;
             };
 
-            var args = parseHandlingHelpAndErrors(allocator, summary, &params, &iter);
-            defer args.deinit();
+            const shell = std.meta.stringToEnum(completion.shells.List, shell_name) orelse {
+                std.log.err("invalid shell", .{});
 
-            try rm(allocator, args.flag("--build-dep"), args.option("--from"), args.positionals());
-        },
-        .build => try build(allocator, &iter),
-        .fetch => try fetch(allocator),
-        .update => {
-            const summary = "Update dependencies to latest";
-            const params = comptime [_]clap.Param(clap.Help){
-                clap.parseParam("-h, --help      Display help") catch unreachable,
-                clap.parseParam("-i, --in <PKG>  Update a scoped dependency") catch unreachable,
-                clap.Param(clap.Help){
-                    .takes_value = .Many,
-                },
+                return error.Explained;
             };
 
-            var args = parseHandlingHelpAndErrors(allocator, summary, &params, &iter);
-            defer args.deinit();
+            switch (shell) {
+                .zsh => {
+                    const path = try std.fs.path.join(allocator, &.{ positionals[0], "_gyro" });
+                    defer allocator.free(path);
 
-            try update(allocator, args.option("--in"), args.positionals());
-        },
-        .publish => {
-            const summary = "Generate tar file that gets published";
-            const params = comptime [_]clap.Param(clap.Help){
-                clap.parseParam("-h, --help              Display help") catch unreachable,
-                clap.Param(clap.Help){
-                    .takes_value = .One,
+                    const file = try std.fs.cwd().createFile(path, .{});
+                    defer file.close();
+
+                    try completion.shells.zsh.writeAll(file.writer(), all_commands);
                 },
-            };
-
-            var args = parseHandlingHelpAndErrors(allocator, summary, &params, &iter);
-            defer args.deinit();
-
-            try publish(allocator, if (args.positionals().len > 0) args.positionals()[0] else null);
-        },
-        .package => {
-            const summary = "Manage local development";
-            const params = comptime [_]clap.Param(clap.Help){
-                clap.parseParam("-h, --help              Display help") catch unreachable,
-                clap.parseParam("-o, --output-dir <DIR>  output directory") catch unreachable,
-                clap.Param(clap.Help){
-                    .takes_value = .Many,
-                },
-            };
-
-            var args = parseHandlingHelpAndErrors(allocator, summary, &params, &iter);
-            defer args.deinit();
-
-            try package(allocator, args.option("--output-dir"), args.positionals());
-        },
-        //.redirect => {
-        //    const summary = "Manage local development";
-        //    const params = comptime [_]clap.Param(clap.Help){
-        //        clap.parseParam("-h, --help   Display help") catch unreachable,
-        //        clap.parseParam("-c, --clean  undo all local redirects") catch unreachable,
-        //        clap.Param(clap.Help){
-        //            .takes_value = .Many,
-        //        },
-        //    };
-
-        //    return error.Todo;
-        //},
-    }
-}
+            }
+        }
+    };
+};
 
 test "all" {
     std.testing.refAllDecls(@import("Dependency.zig"));

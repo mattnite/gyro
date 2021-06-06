@@ -1,0 +1,105 @@
+#compdef gyro
+
+function _gyro {
+  local -a __subcommands
+  local line state
+
+  __subcommands=(
+    "init:Initialize a gyro.zzz with a link to a github repo"
+    "add:Add dependencies to the project"
+    "rm:Remove dependencies from the project"
+    "build:Wrapper around 'zig build', automatically downloads dependencies"
+    "fetch:Manually download dependencies and generate deps.zig file"
+    "update:Update project dependencies to latest"
+    "publish:Publish package to astrolabe.pm, requires github account"
+    "package:Generate a tar file for publishing"
+    "redirect:Manage local development"
+    "completion:Install shell completions"
+  )
+
+  _arguments -C \
+    "1: :->subcommand" \
+    "*::arg:->args"
+
+  case $state in
+    subcommand)
+      _describe 'command' __subcommands
+      ;;
+    args)
+      __subcommand="__gyro_cmd_${line[1]}"
+      if type $__subcommand >/dev/null; then
+        $__subcommand
+      fi
+      ;;
+  esac
+}
+
+function __gyro_cmd_init {
+  _arguments \
+    {-h,--help}"[Display help]" \
+    ":: :_nothing"
+}
+
+function __gyro_cmd_add {
+  _arguments \
+    {-h,--help}"[Display help]" \
+    {-s,--src}"[Set type of dependency, one of pkg, github, url, or local]: :('pkg' 'github' 'url' 'local' )" \
+    {-a,--alias}"[Override what string the package is imported with]: :_nothing" \
+    {-b,--build-dep}"[Add this as a build dependency]" \
+    {-r,--root}"[Set root path with respect to the project root, default is 'src/main.zig']: :_files -g '*.zig'" \
+    {-t,--to}"[Add this as a scoped dependency to a specific exported package]: :_nothing" \
+    ": :_nothing"
+}
+
+function __gyro_cmd_rm {
+  _arguments \
+    {-h,--help}"[Display help]" \
+    {-b,--build-dep}"[Remove this as a build dependency]" \
+    {-f,--from}"[Remove this as a scoped dependency to a specific exported package]: :_nothing" \
+    ": :_nothing"
+}
+
+function __gyro_cmd_build {
+  _arguments \
+    {-h,--help}"[Display help]"
+}
+
+function __gyro_cmd_fetch {
+  _arguments \
+    {-h,--help}"[Display help]"
+}
+
+function __gyro_cmd_update {
+  _arguments \
+    {-h,--help}"[Display help]" \
+    {-i,--in}"[Update a scoped dependency]: :_nothing" \
+    ":: :_nothing"
+}
+
+function __gyro_cmd_publish {
+  _arguments \
+    {-h,--help}"[Display help]" \
+    ":: :_nothing"
+}
+
+function __gyro_cmd_package {
+  _arguments \
+    {-h,--help}"[Display help]" \
+    {-o,--output-dir}"[Set package output directory]: :_files -/" \
+    ":: :_nothing"
+}
+
+function __gyro_cmd_redirect {
+  _arguments \
+    {-h,--help}"[Display help]" \
+    {-c,--clean}"[Undo all local redirects]"
+}
+
+function __gyro_cmd_completion {
+  _arguments \
+    {-h,--help}"[Display help]" \
+    {-s,--shell}"[The shell to install completions for. One of zsh]: :('zsh' )" \
+    ": :_files -/"
+}
+
+_gyro
