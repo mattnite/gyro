@@ -870,9 +870,27 @@ pub fn redirect(
 
         try redirect_deps.append(dep.*);
         const root = switch (dep.src) {
-            .pkg => {
-                // TODO: read gyro.zzz
-                return error.Todo;
+            .pkg => |pkg| blk: {
+                const local_path = try std.fs.path.resolve(allocator, &.{
+                    path,
+                    "gyro.zzz",
+                });
+                defer allocator.free(local_path);
+
+                const local_project_file = try std.fs.openFileAbsolute(local_path, .{});
+                defer local_project_file.close();
+
+                var local_project = try Project.fromFile(allocator, local_project_file);
+                defer local_project.destroy();
+
+                const result = local_project.packages.get(pkg.name) orelse {
+                    std.log.err("the project located in {s} doesn't export '{s}'", .{
+                        path,
+                        alias,
+                    });
+                    return error.Explained;
+                };
+                break :blk try arena.allocator.dupe(u8, result.root orelse "src/main.zig");
             },
             .github => |github| github.root,
             .url => |url| url.root,
