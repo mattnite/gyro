@@ -250,6 +250,14 @@ pub fn package(
         return error.Explained;
     }
 
+    validateNoRedirects(allocator) catch |e| switch (e) {
+        error.RedirectsExist => {
+            std.log.err("you need to clear redirects before packaging with 'gyro redirect --clean'", .{});
+            return error.Explained;
+        },
+        else => return e,
+    };
+
     var found_not_pkg = false;
     for (names) |name|
         if (!project.contains(name)) {
@@ -685,6 +693,14 @@ pub fn publish(allocator: *Allocator, pkg: ?[]const u8) !void {
         return error.Explained;
     }
 
+    validateNoRedirects(allocator) catch |e| switch (e) {
+        error.RedirectsExist => {
+            std.log.err("you need to clear redirects before publishing with 'gyro redirect --clean'", .{});
+            return error.Explained;
+        },
+        else => return e,
+    };
+
     const name = if (pkg) |p| blk: {
         if (!project.contains(p)) {
             std.log.err("{s} is not a package", .{p});
@@ -794,6 +810,25 @@ fn moveDeps(redirected_deps: []const Dependency, project_deps: []Dependency) !vo
                 break;
             }
         } else unreachable;
+    }
+}
+
+/// make sure there are no entries in the redirect file
+fn validateNoRedirects(allocator: *Allocator) !void {
+    var gyro_dir = try std.fs.cwd().makeOpenPath(".gyro", .{});
+    defer gyro_dir.close();
+
+    const redirect_file = try gyro_dir.createFile("redirects", .{
+        .truncate = false,
+        .read = true,
+    });
+    defer redirect_file.close();
+
+    var redirects = try Project.fromFile(allocator, redirect_file);
+    defer redirects.destroy();
+
+    if (redirects.deps.items.len > 0 or redirects.build_deps.items.len > 0) {
+        return error.RedirectsExist;
     }
 }
 
