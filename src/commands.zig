@@ -617,8 +617,6 @@ pub fn rm(
     var project = try Project.fromFile(allocator, file);
     defer project.destroy();
 
-    std.log.debug("packages at start: {}", .{project.packages.count()});
-
     const dep_list = if (from) |f|
         if (project.packages.getEntry(f)) |entry| &entry.value_ptr.deps else {
             std.log.err("{s} is not a an exported package", .{f});
@@ -658,14 +656,11 @@ pub fn rm(
     for (targets) |target| {
         for (dep_list.items) |dep, i| {
             if (std.mem.eql(u8, target, dep.alias)) {
-                std.log.debug("removing target: {s}", .{target});
                 _ = dep_list.swapRemove(i);
                 break;
             }
         }
     }
-
-    std.log.debug("packages: {}", .{project.packages.count()});
 
     try project.toFile(file);
 }
