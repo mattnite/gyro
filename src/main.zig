@@ -6,7 +6,6 @@ const build_options = @import("build_options");
 const Dependency = @import("Dependency.zig");
 const cmds = @import("commands.zig");
 
-//pub const io_mode = .evented;
 pub const log_level: std.log.Level = if (builtin.mode == .Debug) .debug else .info;
 
 pub fn main() !void {
@@ -67,23 +66,24 @@ fn runCommands(allocator: *std.mem.Allocator) !void {
 
     inline for (all_commands) |cmd| {
         if (std.mem.eql(u8, command_name, cmd.name)) {
-            var args: cmd.parent.Args = undefined;
-            if (!cmd.passthrough) {
+            var args: cmd.parent.Args = if (!cmd.passthrough) blk: {
                 var diag: clap.Diagnostic = undefined;
-                args = cmd.parent.Args.parse(allocator, &iter, &diag) catch |err| {
+                var ret = cmd.parent.Args.parse(allocator, &iter, &diag) catch |err| {
                     try diag.report(stderr, err);
                     try help(cmd);
 
                     return error.Explained;
                 };
-                defer args.deinit();
 
-                if (args.flag("--help")) {
+                if (ret.flag("--help")) {
                     try help(cmd);
 
                     return;
                 }
-            }
+
+                break :blk ret;
+            } else undefined;
+            defer if (!cmd.passthrough) args.deinit();
 
             try cmd.parent.run(allocator, &args, &iter);
 
@@ -287,7 +287,9 @@ pub const commands = struct {
 
             cmd.addFlag('h', "help", "Display help");
             cmd.addFlag('c', "clean", "Undo all local redirects");
-            // cmd.addPositional("package", ?completion.Param.Package, .Many, "TODO");
+            cmd.addOption('a', "alias", "package", completion.Param.Package, "Which package to redirect");
+            cmd.addOption('p', "path", "dir", completion.Param.Directory, "Project root directory");
+            cmd.addFlag('b', "build-dep", "Redirect a build dependency");
 
             cmd.done();
             break :blk cmd;
@@ -295,7 +297,7 @@ pub const commands = struct {
 
         pub const Args = info.ClapComptime();
         pub fn run(allocator: *std.mem.Allocator, args: *Args, iterator: *clap.args.OsIterator) !void {
-            return error.Todo;
+            try cmds.redirect(allocator, args.flag("--clean"), args.flag("--build-dep"), args.option("--alias"), args.option("--path"));
         }
     };
 

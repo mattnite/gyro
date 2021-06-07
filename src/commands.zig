@@ -250,6 +250,14 @@ pub fn package(
         return error.Explained;
     }
 
+    validateNoRedirects(allocator) catch |e| switch (e) {
+        error.RedirectsExist => {
+            std.log.err("you need to clear redirects before packaging with 'gyro redirect --clean'", .{});
+            return error.Explained;
+        },
+        else => return e,
+    };
+
     var found_not_pkg = false;
     for (names) |name|
         if (!project.contains(name)) {
@@ -617,8 +625,6 @@ pub fn rm(
     var project = try Project.fromFile(allocator, file);
     defer project.destroy();
 
-    std.log.debug("packages at start: {}", .{project.packages.count()});
-
     const dep_list = if (from) |f|
         if (project.packages.getEntry(f)) |entry| &entry.value_ptr.deps else {
             std.log.err("{s} is not a an exported package", .{f});
@@ -658,14 +664,11 @@ pub fn rm(
     for (targets) |target| {
         for (dep_list.items) |dep, i| {
             if (std.mem.eql(u8, target, dep.alias)) {
-                std.log.debug("removing target: {s}", .{target});
                 _ = dep_list.swapRemove(i);
                 break;
             }
         }
     }
-
-    std.log.debug("packages: {}", .{project.packages.count()});
 
     try project.toFile(file);
 }
@@ -689,6 +692,14 @@ pub fn publish(allocator: *Allocator, pkg: ?[]const u8) !void {
         std.log.err("there are no packages to publish!", .{});
         return error.Explained;
     }
+
+    validateNoRedirects(allocator) catch |e| switch (e) {
+        error.RedirectsExist => {
+            std.log.err("you need to clear redirects before publishing with 'gyro redirect --clean'", .{});
+            return error.Explained;
+        },
+        else => return e,
+    };
 
     const name = if (pkg) |p| blk: {
         if (!project.contains(p)) {
@@ -778,4 +789,155 @@ pub fn publish(allocator: *Allocator, pkg: ?[]const u8) !void {
     }
 
     try api.postPublish(allocator, access_token.?, project.get(name).?);
+}
+
+fn validateDepsAliases(redirected_deps: []const Dependency, project_deps: []const Dependency) !void {
+    for (redirected_deps) |redirected_dep| {
+        for (project_deps) |project_dep| {
+            if (std.mem.eql(u8, redirected_dep.alias, project_dep.alias)) break;
+        } else {
+            std.log.err("'{s}' redirect does not exist in project dependencies", .{redirected_dep.alias});
+            return error.Explained;
+        }
+    }
+}
+
+fn moveDeps(redirected_deps: []const Dependency, project_deps: []Dependency) !void {
+    for (redirected_deps) |redirected_dep| {
+        for (project_deps) |*project_dep| {
+            if (std.mem.eql(u8, redirected_dep.alias, project_dep.alias)) {
+                project_dep.* = redirected_dep;
+                break;
+            }
+        } else unreachable;
+    }
+}
+
+/// make sure there are no entries in the redirect file
+fn validateNoRedirects(allocator: *Allocator) !void {
+    var gyro_dir = try std.fs.cwd().makeOpenPath(".gyro", .{});
+    defer gyro_dir.close();
+
+    const redirect_file = try gyro_dir.createFile("redirects", .{
+        .truncate = false,
+        .read = true,
+    });
+    defer redirect_file.close();
+
+    var redirects = try Project.fromFile(allocator, redirect_file);
+    defer redirects.destroy();
+
+    if (redirects.deps.items.len > 0 or redirects.build_deps.items.len > 0) {
+        return error.RedirectsExist;
+    }
+}
+
+pub fn redirect(
+    allocator: *Allocator,
+    clean: bool,
+    build_dep: bool,
+    alias_opt: ?[]const u8,
+    path_opt: ?[]const u8,
+) !void {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const project_file = try std.fs.cwd().openFile("gyro.zzz", .{
+        .read = true,
+        .write = true,
+    });
+    defer project_file.close();
+
+    var gyro_dir = try std.fs.cwd().makeOpenPath(".gyro", .{});
+    defer gyro_dir.close();
+
+    const redirect_file = try gyro_dir.createFile("redirects", .{
+        .truncate = false,
+        .read = true,
+    });
+    defer redirect_file.close();
+
+    var project = try Project.fromFile(allocator, project_file);
+    defer project.destroy();
+
+    var redirects = try Project.fromFile(allocator, redirect_file);
+    defer redirects.destroy();
+
+    if (clean) {
+        try validateDepsAliases(redirects.deps.items, project.deps.items);
+        try validateDepsAliases(redirects.build_deps.items, project.build_deps.items);
+
+        try moveDeps(redirects.deps.items, project.deps.items);
+        try moveDeps(redirects.build_deps.items, project.build_deps.items);
+
+        redirects.deps.clearRetainingCapacity();
+        redirects.build_deps.clearRetainingCapacity();
+    } else {
+        const alias = alias_opt orelse {
+            std.log.err("missing alias argument", .{});
+            return error.Explained;
+        };
+
+        const path = path_opt orelse {
+            std.log.err("missing path argument", .{});
+            return error.Explained;
+        };
+
+        const deps = if (build_dep) &project.build_deps else &project.deps;
+        const dep = for (deps.items) |*d| {
+            if (std.mem.eql(u8, d.alias, alias)) break d;
+        } else {
+            const deps_type = if (build_dep) "build dependencies" else "dependencies";
+            std.log.err("Failed to find '{s}' in {s}", .{ alias, deps_type });
+            return error.Explained;
+        };
+
+        const redirect_deps = if (build_dep) &redirects.build_deps else &redirects.deps;
+        for (redirect_deps.items) |d| if (std.mem.eql(u8, d.alias, alias)) {
+            std.log.err("'{s}' is already redirected", .{alias});
+            return error.Explained;
+        };
+
+        try redirect_deps.append(dep.*);
+        const root = switch (dep.src) {
+            .pkg => |pkg| blk: {
+                const local_path = try std.fs.path.resolve(allocator, &.{
+                    path,
+                    "gyro.zzz",
+                });
+                defer allocator.free(local_path);
+
+                const local_project_file = try std.fs.openFileAbsolute(local_path, .{});
+                defer local_project_file.close();
+
+                var local_project = try Project.fromFile(allocator, local_project_file);
+                defer local_project.destroy();
+
+                const result = local_project.packages.get(pkg.name) orelse {
+                    std.log.err("the project located in {s} doesn't export '{s}'", .{
+                        path,
+                        alias,
+                    });
+                    return error.Explained;
+                };
+                break :blk try arena.allocator.dupe(u8, result.root orelse "src/main.zig");
+            },
+            .github => |github| github.root,
+            .url => |url| url.root,
+            .local => |local| local.root,
+        };
+
+        dep.* = Dependency{
+            .alias = alias,
+            .src = .{
+                .local = .{
+                    .path = path,
+                    .root = root,
+                },
+            },
+        };
+    }
+
+    try redirects.toFile(redirect_file);
+    try project.toFile(project_file);
 }
