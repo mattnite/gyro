@@ -218,7 +218,7 @@ pub fn printZig(self: *Self, writer: anytype) !void {
         try writer.print(
             \\    pub const {s} = std.build.Pkg{{
             \\        .name = "{s}",
-            \\        .path = "{s}",
+            \\        .path = .{{ .path = "{s}" }},
             \\        .dependencies = &.{{
             \\
         , .{
