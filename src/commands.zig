@@ -181,7 +181,9 @@ pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
     // TODO: configurable local cache
     const pkgs = try ctx.build_dep_tree.assemblePkgs(std.build.Pkg{
         .name = "gyro",
-        .path = "deps.zig",
+        .path = .{
+            .path = "deps.zig",
+        },
     });
 
     var arena = std.heap.ArenaAllocator.init(allocator);
@@ -205,7 +207,9 @@ pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
     const runner = b.addExecutable("build", "build_runner.zig");
     runner.addPackage(std.build.Pkg{
         .name = "@build",
-        .path = "build.zig",
+        .path = .{
+            .path = "build.zig",
+        },
         .dependencies = pkgs,
     });
 

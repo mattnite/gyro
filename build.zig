@@ -5,65 +5,65 @@ const pkgs = @import("deps.zig").pkgs;
 
 const clap = .{
     .name = "clap",
-    .path = "libs/zig-clap/clap.zig",
+    .path = .{ .path = "libs/zig-clap/clap.zig" },
 };
 
 const version = .{
     .name = "version",
-    .path = "libs/version/src/main.zig",
+    .path = .{ .path = "libs/version/src/main.zig" },
     .dependencies = &[_]Pkg{
         .{
             .name = "mecha",
-            .path = "libs/mecha/mecha.zig",
+            .path = .{ .path = "libs/mecha/mecha.zig" },
         },
     },
 };
 
 const tar = .{
     .name = "tar",
-    .path = "libs/tar/src/main.zig",
+    .path = .{ .path = "libs/tar/src/main.zig" },
 };
 
 const zzz = .{
     .name = "zzz",
-    .path = "libs/zzz/src/main.zig",
+    .path = .{ .path = "libs/zzz/src/main.zig" },
 };
 
 const glob = .{
     .name = "glob",
-    .path = "libs/glob/src/main.zig",
+    .path = .{ .path = "libs/glob/src/main.zig" },
 };
 
 const hzzp = .{
     .name = "hzzp",
-    .path = "libs/hzzp/src/main.zig",
+    .path = .{ .path = "libs/hzzp/src/main.zig" },
 };
 
 const zfetch = .{
     .name = "zfetch",
-    .path = "libs/zfetch/src/main.zig",
+    .path = .{ .path = "libs/zfetch/src/main.zig" },
     .dependencies = &[_]std.build.Pkg{
         hzzp,
         uri,
         .{
             .name = "network",
-            .path = "libs/zig-network/network.zig",
+            .path = .{ .path = "libs/zig-network/network.zig" },
         },
         .{
             .name = "iguanaTLS",
-            .path = "libs/iguanaTLS/src/main.zig",
+            .path = .{ .path = "libs/iguanaTLS/src/main.zig" },
         },
     },
 };
 
 const uri = .{
     .name = "uri",
-    .path = "libs/zig-uri/uri.zig",
+    .path = .{ .path = "libs/zig-uri/uri.zig" },
 };
 
 const known_folders = .{
     .name = "known-folders",
-    .path = "libs/known-folders/known-folders.zig",
+    .path = .{ .path = "libs/known-folders/known-folders.zig" },
 };
 
 fn addAllPkgs(lib: *LibExeObjStep) void {
