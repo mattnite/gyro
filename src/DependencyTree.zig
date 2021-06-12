@@ -139,7 +139,9 @@ pub fn assemblePkgs(self: *Self, seed: std.build.Pkg) ![]std.build.Pkg {
 fn recursiveBuildPkg(arena: *std.heap.ArenaAllocator, edge: *Edge) anyerror!std.build.Pkg {
     var ret = std.build.Pkg{
         .name = edge.dep.alias,
-        .path = try edge.to.entry.getRootPath(arena),
+        .path = .{
+            .path = try edge.to.entry.getRootPath(arena),
+        },
         .dependencies = null,
     };
 
@@ -284,7 +286,7 @@ fn recursivePrintZig(
     try writer.print(".name = \"{s}\",\n", .{edge.dep.alias});
 
     try indent(depth + 1, writer);
-    try writer.print(".path = \"{s}\",\n", .{
+    try writer.print(".path = .{{ .path = \"{s}\" }},\n", .{
         try edge.to.entry.getEscapedRootPath(&self.arena),
     });
 
