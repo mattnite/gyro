@@ -838,11 +838,21 @@ fn validateNoRedirects(allocator: *Allocator) !void {
 
 pub fn redirect(
     allocator: *Allocator,
+    check: bool,
     clean: bool,
     build_dep: bool,
     alias_opt: ?[]const u8,
     path_opt: ?[]const u8,
 ) !void {
+    const do_redirect = alias_opt != null or path_opt != null;
+    if ((check and clean) or
+        (check and do_redirect) or
+        (clean and do_redirect))
+    {
+        std.log.err("you can only one at a time: clean, check, or redirect", .{});
+        return error.Explained;
+    }
+
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
@@ -867,7 +877,12 @@ pub fn redirect(
     var redirects = try Project.fromFile(allocator, redirect_file);
     defer redirects.destroy();
 
-    if (clean) {
+    if (check) {
+        if (redirects.deps.items.len > 0 or redirects.build_deps.items.len > 0) {
+            std.log.err("there are gyro redirects", .{});
+            return error.Explained;
+        } else return;
+    } else if (clean) {
         try validateDepsAliases(redirects.deps.items, project.deps.items);
         try validateDepsAliases(redirects.build_deps.items, project.build_deps.items);
 
