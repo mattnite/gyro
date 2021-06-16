@@ -2,7 +2,7 @@ pkg default mattnite clap 0.4.0
 pkg default truemedian zfetch 0.1.1
 pkg default mattnite zzz 0.0.1
 pkg default mattnite glob 0.0.0
-pkg default mattnite tar 0.0.1
+pkg default mattnite tar 0.0.2
 pkg default mattnite version 0.0.3
 pkg default mattnite uri 0.0.0
 pkg default mattnite known-folders 0.0.0

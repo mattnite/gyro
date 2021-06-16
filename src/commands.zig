@@ -203,7 +203,7 @@ pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
 
     try ctx.dep_tree.printZig(deps_file.writer());
 
-    b.resolveInstallPrefix(null);
+    b.resolveInstallPrefix(null, .{});
     const runner = b.addExecutable("build", "build_runner.zig");
     runner.addPackage(std.build.Pkg{
         .name = "@build",
