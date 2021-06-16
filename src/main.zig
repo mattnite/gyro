@@ -290,6 +290,7 @@ pub const commands = struct {
             cmd.addOption('a', "alias", "package", completion.Param.Package, "Which package to redirect");
             cmd.addOption('p', "path", "dir", completion.Param.Directory, "Project root directory");
             cmd.addFlag('b', "build-dep", "Redirect a build dependency");
+            cmd.addFlag('e', "check", "Return successfully if there are no redirects (intended for git pre-commit hook)");
 
             cmd.done();
             break :blk cmd;
@@ -297,7 +298,7 @@ pub const commands = struct {
 
         pub const Args = info.ClapComptime();
         pub fn run(allocator: *std.mem.Allocator, args: *Args, iterator: *clap.args.OsIterator) !void {
-            try cmds.redirect(allocator, args.flag("--clean"), args.flag("--build-dep"), args.option("--alias"), args.option("--path"));
+            try cmds.redirect(allocator, args.flag("--check"), args.flag("--clean"), args.flag("--build-dep"), args.option("--alias"), args.option("--path"));
         }
     };
 
