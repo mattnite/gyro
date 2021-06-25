@@ -2,66 +2,63 @@ const std = @import("std");
 pub const pkgs = struct {
     pub const clap = std.build.Pkg{
         .name = "clap",
-        .path = .{ .path = ".gyro/clap-mattnite-0.4.0-54d7cbbdb9bc1d8a78583857764d0888/pkg/clap.zig" },
+        .path = .{ .path = "libs/zig-clap/clap.zig" },
     };
 
     pub const zfetch = std.build.Pkg{
         .name = "zfetch",
-        .path = .{ .path = ".gyro/zfetch-truemedian-0.0.3-32b5d807a3444ca8d1c76955dc448668/pkg/src/main.zig" },
+        .path = .{ .path = "libs/zfetch/src/main.zig" },
         .dependencies = &[_]std.build.Pkg{
+            uri,
             std.build.Pkg{
-                .name = "iguanaTLS",
-                .path = .{ .path = ".gyro/iguanaTLS-alexnask-0.0.3-cca32353886b38942b73c181aca56cac/pkg/src/main.zig" },
+                .name = "hzzp",
+                .path = .{ .path = "libs/hzzp/src/main.zig" },
             },
             std.build.Pkg{
                 .name = "network",
-                .path = .{ .path = ".gyro/network-mattnite-0.0.1-56b1687581a638461a2847c093576538/pkg/network.zig" },
+                .path = .{ .path = "libs/zig-network/network.zig" },
             },
             std.build.Pkg{
-                .name = "uri",
-                .path = .{ .path = ".gyro/uri-mattnite-0.0.0-b13185702852c80a6772a8d1bda35496/pkg/uri.zig" },
-            },
-            std.build.Pkg{
-                .name = "hzzp",
-                .path = .{ .path = ".gyro/hzzp-truemedian-0.0.3-8baaab77884a746b7a2638681cc66144/pkg/src/main.zig" },
+                .name = "iguanaTLS",
+                .path = .{ .path = "libs/iguanaTLS/src/main.zig" },
             },
         },
     };
 
     pub const zzz = std.build.Pkg{
         .name = "zzz",
-        .path = .{ .path = ".gyro/zzz-mattnite-0.0.1-549813427325d6937837db763750658a/pkg/src/main.zig" },
+        .path = .{ .path = "libs/zzz/src/main.zig" },
     };
 
     pub const glob = std.build.Pkg{
         .name = "glob",
-        .path = .{ .path = ".gyro/glob-mattnite-0.0.0-aa0421127a95407237771b289dc32883/pkg/src/main.zig" },
+        .path = .{ .path = "libs/glob/src/main.zig" },
     };
 
     pub const tar = std.build.Pkg{
         .name = "tar",
-        .path = .{ .path = ".gyro/tar-mattnite-0.0.1-0584a099318b69726aa5c99c7d15c58b/pkg/src/main.zig" },
+        .path = .{ .path = "libs/tar/src/main.zig" },
     };
 
     pub const version = std.build.Pkg{
         .name = "version",
-        .path = .{ .path = ".gyro/version-mattnite-0.0.3-554ac332599433185d7241275269278a/pkg/src/main.zig" },
+        .path = .{ .path = "libs/version/src/main.zig" },
         .dependencies = &[_]std.build.Pkg{
             std.build.Pkg{
                 .name = "mecha",
-                .path = .{ .path = ".gyro/mecha-mattnite-0.0.1-47b82d9146d42cb9505ac7317488271b/pkg/mecha.zig" },
+                .path = .{ .path = "libs/mecha/mecha.zig" },
             },
         },
     };
 
     pub const uri = std.build.Pkg{
         .name = "uri",
-        .path = .{ .path = ".gyro/uri-mattnite-0.0.0-b13185702852c80a6772a8d1bda35496/pkg/uri.zig" },
+        .path = .{ .path = "libs/zig-uri/uri.zig" },
     };
 
     pub const @"known-folders" = std.build.Pkg{
         .name = "known-folders",
-        .path = .{ .path = ".gyro/known-folders-mattnite-0.0.0-a10b67a6d7187957d537839131b9d1b6/pkg/known-folders.zig" },
+        .path = .{ .path = "libs/known-folders/known-folders.zig" },
     };
 
     pub fn addAllTo(artifact: *std.build.LibExeObjStep) void {
@@ -72,17 +69,4 @@ pub const pkgs = struct {
             }
         }
     }
-};
-
-pub const exports = struct {
-};
-pub const base_dirs = struct {
-    pub const clap = ".gyro/clap-mattnite-0.4.0-54d7cbbdb9bc1d8a78583857764d0888/pkg";
-    pub const zfetch = ".gyro/zfetch-truemedian-0.0.3-32b5d807a3444ca8d1c76955dc448668/pkg";
-    pub const zzz = ".gyro/zzz-mattnite-0.0.1-549813427325d6937837db763750658a/pkg";
-    pub const glob = ".gyro/glob-mattnite-0.0.0-aa0421127a95407237771b289dc32883/pkg";
-    pub const tar = ".gyro/tar-mattnite-0.0.1-0584a099318b69726aa5c99c7d15c58b/pkg";
-    pub const version = ".gyro/version-mattnite-0.0.3-554ac332599433185d7241275269278a/pkg";
-    pub const uri = ".gyro/uri-mattnite-0.0.0-b13185702852c80a6772a8d1bda35496/pkg";
-    pub const @"known-folders" = ".gyro/known-folders-mattnite-0.0.0-a10b67a6d7187957d537839131b9d1b6/pkg";
 };
