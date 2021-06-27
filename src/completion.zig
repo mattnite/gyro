@@ -14,7 +14,7 @@ pub const Param = struct {
     long_name: ?[]const u8 = null,
     description: []const u8,
     value_name: ?[]const u8 = null,
-    size: clap.Values = .None,
+    size: clap.Values = .none,
     data: type,
 };
 
@@ -56,7 +56,7 @@ pub const Command = struct {
             .description = description,
             .value_name = value_name,
             .data = data,
-            .size = .One,
+            .size = .one,
         }};
     }
 

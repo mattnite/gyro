@@ -51,8 +51,6 @@ pub const Entry = union(enum) {
                     .str = it.next() orelse return error.NoUrl,
                 },
             };
-
-            const url = try uri.parse(ret.url.str);
         } else if (std.mem.eql(u8, first, "local")) {
             ret = Entry{
                 .local = .{
@@ -88,7 +86,7 @@ pub const Entry = union(enum) {
     pub fn getDeps(self: Entry, arena: *std.heap.ArenaAllocator) ![]Dependency {
         try self.fetch(arena.child_allocator);
         const file = switch (self) {
-            .pkg => |pkg| blk: {
+            .pkg => blk: {
                 const package_path = try self.packagePath(arena.child_allocator);
                 defer arena.child_allocator.free(package_path);
 
@@ -325,8 +323,8 @@ pub const Entry = union(enum) {
         switch (self) {
             .pkg => |pkg| try fifo.writer().print("{s}-{s}-{}-{s}", .{ pkg.name, pkg.user, pkg.version, &ret }),
             .github => |gh| try fifo.writer().print("{s}-{s}-{s}", .{ gh.repo, gh.user, gh.commit }),
-            .url => |url| try fifo.writer().print("{s}", .{&ret}),
-            .local => |local| try fifo.writer().print("{s}", .{&ret}),
+            .url => try fifo.writer().print("{s}", .{&ret}),
+            .local => try fifo.writer().print("{s}", .{&ret}),
         }
 
         return std.fs.path.join(allocator, &[_][]const u8{

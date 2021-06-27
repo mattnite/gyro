@@ -79,7 +79,6 @@ fn findLatestMatch(self: Self, lockfile: *Lockfile) ?*Lockfile.Entry {
 fn resolveLatest(
     self: Self,
     arena: *std.heap.ArenaAllocator,
-    lockfile: *Lockfile,
 ) !*Lockfile.Entry {
     const allocator = &arena.allocator;
     const ret = try allocator.create(Lockfile.Entry);
@@ -130,7 +129,7 @@ pub fn resolve(
     lockfile: *Lockfile,
 ) !*Lockfile.Entry {
     return self.findLatestMatch(lockfile) orelse blk: {
-        const entry = try self.resolveLatest(arena, lockfile);
+        const entry = try self.resolveLatest(arena);
         try lockfile.entries.append(entry);
         break :blk entry;
     };
