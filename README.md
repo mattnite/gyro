@@ -24,6 +24,7 @@ Table of contents
   * [Adding dependencies](#adding-dependencies)
     * [From package index](#from-package-index)
     * [From Github](#from-github)
+    * [From url](#from-url)
     * [Build dependencies](#build-dependencies)
     * [Scoped dependencies](#scoped-dependencies)
   * [Removing dependencies](#removing-dependencies)
@@ -195,6 +196,40 @@ gyro add <user>/<pkg>
 gyro add --src github <user>/<repo>
 ```
 
+#### From url
+Note that at this time it is not possible to add a dependency from a url using
+the command line. However, it is possible to give a url to a .tar.gz file by
+adding it to your `gyro.zzz` file.
+```yaml
+deps:
+  pkgname:
+    src:
+      url: "https://path/to/my/library.tar.gz"
+    root: libname/rootfile.zig
+```
+In this example, when `library.tar.gz` is extracted the top level directory is
+`libname`. In practice one can construct a gyro.zzz file which will get a source
+tarball from many hosting sites other than github, by carefully constructing the
+url and path to the library root.
+```yaml
+deps:
+// Gitlab example
+  foo:
+    src:
+      // Gitlab tarballs follow the format "project-branch.tar.gz" or
+      // "project-tag.tar.gz".
+      url: "https://gitlab.com/username/foo/-/archive/main/foo-main.tar.gz"
+    // The tarball will extract to the top level directory "project-branch/"
+    root: foo-main/main.zig
+// Codeberg (Gitea)
+  bar:
+    src:
+      // Gitea omits the project name from it's tarballs, using just the branch
+      // or tag name.
+      url: "https://codeberg.org/username/bar/archive/main.tar.gz"
+    root: bar/main.zig
+```
+
 #### Build dependencies
 
 It's also possible to use packaged code in your `build.zig`, since this would
@@ -294,7 +329,7 @@ gyro update
 
 Updating single dependencies will come soon, right now everything is updated.
 
-### Use gyro in Github Actions 
+### Use gyro in Github Actions
 
 You can get your hands on Gyro for github actions
 [here](https://github.com/marketplace/actions/setup-gyro), it does not install
@@ -373,7 +408,7 @@ is accessible, however:
 - Easy to keep Gyro as a pure Zig codebase (no cross compilation pains)
 
 It lifts a considerable amount of work off the project in order to focus on the
-two main objectives while covering most codebases. 
+two main objectives while covering most codebases.
 
 The official Zig package manager is going to be decentralized, meaning that
 there will be no official package index. Gyro has a centralized feel in that the
