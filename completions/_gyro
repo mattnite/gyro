@@ -61,7 +61,8 @@ function __gyro_cmd_rm {
 
 function __gyro_cmd_build {
   _arguments \
-    {-h,--help}"[Display help]"
+    {-h,--help}"[Display help]" \
+    ""
 }
 
 function __gyro_cmd_fetch {
@@ -92,7 +93,11 @@ function __gyro_cmd_package {
 function __gyro_cmd_redirect {
   _arguments \
     {-h,--help}"[Display help]" \
-    {-c,--clean}"[Undo all local redirects]"
+    {-c,--clean}"[Undo all local redirects]" \
+    {-a,--alias}"[Which package to redirect]: :_nothing" \
+    {-p,--path}"[Project root directory]: :_files -/" \
+    {-b,--build-dep}"[Redirect a build dependency]" \
+    {-e,--check}"[Return successfully if there are no redirects (intended for git pre-commit hook)]"
 }
 
 function __gyro_cmd_completion {
