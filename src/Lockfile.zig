@@ -471,7 +471,7 @@ fn expectEntryEqual(expected: Entry, actual: Entry) !void {
 }
 
 test "entry from pkg: default repository" {
-    const actual = try Entry.fromLine("pkg default matt something 0.1.0");
+    const actual = try Entry.fromLine(testing.allocator, "pkg default matt something 0.1.0");
     const expected = Entry{
         .pkg = .{
             .user = "matt",
@@ -489,7 +489,7 @@ test "entry from pkg: default repository" {
 }
 
 test "entry from pkg: non-default repository" {
-    const actual = try Entry.fromLine("pkg my_own_repository matt foo 0.2.0");
+    const actual = try Entry.fromLine(testing.allocator, "pkg my_own_repository matt foo 0.2.0");
     const expected = Entry{
         .pkg = .{
             .user = "matt",
@@ -507,7 +507,7 @@ test "entry from pkg: non-default repository" {
 }
 
 test "entry from github" {
-    var actual = try Entry.fromLine("github my_user my_repo master src/foo.zig 30d004329543603f76bd9d7daca054878a04fdb5");
+    var actual = try Entry.fromLine(testing.allocator, "github my_user my_repo master src/foo.zig 30d004329543603f76bd9d7daca054878a04fdb5");
     var expected = Entry{
         .github = .{
             .user = "my_user",
@@ -522,7 +522,7 @@ test "entry from github" {
 }
 
 test "entry from url" {
-    const actual = try Entry.fromLine("url src/foo.zig https://example.com/something.tar.gz");
+    const actual = try Entry.fromLine(testing.allocator, "url src/foo.zig https://example.com/something.tar.gz");
     const expected = Entry{
         .url = .{
             .root = "src/foo.zig",
@@ -534,7 +534,7 @@ test "entry from url" {
 }
 
 test "local entry" {
-    const actual = try Entry.fromLine("local src/foo.zig mypkgs/cool-project");
+    const actual = try Entry.fromLine(testing.allocator, "local src/foo.zig mypkgs/cool-project");
     const expected = Entry{
         .local = .{
             .root = "src/foo.zig",

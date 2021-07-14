@@ -266,10 +266,10 @@ pub fn fromZNode(allocator: *Allocator, node: *zzz.ZNode) !Self {
 }
 
 /// for testing
-fn fromString(str: []const u8) !Self {
+fn fromString(allocator: *Allocator, str: []const u8) !Self {
     var tree = zzz.ZTree(1, 1000){};
     const root = try tree.appendText(str);
-    return Self.fromZNode(root.*.child.?);
+    return Self.fromZNode(allocator, root.*.child.?);
 }
 
 fn expectDepEqual(expected: Self, actual: Self) !void {
@@ -309,15 +309,15 @@ test "default repo pkg" {
                 .user = "matt",
                 .name = "something",
                 .ver_str = "^0.1.0",
-                .version = try version.Range.parse("^0.1.0"),
+                .version = try version.Range.parse(testing.allocator, "^0.1.0"),
                 .repository = build_options.default_repo,
             },
         },
-    }, try fromString("matt/something: ^0.1.0"));
+    }, try fromString(testing.allocator, "matt/something: ^0.1.0"));
 }
 
 test "aliased, default repo pkg" {
-    const actual = try fromString(
+    const actual = try fromString(testing.allocator,
         \\something:
         \\  src:
         \\    pkg:
@@ -333,7 +333,7 @@ test "aliased, default repo pkg" {
                 .user = "matt",
                 .name = "blarg",
                 .ver_str = "^0.1.0",
-                .version = try version.Range.parse("^0.1.0"),
+                .version = try version.Range.parse(testing.allocator, "^0.1.0"),
                 .repository = build_options.default_repo,
             },
         },
@@ -355,7 +355,7 @@ test "error if pkg has any other keys" {
 }
 
 test "non-default repo pkg" {
-    const actual = try fromString(
+    const actual = try fromString(testing.allocator,
         \\something:
         \\  src:
         \\    pkg:
@@ -371,7 +371,7 @@ test "non-default repo pkg" {
                 .user = "matt",
                 .name = "something",
                 .ver_str = "^0.1.0",
-                .version = try version.Range.parse("^0.1.0"),
+                .version = try version.Range.parse(testing.allocator, "^0.1.0"),
                 .repository = "example.com",
             },
         },
@@ -381,7 +381,7 @@ test "non-default repo pkg" {
 }
 
 test "aliased, non-default repo pkg" {
-    const actual = try fromString(
+    const actual = try fromString(testing.allocator,
         \\something:
         \\  src:
         \\    pkg:
@@ -398,7 +398,7 @@ test "aliased, non-default repo pkg" {
                 .user = "matt",
                 .name = "real_name",
                 .ver_str = "^0.1.0",
-                .version = try version.Range.parse("^0.1.0"),
+                .version = try version.Range.parse(testing.allocator, "^0.1.0"),
                 .repository = "example.com",
             },
         },
@@ -408,7 +408,7 @@ test "aliased, non-default repo pkg" {
 }
 
 test "github default root" {
-    const actual = try fromString(
+    const actual = try fromString(testing.allocator,
         \\foo:
         \\  src:
         \\    github:
@@ -433,7 +433,7 @@ test "github default root" {
 }
 
 test "github explicit root" {
-    const actual = try fromString(
+    const actual = try fromString(testing.allocator,
         \\foo:
         \\  src:
         \\    github:
@@ -459,7 +459,7 @@ test "github explicit root" {
 }
 
 test "raw default root" {
-    const actual = try fromString(
+    const actual = try fromString(testing.allocator,
         \\foo:
         \\  src:
         \\    url: "https://astrolabe.pm"
@@ -479,7 +479,7 @@ test "raw default root" {
 }
 
 test "raw explicit root" {
-    const actual = try fromString(
+    const actual = try fromString(testing.allocator,
         \\foo:
         \\  src:
         \\    url: "https://astrolabe.pm"
@@ -500,7 +500,7 @@ test "raw explicit root" {
 }
 
 test "local with default root" {
-    const actual = try fromString(
+    const actual = try fromString(testing.allocator,
         \\foo:
         \\  src:
         \\    local: "mypkgs/cool-project"
@@ -520,7 +520,7 @@ test "local with default root" {
 }
 
 test "local with explicit root" {
-    const actual = try fromString(
+    const actual = try fromString(testing.allocator,
         \\foo:
         \\  src:
         \\    local: "mypkgs/cool-project"
@@ -648,7 +648,7 @@ fn expectZzzEqual(expected: *zzz.ZNode, actual: *zzz.ZNode) !void {
 fn serializeTest(from: []const u8, to: []const u8, explicit: bool) !void {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
-    const dep = try fromString(from);
+    const dep = try fromString(testing.allocator, from);
     var actual = zzz.ZTree(1, 1000){};
     var actual_root = try actual.addNode(null, .{ .Null = {} });
     try dep.addToZNode(&arena, &actual, actual_root, explicit);
