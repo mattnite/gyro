@@ -39,7 +39,7 @@ pub const Entry = union(enum) {
         root: []const u8,
     },
 
-    pub fn fromLine(line: []const u8) !Entry {
+    pub fn fromLine(allocator: *Allocator, line: []const u8) !Entry {
         var it = std.mem.tokenize(line, " ");
         const first = it.next() orelse return error.EmptyLine;
 
@@ -51,8 +51,6 @@ pub const Entry = union(enum) {
                     .str = it.next() orelse return error.NoUrl,
                 },
             };
-
-            const url = try uri.parse(ret.url.str);
         } else if (std.mem.eql(u8, first, "local")) {
             ret = Entry{
                 .local = .{
@@ -77,7 +75,7 @@ pub const Entry = union(enum) {
                     .repository = if (std.mem.eql(u8, repo, "default")) build_options.default_repo else repo,
                     .user = it.next() orelse return error.NoUser,
                     .name = it.next() orelse return error.NoName,
-                    .version = try version.Semver.parse(it.next() orelse return error.NoVersion),
+                    .version = try version.Semver.parse(allocator, it.next() orelse return error.NoVersion),
                 },
             };
         } else return error.UnknownEntryType;
@@ -88,7 +86,7 @@ pub const Entry = union(enum) {
     pub fn getDeps(self: Entry, arena: *std.heap.ArenaAllocator) ![]Dependency {
         try self.fetch(arena.child_allocator);
         const file = switch (self) {
-            .pkg => |pkg| blk: {
+            .pkg => blk: {
                 const package_path = try self.packagePath(arena.child_allocator);
                 defer arena.child_allocator.free(package_path);
 
@@ -136,7 +134,7 @@ pub const Entry = union(enum) {
             while (it.next()) |node|
                 try deps.append(
                     &arena.allocator,
-                    try Dependency.fromZNode(node),
+                    try Dependency.fromZNode(arena.child_allocator, node),
                 );
         }
 
@@ -157,7 +155,7 @@ pub const Entry = union(enum) {
                             if (zFindChild(pkg_node, "deps")) |deps_node| {
                                 var it = ZChildIterator.init(deps_node);
                                 while (it.next()) |dep_node| {
-                                    const dep = try Dependency.fromZNode(dep_node);
+                                    const dep = try Dependency.fromZNode(arena.child_allocator, dep_node);
                                     try deps.append(&arena.allocator, dep);
                                 }
                             }
@@ -325,8 +323,8 @@ pub const Entry = union(enum) {
         switch (self) {
             .pkg => |pkg| try fifo.writer().print("{s}-{s}-{}-{s}", .{ pkg.name, pkg.user, pkg.version, &ret }),
             .github => |gh| try fifo.writer().print("{s}-{s}-{s}", .{ gh.repo, gh.user, gh.commit }),
-            .url => |url| try fifo.writer().print("{s}", .{&ret}),
-            .local => |local| try fifo.writer().print("{s}", .{&ret}),
+            .url => try fifo.writer().print("{s}", .{&ret}),
+            .local => try fifo.writer().print("{s}", .{&ret}),
         }
 
         return std.fs.path.join(allocator, &[_][]const u8{
@@ -411,7 +409,7 @@ fn fromReader(allocator: *Allocator, reader: anytype) !Self {
     var it = std.mem.tokenize(ret.text, "\n");
     while (it.next()) |line| {
         const entry = try ret.arena.allocator.create(Entry);
-        entry.* = try Entry.fromLine(line);
+        entry.* = try Entry.fromLine(allocator, line);
         try ret.entries.append(entry);
     }
 
@@ -473,7 +471,7 @@ fn expectEntryEqual(expected: Entry, actual: Entry) !void {
 }
 
 test "entry from pkg: default repository" {
-    const actual = try Entry.fromLine("pkg default matt something 0.1.0");
+    const actual = try Entry.fromLine(testing.allocator, "pkg default matt something 0.1.0");
     const expected = Entry{
         .pkg = .{
             .user = "matt",
@@ -491,7 +489,7 @@ test "entry from pkg: default repository" {
 }
 
 test "entry from pkg: non-default repository" {
-    const actual = try Entry.fromLine("pkg my_own_repository matt foo 0.2.0");
+    const actual = try Entry.fromLine(testing.allocator, "pkg my_own_repository matt foo 0.2.0");
     const expected = Entry{
         .pkg = .{
             .user = "matt",
@@ -509,7 +507,7 @@ test "entry from pkg: non-default repository" {
 }
 
 test "entry from github" {
-    var actual = try Entry.fromLine("github my_user my_repo master src/foo.zig 30d004329543603f76bd9d7daca054878a04fdb5");
+    var actual = try Entry.fromLine(testing.allocator, "github my_user my_repo master src/foo.zig 30d004329543603f76bd9d7daca054878a04fdb5");
     var expected = Entry{
         .github = .{
             .user = "my_user",
@@ -524,7 +522,7 @@ test "entry from github" {
 }
 
 test "entry from url" {
-    const actual = try Entry.fromLine("url src/foo.zig https://example.com/something.tar.gz");
+    const actual = try Entry.fromLine(testing.allocator, "url src/foo.zig https://example.com/something.tar.gz");
     const expected = Entry{
         .url = .{
             .root = "src/foo.zig",
@@ -536,7 +534,7 @@ test "entry from url" {
 }
 
 test "local entry" {
-    const actual = try Entry.fromLine("local src/foo.zig mypkgs/cool-project");
+    const actual = try Entry.fromLine(testing.allocator, "local src/foo.zig mypkgs/cool-project");
     const expected = Entry{
         .local = .{
             .root = "src/foo.zig",

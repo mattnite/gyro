@@ -36,9 +36,6 @@ pub fn getLatest(
     defer headers.deinit();
 
     const link = try uri.parse(url);
-    var ip_buf: [80]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&ip_buf);
-
     try headers.set("Accept", "*/*");
     try headers.set("User-Agent", "gyro");
     try headers.set("Host", link.host orelse return error.NoHost);
@@ -67,7 +64,7 @@ pub fn getLatest(
 
             return error.Explained;
         },
-        else => |code| {
+        else => {
             const body = try req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
             defer allocator.free(body);
 
@@ -79,7 +76,7 @@ pub fn getLatest(
     }
 
     var buf: [10]u8 = undefined;
-    return version.Semver.parse(buf[0..try req.reader().readAll(&buf)]);
+    return version.Semver.parse(allocator, buf[0..try req.reader().readAll(&buf)]);
 }
 
 pub fn getHeadCommit(

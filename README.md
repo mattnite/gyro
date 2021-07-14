@@ -86,9 +86,7 @@ git clone --recursive https://github.com/mattnite/gyro.git
 zig build -Dbootstrap
 ```
 
-The `-Dbootstrap` is required because gyro uses git submodules to do the
-initial build.  After that one can build gyro with gyro, this will pull
-packages from the package index instead of using git submodules.
+To have gyro pull packages from astrolabe and build itself:
 
 ```
 gyro build

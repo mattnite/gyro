@@ -95,7 +95,7 @@ pub fn fromText(allocator: *Allocator, text: []const u8) !*Self {
                 return error.Explained;
             };
 
-            const ver = version.Semver.parse(ver_str) catch |err| {
+            const ver = version.Semver.parse(allocator, ver_str) catch |err| {
                 std.log.err("failed to parse version string '{s}', must be <major>.<minor>.<patch>: {}", .{ ver_str, err });
                 return error.Explained;
             };
@@ -121,7 +121,7 @@ pub fn fromText(allocator: *Allocator, text: []const u8) !*Self {
     if (zFindChild(root, "deps")) |deps| {
         var it = ZChildIterator.init(deps);
         while (it.next()) |dep_node| {
-            const dep = try Dependency.fromZNode(dep_node);
+            const dep = try Dependency.fromZNode(allocator, dep_node);
             for (ret.deps.items) |other| {
                 if (std.mem.eql(u8, dep.alias, other.alias)) {
                     std.log.err("'{s}' alias in 'deps' is declared multiple times", .{dep.alias});
@@ -136,7 +136,7 @@ pub fn fromText(allocator: *Allocator, text: []const u8) !*Self {
     if (zFindChild(root, "build_deps")) |build_deps| {
         var it = ZChildIterator.init(build_deps);
         while (it.next()) |dep_node| {
-            const dep = try Dependency.fromZNode(dep_node);
+            const dep = try Dependency.fromZNode(allocator, dep_node);
             for (ret.build_deps.items) |other| {
                 if (std.mem.eql(u8, dep.alias, other.alias)) {
                     std.log.err("'{s}' alias in 'build_deps' is declared multiple times", .{dep.alias});

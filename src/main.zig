@@ -67,8 +67,8 @@ fn runCommands(allocator: *std.mem.Allocator) !void {
     inline for (all_commands) |cmd| {
         if (std.mem.eql(u8, command_name, cmd.name)) {
             var args: cmd.parent.Args = if (!cmd.passthrough) blk: {
-                var diag: clap.Diagnostic = undefined;
-                var ret = cmd.parent.Args.parse(allocator, &iter, &diag) catch |err| {
+                var diag = clap.Diagnostic{};
+                var ret = cmd.parent.Args.parse(&iter, .{ .diagnostic = &diag }) catch |err| {
                     try diag.report(stderr, err);
                     try help(cmd);
 
@@ -117,14 +117,14 @@ pub const commands = struct {
             var cmd = completion.Command.init("init", "Initialize a gyro.zzz with a link to a github repo", init);
 
             cmd.addFlag('h', "help", "Display help");
-            cmd.addPositional("repo", ?completion.Param.Repository, .One, "The repository to initialize this project with");
+            cmd.addPositional("repo", ?completion.Param.Repository, .one, "The repository to initialize this project with");
 
             cmd.done();
             break :blk cmd;
         };
 
         pub const Args = info.ClapComptime();
-        pub fn run(allocator: *std.mem.Allocator, args: *Args, iterator: *clap.args.OsIterator) !void {
+        pub fn run(allocator: *std.mem.Allocator, args: *Args, _: *clap.args.OsIterator) !void {
             const num = args.positionals().len;
             if (num > 1) {
                 std.log.err("that's too many args, please just give me one in the form of a link to your github repo or just '<user>/<repo>'", .{});
@@ -146,14 +146,14 @@ pub const commands = struct {
             cmd.addFlag('b', "build-dep", "Add this as a build dependency");
             cmd.addOption('r', "root", "file", completion.Param.File, "Set root path with respect to the project root, default is 'src/main.zig'");
             cmd.addOption('t', "to", "package", completion.Param.Package, "Add this as a scoped dependency to a specific exported package");
-            cmd.addPositional("package", completion.Param.Package, .Many, "The package(s) to add");
+            cmd.addPositional("package", completion.Param.Package, .many, "The package(s) to add");
 
             cmd.done();
             break :blk cmd;
         };
 
         pub const Args = info.ClapComptime();
-        pub fn run(allocator: *std.mem.Allocator, args: *Args, iterator: *clap.args.OsIterator) !void {
+        pub fn run(allocator: *std.mem.Allocator, args: *Args, _: *clap.args.OsIterator) !void {
             const src_str = args.option("--src") orelse "pkg";
             const src_tag = inline for (std.meta.fields(Dependency.SourceType)) |field| {
                 if (std.mem.eql(u8, src_str, field.name))
@@ -182,14 +182,14 @@ pub const commands = struct {
             cmd.addFlag('h', "help", "Display help");
             cmd.addFlag('b', "build-dep", "Remove this as a build dependency");
             cmd.addOption('f', "from", "package", completion.Param.Package, "Remove this as a scoped dependency to a specific exported package");
-            cmd.addPositional("package", completion.Param.Package, .Many, "The package(s) to remove");
+            cmd.addPositional("package", completion.Param.Package, .many, "The package(s) to remove");
 
             cmd.done();
             break :blk cmd;
         };
 
         pub const Args = info.ClapComptime();
-        pub fn run(allocator: *std.mem.Allocator, args: *Args, iterator: *clap.args.OsIterator) !void {
+        pub fn run(allocator: *std.mem.Allocator, args: *Args, _: *clap.args.OsIterator) !void {
             try cmds.rm(allocator, args.flag("--build-dep"), args.option("--from"), args.positionals());
         }
     };
@@ -199,7 +199,7 @@ pub const commands = struct {
             var cmd = completion.Command.init("build", "Wrapper around 'zig build', automatically downloads dependencies", build);
 
             cmd.addFlag('h', "help", "Display help");
-            cmd.addPositional("args", void, .Many, "arguments to pass to zig build");
+            cmd.addPositional("args", void, .many, "arguments to pass to zig build");
             cmd.passthrough = true;
 
             cmd.done();
@@ -207,7 +207,7 @@ pub const commands = struct {
         };
 
         pub const Args = info.ClapComptime();
-        pub fn run(allocator: *std.mem.Allocator, args: *Args, iterator: *clap.args.OsIterator) !void {
+        pub fn run(allocator: *std.mem.Allocator, _: *Args, iterator: *clap.args.OsIterator) !void {
             try cmds.build(allocator, iterator);
         }
     };
@@ -223,7 +223,8 @@ pub const commands = struct {
         };
 
         pub const Args = info.ClapComptime();
-        pub fn run(allocator: *std.mem.Allocator, args: *Args, iterator: *clap.args.OsIterator) !void {
+        pub fn run(allocator: *std.mem.Allocator, _: *Args, iterator: *clap.args.OsIterator) !void {
+            _ = iterator;
             try cmds.fetch(allocator);
         }
     };
@@ -234,14 +235,14 @@ pub const commands = struct {
 
             cmd.addFlag('h', "help", "Display help");
             cmd.addOption('i', "in", "package", completion.Param.Package, "Update a scoped dependency");
-            cmd.addPositional("package", ?completion.Param.Package, .Many, "The package(s) to update");
+            cmd.addPositional("package", ?completion.Param.Package, .many, "The package(s) to update");
 
             cmd.done();
             break :blk cmd;
         };
 
         pub const Args = info.ClapComptime();
-        pub fn run(allocator: *std.mem.Allocator, args: *Args, iterator: *clap.args.OsIterator) !void {
+        pub fn run(allocator: *std.mem.Allocator, args: *Args, _: *clap.args.OsIterator) !void {
             try cmds.update(allocator, args.option("--in"), args.positionals());
         }
     };
@@ -251,14 +252,14 @@ pub const commands = struct {
             var cmd = completion.Command.init("publish", "Publish package to astrolabe.pm, requires github account", publish);
 
             cmd.addFlag('h', "help", "Display help");
-            cmd.addPositional("package", ?completion.Param.Package, .One, "The package to publish");
+            cmd.addPositional("package", ?completion.Param.Package, .one, "The package to publish");
 
             cmd.done();
             break :blk cmd;
         };
 
         pub const Args = info.ClapComptime();
-        pub fn run(allocator: *std.mem.Allocator, args: *Args, iterator: *clap.args.OsIterator) !void {
+        pub fn run(allocator: *std.mem.Allocator, args: *Args, _: *clap.args.OsIterator) !void {
             try cmds.publish(allocator, if (args.positionals().len > 0) args.positionals()[0] else null);
         }
     };
@@ -269,14 +270,14 @@ pub const commands = struct {
 
             cmd.addFlag('h', "help", "Display help");
             cmd.addOption('o', "output-dir", "dir", completion.Param.Directory, "Set package output directory");
-            cmd.addPositional("package", ?completion.Param.Package, .One, "The package(s) to package");
+            cmd.addPositional("package", ?completion.Param.Package, .one, "The package(s) to package");
 
             cmd.done();
             break :blk cmd;
         };
 
         pub const Args = info.ClapComptime();
-        pub fn run(allocator: *std.mem.Allocator, args: *Args, iterator: *clap.args.OsIterator) !void {
+        pub fn run(allocator: *std.mem.Allocator, args: *Args, _: *clap.args.OsIterator) !void {
             try cmds.package(allocator, args.option("--output-dir"), args.positionals());
         }
     };
@@ -297,7 +298,7 @@ pub const commands = struct {
         };
 
         pub const Args = info.ClapComptime();
-        pub fn run(allocator: *std.mem.Allocator, args: *Args, iterator: *clap.args.OsIterator) !void {
+        pub fn run(allocator: *std.mem.Allocator, args: *Args, _: *clap.args.OsIterator) !void {
             try cmds.redirect(allocator, args.flag("--check"), args.flag("--clean"), args.flag("--build-dep"), args.option("--alias"), args.option("--path"));
         }
     };
@@ -308,7 +309,7 @@ pub const commands = struct {
 
             cmd.addFlag('h', "help", "Display help");
             cmd.addOption('s', "shell", "shell", completion.shells.List, "The shell to install completions for. One of zsh");
-            cmd.addPositional("dir", completion.Param.Directory, .One, "Where to install the completion");
+            cmd.addPositional("dir", completion.Param.Directory, .one, "Where to install the completion");
 
             cmd.done();
 
@@ -316,7 +317,7 @@ pub const commands = struct {
         };
 
         pub const Args = info.ClapComptime();
-        pub fn run(allocator: *std.mem.Allocator, args: *Args, iterator: *clap.args.OsIterator) !void {
+        pub fn run(allocator: *std.mem.Allocator, args: *Args, _: *clap.args.OsIterator) !void {
             const positionals = args.positionals();
 
             if (positionals.len < 1) {

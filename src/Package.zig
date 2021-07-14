@@ -72,7 +72,7 @@ pub fn fillFromZNode(
     if (zFindChild(node, "deps")) |deps| {
         var it = ZChildIterator.init(deps);
         while (it.next()) |dep_node| {
-            const dep = try Dependency.fromZNode(dep_node);
+            const dep = try Dependency.fromZNode(self.arena.child_allocator, dep_node);
             for (self.deps.items) |other| {
                 if (std.mem.eql(u8, dep.alias, other.alias)) {
                     std.log.err("'{s}' alias in 'deps' for '{s}' is declared multiple times", .{ dep.alias, self.name });
