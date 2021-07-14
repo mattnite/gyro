@@ -26,7 +26,7 @@ jobs:
     - run: echo $(pwd)/zig-out/bin >> $GITHUB_PATH
 
     - name: Bootstrap build
-      run: zig build test
+      run: zig build test -Dbootstrap
 
     - name: Bootstrap build 32-bit
       run: zig build -Dtarget=i386-linux-gnu --prefix tmp
