@@ -4,6 +4,6 @@ deps:
   mattnite/zzz: ^0.0.0
   mattnite/glob: ^0.0.0
   mattnite/tar: ^0.0.0
-  mattnite/version: ^0.0.0
+  mattnite/version: ^0.1.0
   mattnite/uri: ^0.0.0
   mattnite/known-folders: ^0.0.0

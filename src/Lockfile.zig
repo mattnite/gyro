@@ -39,7 +39,7 @@ pub const Entry = union(enum) {
         root: []const u8,
     },
 
-    pub fn fromLine(line: []const u8) !Entry {
+    pub fn fromLine(allocator: *Allocator, line: []const u8) !Entry {
         var it = std.mem.tokenize(line, " ");
         const first = it.next() orelse return error.EmptyLine;
 
@@ -75,7 +75,7 @@ pub const Entry = union(enum) {
                     .repository = if (std.mem.eql(u8, repo, "default")) build_options.default_repo else repo,
                     .user = it.next() orelse return error.NoUser,
                     .name = it.next() orelse return error.NoName,
-                    .version = try version.Semver.parse(it.next() orelse return error.NoVersion),
+                    .version = try version.Semver.parse(allocator, it.next() orelse return error.NoVersion),
                 },
             };
         } else return error.UnknownEntryType;
@@ -134,7 +134,7 @@ pub const Entry = union(enum) {
             while (it.next()) |node|
                 try deps.append(
                     &arena.allocator,
-                    try Dependency.fromZNode(node),
+                    try Dependency.fromZNode(arena.child_allocator, node),
                 );
         }
 
@@ -155,7 +155,7 @@ pub const Entry = union(enum) {
                             if (zFindChild(pkg_node, "deps")) |deps_node| {
                                 var it = ZChildIterator.init(deps_node);
                                 while (it.next()) |dep_node| {
-                                    const dep = try Dependency.fromZNode(dep_node);
+                                    const dep = try Dependency.fromZNode(arena.child_allocator, dep_node);
                                     try deps.append(&arena.allocator, dep);
                                 }
                             }
@@ -409,7 +409,7 @@ fn fromReader(allocator: *Allocator, reader: anytype) !Self {
     var it = std.mem.tokenize(ret.text, "\n");
     while (it.next()) |line| {
         const entry = try ret.arena.allocator.create(Entry);
-        entry.* = try Entry.fromLine(line);
+        entry.* = try Entry.fromLine(allocator, line);
         try ret.entries.append(entry);
     }
 

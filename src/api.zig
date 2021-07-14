@@ -76,7 +76,7 @@ pub fn getLatest(
     }
 
     var buf: [10]u8 = undefined;
-    return version.Semver.parse(buf[0..try req.reader().readAll(&buf)]);
+    return version.Semver.parse(allocator, buf[0..try req.reader().readAll(&buf)]);
 }
 
 pub fn getHeadCommit(

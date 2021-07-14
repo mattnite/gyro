@@ -168,7 +168,7 @@ pub fn resolve(
 ///   integrity:
 ///     <type>: <integrity str>
 /// ```
-pub fn fromZNode(node: *zzz.ZNode) !Self {
+pub fn fromZNode(allocator: *Allocator, node: *zzz.ZNode) !Self {
     if (node.*.child == null) return error.NoChildren;
 
     // check if only one child node and that it has no children
@@ -185,7 +185,7 @@ pub fn fromZNode(node: *zzz.ZNode) !Self {
                     .user = info.user,
                     .name = info.repo,
                     .ver_str = ver_str,
-                    .version = try version.Range.parse(ver_str),
+                    .version = try version.Range.parse(allocator, ver_str),
                     .repository = build_options.default_repo,
                 },
             },
@@ -218,7 +218,7 @@ pub fn fromZNode(node: *zzz.ZNode) !Self {
                     .user = (try zFindString(child, "user")) orelse return error.MissingUser,
                     .name = (try zFindString(child, "name")) orelse alias,
                     .ver_str = (try zFindString(child, "version")) orelse return error.MissingVersion,
-                    .version = try version.Range.parse((try zFindString(child, "version")) orelse return error.MissingVersion),
+                    .version = try version.Range.parse(allocator, (try zFindString(child, "version")) orelse return error.MissingVersion),
                     .repository = (try zFindString(child, "repository")) orelse build_options.default_repo,
                 },
             },
