@@ -27,7 +27,7 @@ jobs:
         fetch-depth: 0
 
     - name: Setup Zig
-      uses: goto-bus-stop/setup-zig@v1.3.0
+      uses: goto-bus-stop/setup-zig@v1
       with:
         version: master
 
@@ -37,7 +37,7 @@ jobs:
       run: zig build test -Dbootstrap
 
     - name: Bootstrap build 32-bit
-      run: zig build -Dtarget=i386-windows-gnu --prefix tmp
+      run: zig build test -Dbootstrap -Dtarget=i386-windows-gnu --prefix tmp
 
-    - name: Self-hosted build
-      run: gyro build test --prefix tmp
+    #- name: Self-hosted build
+    #  run: gyro build test --prefix tmp

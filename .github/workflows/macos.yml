@@ -19,7 +19,7 @@ jobs:
         fetch-depth: 0
 
     - name: Setup Zig
-      uses: goto-bus-stop/setup-zig@v1.3.0
+      uses: goto-bus-stop/setup-zig@v1
       with:
         version: master
 
@@ -28,5 +28,5 @@ jobs:
     - name: Bootstrap build
       run: zig build test -Dbootstrap
 
-    - name: Self-hosted build
-      run: gyro build test
+    #- name: Self-hosted build
+    #  run: gyro build test
