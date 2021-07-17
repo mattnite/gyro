@@ -39,5 +39,5 @@ jobs:
     - name: Bootstrap build 32-bit
       run: zig build test -Dbootstrap -Dtarget=i386-windows-gnu --prefix tmp
 
-    - name: Self-hosted build
-      run: gyro build test --prefix tmp
+    #- name: Self-hosted build
+    #  run: gyro build test --prefix tmp

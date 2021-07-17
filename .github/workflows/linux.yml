@@ -23,17 +23,11 @@ jobs:
       with:
         version: master
 
-    - run: zig version
-
     - name: Bootstrap build
       run: zig build test -Dbootstrap --prefix zig-out
-
-    - run: ls
 
     - name: Bootstrap build 32-bit
       run: zig build test -Dbootstrap -Dtarget=i386-linux-gnu --prefix tmp
 
-    - run: ls
-
-    - name: Self Hosted
-      run: zig-out/bin/gyro build test
+    #- name: Self Hosted
+    #  run: zig-out/bin/gyro build test
