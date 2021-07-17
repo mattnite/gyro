@@ -23,7 +23,9 @@ jobs:
       with:
         version: master
 
-    - run: echo $(pwd)/zig-out/bin >> $GITHUB_PATH
+    - run: "echo $(pwd)/zig-out/bin" >> $GITHUB_PATH
+    - run: ls
+    - run: find zig-out
 
     - name: Bootstrap build
       run: zig build test -Dbootstrap
