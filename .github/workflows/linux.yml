@@ -23,6 +23,8 @@ jobs:
       with:
         version: master
 
+    - name: zig version
+
     - run: echo $(pwd)/zig-out/bin >> $GITHUB_PATH
 
     - name: Bootstrap build
