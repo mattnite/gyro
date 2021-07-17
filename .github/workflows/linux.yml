@@ -31,8 +31,8 @@ jobs:
     - name: Bootstrap build 32-bit
       run: zig build test -Dbootstrap -Dtarget=i386-linux-gnu --prefix tmp
 
-    - run: ls
-    - run: find zig-out
+    - run: ls zig-cache
+    - run: find zig-cache
 
     - name: Self Hosted
       run: gyro build test
