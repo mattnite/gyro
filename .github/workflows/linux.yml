@@ -25,16 +25,15 @@ jobs:
 
     - run: zig version
 
-    - run: echo $(pwd)/zig-out/bin >> $GITHUB_PATH
-
     - name: Bootstrap build
-      run: zig build test -Dbootstrap --prefix zig-out
+      run: zig build test -Dbootstrap
+
+    - run: ls
 
     - name: Bootstrap build 32-bit
       run: zig build test -Dbootstrap -Dtarget=i386-linux-gnu --prefix tmp
 
-    - run: ls zig-cache
-    - run: find zig-cache
+    - run: ls
 
     - name: Self Hosted
       run: gyro build test
