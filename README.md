@@ -501,7 +501,7 @@ file to your `.gitignore` for libraries.
 
 This is the generated file that's imported by `build.zig`, it can be imported
 with `@import("deps.zig")` or `@import("gyro")`. Unless you are vendoring your
-dependencies, this should should be added to `.gitignore`.
+dependencies, this should be added to `.gitignore`.
 
 ### .gyro/
 
