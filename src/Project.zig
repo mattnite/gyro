@@ -111,7 +111,6 @@ pub fn fromText(allocator: *Allocator, text: []const u8) !*Self {
                 name,
                 ver,
                 ret,
-                ret.build_deps.items,
             );
 
             try res.value_ptr.fillFromZNode(node);
@@ -167,7 +166,7 @@ pub fn toFile(self: *Self, file: std.fs.File) !void {
     if (self.packages.count() > 0) {
         var pkgs = try tree.addNode(root, .{ .String = "pkgs" });
         var it = self.packages.iterator();
-        while (it.next()) |entry| _ = try entry.value_ptr.addToZNode(&arena, &tree, pkgs, false);
+        while (it.next()) |entry| _ = try entry.value_ptr.addToZNode(&arena, &tree, pkgs);
     }
 
     if (self.deps.items.len > 0) {

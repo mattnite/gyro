@@ -145,7 +145,6 @@ pub const commands = struct {
             cmd.addOption('a', "alias", "package", completion.Param.Package, "Override what string the package is imported with");
             cmd.addFlag('b', "build-dep", "Add this as a build dependency");
             cmd.addOption('r', "root", "file", completion.Param.File, "Set root path with respect to the project root, default is 'src/main.zig'");
-            cmd.addOption('t', "to", "package", completion.Param.Package, "Add this as a scoped dependency to a specific exported package");
             cmd.addPositional("package", completion.Param.Package, .many, "The package(s) to add");
 
             cmd.done();
@@ -169,7 +168,6 @@ pub const commands = struct {
                 args.option("--alias"),
                 args.flag("--build-dep"),
                 args.option("--root"),
-                args.option("--to"),
                 args.positionals(),
             );
         }
@@ -181,7 +179,6 @@ pub const commands = struct {
 
             cmd.addFlag('h', "help", "Display help");
             cmd.addFlag('b', "build-dep", "Remove this as a build dependency");
-            cmd.addOption('f', "from", "package", completion.Param.Package, "Remove this as a scoped dependency to a specific exported package");
             cmd.addPositional("package", completion.Param.Package, .many, "The package(s) to remove");
 
             cmd.done();
@@ -190,7 +187,7 @@ pub const commands = struct {
 
         pub const Args = info.ClapComptime();
         pub fn run(allocator: *std.mem.Allocator, args: *Args, _: *clap.args.OsIterator) !void {
-            try cmds.rm(allocator, args.flag("--build-dep"), args.option("--from"), args.positionals());
+            try cmds.rm(allocator, args.flag("--build-dep"), args.positionals());
         }
     };
 

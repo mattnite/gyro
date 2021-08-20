@@ -83,18 +83,8 @@ If you'd like to build from source, the only thing you need is the Zig compiler:
 
 ```
 git clone --recursive https://github.com/mattnite/gyro.git
-zig build -Dbootstrap
+zig build -Drelease-safe
 ```
-
-To have gyro pull packages from astrolabe and build itself:
-
-```
-gyro build
-```
-
-(Note: you might need to move the original gyro binary from the `zig-cache`
-first). This command wraps `zig build`, so you can pass arguements like you
-normally would, like `gyro build test` to run your unit tests.
 
 ## How tos
 

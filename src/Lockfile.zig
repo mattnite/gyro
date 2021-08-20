@@ -14,7 +14,7 @@ const testing = std.testing;
 
 arena: std.heap.ArenaAllocator,
 text: []const u8,
-entries: std.ArrayList(*Entry),
+entries: std.ArrayListUnmanaged(Entry),
 
 pub const Entry = union(enum) {
     pkg: struct {
@@ -39,8 +39,26 @@ pub const Entry = union(enum) {
         root: []const u8,
     },
 
+    pub fn format(
+        entry: Entry,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) @TypeOf(writer).Error!void {
+        _ = fmt;
+        _ = options;
+
+        switch (entry) {
+            .pkg => |pkg| try writer.print("{s}/{s}/{s}: {}", .{ pkg.repository, pkg.user, pkg.name, pkg.version }),
+            .github => |gh| try writer.print("github.com/{s}/{s}/{s}: {s}: {s}", .{ gh.user, gh.repo, gh.root, gh.ref, gh.commit }),
+            .url => |url| try writer.print("{s}/{s}", .{ url.str, url.root }),
+            .local => |local| try writer.print("{s}/{s}", .{ local.path, local.root }),
+        }
+    }
+
     pub fn fromLine(allocator: *Allocator, line: []const u8) !Entry {
-        var it = std.mem.tokenize(line, " ");
+        _ = allocator;
+        var it = std.mem.tokenize(u8, line, " ");
         const first = it.next() orelse return error.EmptyLine;
 
         var ret: Entry = undefined;
@@ -66,16 +84,6 @@ pub const Entry = union(enum) {
                     .ref = it.next() orelse return error.NoRef,
                     .root = it.next() orelse return error.NoRoot,
                     .commit = it.next() orelse return error.NoCommit,
-                },
-            };
-        } else if (std.mem.eql(u8, first, "pkg")) {
-            const repo = it.next() orelse return error.NoRepo;
-            ret = Entry{
-                .pkg = .{
-                    .repository = if (std.mem.eql(u8, repo, "default")) build_options.default_repo else repo,
-                    .user = it.next() orelse return error.NoUser,
-                    .name = it.next() orelse return error.NoName,
-                    .version = try version.Semver.parse(allocator, it.next() orelse return error.NoVersion),
                 },
             };
         } else return error.UnknownEntryType;
@@ -402,16 +410,13 @@ pub const Entry = union(enum) {
 fn fromReader(allocator: *Allocator, reader: anytype) !Self {
     var ret = Self{
         .arena = std.heap.ArenaAllocator.init(allocator),
-        .entries = std.ArrayList(*Entry).init(allocator),
+        .entries = std.ArrayListUnmanaged(Entry){},
         .text = try reader.readAllAlloc(allocator, std.math.maxInt(usize)),
     };
 
-    var it = std.mem.tokenize(ret.text, "\n");
-    while (it.next()) |line| {
-        const entry = try ret.arena.allocator.create(Entry);
-        entry.* = try Entry.fromLine(allocator, line);
-        try ret.entries.append(entry);
-    }
+    var it = std.mem.tokenize(u8, ret.text, "\n");
+    while (it.next()) |line|
+        try ret.entries.append(allocator, try Entry.fromLine(allocator, line));
 
     return ret;
 }
@@ -421,8 +426,8 @@ pub fn fromFile(allocator: *Allocator, file: std.fs.File) !Self {
 }
 
 pub fn deinit(self: *Self) void {
-    self.entries.allocator.free(self.text);
-    self.entries.deinit();
+    self.arena.child_allocator.free(self.text);
+    self.entries.deinit(self.arena.child_allocator);
     self.arena.deinit();
 }
 
@@ -470,42 +475,6 @@ fn expectEntryEqual(expected: Entry, actual: Entry) !void {
     }
 }
 
-test "entry from pkg: default repository" {
-    const actual = try Entry.fromLine(testing.allocator, "pkg default matt something 0.1.0");
-    const expected = Entry{
-        .pkg = .{
-            .user = "matt",
-            .name = "something",
-            .repository = build_options.default_repo,
-            .version = version.Semver{
-                .major = 0,
-                .minor = 1,
-                .patch = 0,
-            },
-        },
-    };
-
-    try expectEntryEqual(expected, actual);
-}
-
-test "entry from pkg: non-default repository" {
-    const actual = try Entry.fromLine(testing.allocator, "pkg my_own_repository matt foo 0.2.0");
-    const expected = Entry{
-        .pkg = .{
-            .user = "matt",
-            .name = "foo",
-            .repository = "my_own_repository",
-            .version = version.Semver{
-                .major = 0,
-                .minor = 2,
-                .patch = 0,
-            },
-        },
-    };
-
-    try expectEntryEqual(expected, actual);
-}
-
 test "entry from github" {
     var actual = try Entry.fromLine(testing.allocator, "github my_user my_repo master src/foo.zig 30d004329543603f76bd9d7daca054878a04fdb5");
     var expected = Entry{
@@ -547,8 +516,6 @@ test "local entry" {
 
 test "lockfile with example of all" {
     const text =
-        \\pkg default matt something 0.1.0
-        \\pkg my_repository matt foo 0.4.5
         \\github my_user my_repo master src/foo.zig 30d004329543603f76bd9d7daca054878a04fdb5
         \\url src/foo.zig https://example.com/something.tar.gz
         \\local src/foo.zig mypkgs/cool-project
@@ -558,30 +525,6 @@ test "lockfile with example of all" {
     defer actual.deinit();
 
     var expected = [_]Entry{
-        .{
-            .pkg = .{
-                .user = "matt",
-                .name = "something",
-                .repository = build_options.default_repo,
-                .version = version.Semver{
-                    .major = 0,
-                    .minor = 1,
-                    .patch = 0,
-                },
-            },
-        },
-        .{
-            .pkg = .{
-                .user = "matt",
-                .name = "foo",
-                .repository = "my_repository",
-                .version = version.Semver{
-                    .major = 0,
-                    .minor = 4,
-                    .patch = 5,
-                },
-            },
-        },
         .{
             .github = .{
                 .user = "my_user",
@@ -606,6 +549,6 @@ test "lockfile with example of all" {
     };
 
     for (expected) |exp, i| {
-        try expectEntryEqual(exp, actual.entries.items[i].*);
+        try expectEntryEqual(exp, actual.entries.items[i]);
     }
 }
