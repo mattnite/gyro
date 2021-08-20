@@ -65,7 +65,7 @@ pub fn parseUserRepo(str: []const u8) !UserRepoResult {
         return error.Explained;
     }
 
-    var it = std.mem.tokenize(str, "/");
+    var it = std.mem.tokenize(u8, str, "/");
     return UserRepoResult{
         .user = it.next().?,
         .repo = it.next().?,

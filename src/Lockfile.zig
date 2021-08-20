@@ -40,7 +40,7 @@ pub const Entry = union(enum) {
     },
 
     pub fn fromLine(allocator: *Allocator, line: []const u8) !Entry {
-        var it = std.mem.tokenize(line, " ");
+        var it = std.mem.tokenize(u8, line, " ");
         const first = it.next() orelse return error.EmptyLine;
 
         var ret: Entry = undefined;
@@ -406,7 +406,7 @@ fn fromReader(allocator: *Allocator, reader: anytype) !Self {
         .text = try reader.readAllAlloc(allocator, std.math.maxInt(usize)),
     };
 
-    var it = std.mem.tokenize(ret.text, "\n");
+    var it = std.mem.tokenize(u8, ret.text, "\n");
     while (it.next()) |line| {
         const entry = try ret.arena.allocator.create(Entry);
         entry.* = try Entry.fromLine(allocator, line);

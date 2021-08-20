@@ -1,6 +1,5 @@
 usingnamespace std.build;
 const std = @import("std");
-const pkgs = @import("deps.zig").pkgs;
 
 const clap = .{
     .name = "clap",
@@ -81,7 +80,6 @@ pub fn build(b: *Builder) !void {
     const target = b.standardTargetOptions(.{});
     const mode = b.standardReleaseOptions();
 
-    const bootstrap = b.option(bool, "bootstrap", "bootstrapping with just the zig compiler") orelse false;
     const repository = b.option([]const u8, "repo", "default package index (default is astrolabe.pm)");
 
     const gyro = b.addExecutable("gyro", "src/main.zig");
@@ -89,12 +87,7 @@ pub fn build(b: *Builder) !void {
     gyro.setBuildMode(mode);
     gyro.addBuildOption([]const u8, "default_repo", repository orelse "astrolabe.pm");
     gyro.install();
-
-    if (bootstrap) {
-        addAllPkgs(gyro);
-    } else {
-        pkgs.addAllTo(gyro);
-    }
+    addAllPkgs(gyro);
 
     const tests = b.addTest("src/main.zig");
     tests.setBuildMode(mode);
