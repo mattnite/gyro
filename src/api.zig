@@ -6,7 +6,7 @@ const zzz = @import("zzz");
 const uri = @import("uri");
 const Dependency = @import("Dependency.zig");
 const Package = @import("Package.zig");
-usingnamespace @import("common.zig");
+const utils = @import("utils.zig");
 
 const Allocator = std.mem.Allocator;
 

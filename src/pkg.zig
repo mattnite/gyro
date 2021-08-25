@@ -38,9 +38,9 @@ pub const ResolutionEntry = struct {
         });
     }
 };
-pub const FetchError = error{
-    Todo,
-} || @typeInfo(@typeInfo(@TypeOf(api.getLatest)).Fn.return_type.?).ErrorUnion.error_set || @typeInfo(@typeInfo(@TypeOf(fetch)).Fn.return_type.?).ErrorUnion.error_set;
+pub const FetchError = @typeInfo(@typeInfo(@TypeOf(api.getLatest)).Fn.return_type.?).ErrorUnion.error_set ||
+    @typeInfo(@typeInfo(@TypeOf(fetch)).Fn.return_type.?).ErrorUnion.error_set;
+
 const FetchQueue = Engine.MultiQueueImpl(Resolution, FetchError);
 const ResolutionTable = std.ArrayListUnmanaged(ResolutionEntry);
 
@@ -73,11 +73,11 @@ pub fn serializeResolutions(
 }
 
 fn findResolution(dep: Dependency.Source, resolutions: []const ResolutionEntry) ?usize {
-    return for (resolutions) |resolution, j| {
-        if (std.mem.eql(u8, dep.pkg.repository, resolution.repository) and
-            std.mem.eql(u8, dep.pkg.user, resolution.user) and
-            std.mem.eql(u8, dep.pkg.name, resolution.name) and
-            dep.pkg.version.contains(resolution.semver))
+    return for (resolutions) |entry, j| {
+        if (std.mem.eql(u8, dep.pkg.repository, entry.repository) and
+            std.mem.eql(u8, dep.pkg.user, entry.user) and
+            std.mem.eql(u8, dep.pkg.name, entry.name) and
+            dep.pkg.version.contains(entry.semver))
         {
             break j;
         }
@@ -248,6 +248,7 @@ pub fn updateResolution(
         },
         .replace_me => |dep_idx| fetch_queue.items(.edge)[i].to = dep_idx,
         .err => |err| return err,
+        else => unreachable,
     }
 }
 

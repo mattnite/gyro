@@ -14,6 +14,9 @@ const assert = std.debug.assert;
 pub const DepTable = std.ArrayListUnmanaged(Dependency.Source);
 pub const Sources = .{
     @import("pkg.zig"),
+    @import("github.zig"),
+    @import("local.zig"),
+    @import("url.zig"),
 };
 
 pub const Edge = struct {
@@ -155,6 +158,7 @@ pub fn MultiQueueImpl(comptime Resolution: type, comptime Error: type) type {
         result: union(enum) {
             replace_me: usize,
             fill_resolution: usize,
+            copy_deps: usize,
             new_entry: Resolution,
             err: Error,
         } = undefined,
@@ -426,13 +430,26 @@ pub fn fetch(self: *Engine) !void {
                     const dep_index = @field(self.fetch_queue.tables, source.name).items(.edge)[i].to;
                     for (deps.items) |dep| {
                         try self.dep_table.append(self.allocator, dep.src);
-                        try @field(next.tables, source.name).append(self.allocator, Edge{
+                        const edge = Edge{
                             .from = .{
                                 .index = dep_index,
                             },
                             .to = self.dep_table.items.len - 1,
                             .alias = dep.alias,
-                        });
+                        };
+
+                        // TODO: FIX WORKAROUND FOR COMPTIME
+                        if (dep.src == Dependency.Source.pkg) {
+                            try next.tables.pkg.append(self.allocator, edge);
+                        } else if (dep.src == Dependency.Source.github) {
+                            try next.tables.github.append(self.allocator, edge);
+                        } else if (dep.src == Dependency.Source.local) {
+                            try next.tables.local.append(self.allocator, edge);
+                        } else if (dep.src == Dependency.Source.url) {
+                            try next.tables.url.append(self.allocator, edge);
+                        }
+
+                        // OH NO I CAN'T DO AN ELSE HERE WITHOUT THE COMPILER CRASHING
                     }
                 }
 

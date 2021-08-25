@@ -5,8 +5,7 @@ const glob = @import("glob");
 const zzz = @import("zzz");
 const Dependency = @import("Dependency.zig");
 const Project = @import("Project.zig");
-
-usingnamespace @import("common.zig");
+const utils = @import("utils.zig");
 
 const Self = @This();
 const Allocator = std.mem.Allocator;
@@ -59,39 +58,39 @@ pub fn fillFromZNode(
     self: *Self,
     node: *zzz.ZNode,
 ) !void {
-    if (zFindChild(node, "files")) |files| {
-        var it = ZChildIterator.init(files);
-        while (it.next()) |path| try self.files.append(try zGetString(path));
+    if (utils.zFindChild(node, "files")) |files| {
+        var it = utils.ZChildIterator.init(files);
+        while (it.next()) |path| try self.files.append(try utils.zGetString(path));
     }
 
-    if (zFindChild(node, "deps") != null) {
+    if (utils.zFindChild(node, "deps") != null) {
         std.log.warn("subdependencies are no longer supported", .{});
     }
 
-    if (zFindChild(node, "tags")) |tags| {
-        var it = ZChildIterator.init(tags);
-        while (it.next()) |tag| try self.tags.append(try zGetString(tag));
+    if (utils.zFindChild(node, "tags")) |tags| {
+        var it = utils.ZChildIterator.init(tags);
+        while (it.next()) |tag| try self.tags.append(try utils.zGetString(tag));
     }
 
     inline for (std.meta.fields(Self)) |field| {
         if (@TypeOf(@field(self, field.name)) == ?[]const u8) {
-            @field(self, field.name) = try zFindString(node, field.name);
+            @field(self, field.name) = try utils.zFindString(node, field.name);
         }
     }
 }
 
 fn createManifest(self: *Self, tree: *zzz.ZTree(1, 1000)) !void {
     var root = try tree.addNode(null, .Null);
-    try zPutKeyString(tree, root, "name", self.name);
+    try utils.zPutKeyString(tree, root, "name", self.name);
     var ver_str = try std.fmt.allocPrint(&self.arena.allocator, "{}", .{self.version});
-    try zPutKeyString(tree, root, "version", ver_str);
+    try utils.zPutKeyString(tree, root, "version", ver_str);
 
     inline for (std.meta.fields(Self)) |field| {
         if (@TypeOf(@field(self, field.name)) == ?[]const u8) {
             if (@field(self, field.name)) |value| {
-                try zPutKeyString(tree, root, field.name, value);
+                try utils.zPutKeyString(tree, root, field.name, value);
             } else if (std.mem.eql(u8, field.name, "root")) {
-                try zPutKeyString(tree, root, field.name, "src/main.zig");
+                try utils.zPutKeyString(tree, root, field.name, "src/main.zig");
             }
         }
     }
@@ -191,14 +190,14 @@ pub fn addToZNode(
 ) !void {
     var node = try tree.addNode(parent, .{ .String = self.name });
     var ver_str = try std.fmt.allocPrint(&arena.allocator, "{}", .{self.version});
-    try zPutKeyString(tree, node, "version", ver_str);
+    try utils.zPutKeyString(tree, node, "version", ver_str);
 
     inline for (std.meta.fields(Self)) |field| {
         if (@TypeOf(@field(self, field.name)) == ?[]const u8) {
             if (@field(self, field.name)) |value| {
-                try zPutKeyString(tree, node, field.name, value);
+                try utils.zPutKeyString(tree, node, field.name, value);
             } else if (std.mem.eql(u8, field.name, "node")) {
-                try zPutKeyString(tree, node, field.name, "src/main.zig");
+                try utils.zPutKeyString(tree, node, field.name, "src/main.zig");
             }
         }
     }

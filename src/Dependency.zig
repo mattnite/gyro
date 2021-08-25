@@ -3,20 +3,20 @@ const version = @import("version");
 const zzz = @import("zzz");
 const uri = @import("uri");
 const build_options = @import("build_options");
-const Lockfile = @import("Lockfile.zig");
 const api = @import("api.zig");
-usingnamespace @import("common.zig");
+const utils = @import("utils.zig");
 
 const Self = @This();
 const Allocator = std.mem.Allocator;
 const mem = std.mem;
 const testing = std.testing;
-pub const SourceType = std.meta.Tag(Lockfile.Entry);
+
+pub const SourceType = std.meta.TagType(Source);
 
 alias: []const u8,
 src: Source,
 
-pub const Source = union(SourceType) {
+pub const Source = union(enum) {
     pkg: struct {
         user: []const u8,
         name: []const u8,
@@ -27,16 +27,15 @@ pub const Source = union(SourceType) {
         user: []const u8,
         repo: []const u8,
         ref: []const u8,
-        root: []const u8,
+        root: ?[]const u8,
     },
     url: struct {
         str: []const u8,
-        root: []const u8,
-        //integrity: ?Integrity,
+        root: ?[]const u8,
     },
     local: struct {
         path: []const u8,
-        root: []const u8,
+        root: ?[]const u8,
     },
 
     pub fn format(
@@ -56,99 +55,6 @@ pub const Source = union(SourceType) {
         }
     }
 };
-
-fn findLatestMatch(self: Self, lockfile: *Lockfile) ?*Lockfile.Entry {
-    var ret: ?*Lockfile.Entry = null;
-    for (lockfile.entries.items) |entry| {
-        if (@as(SourceType, self.src) != @as(SourceType, entry.*)) continue;
-
-        switch (self.src) {
-            .pkg => |pkg| {
-                if (!mem.eql(u8, pkg.name, entry.pkg.name) or
-                    !mem.eql(u8, pkg.user, entry.pkg.user) or
-                    !mem.eql(u8, pkg.repository, entry.pkg.repository)) continue;
-
-                const range = pkg.version;
-                if (range.contains(entry.pkg.version)) {
-                    if (ret != null and entry.pkg.version.cmp(ret.?.pkg.version) != .gt) {
-                        continue;
-                    }
-
-                    ret = entry;
-                }
-            },
-            .github => |gh| if (mem.eql(u8, gh.user, entry.github.user) and
-                mem.eql(u8, gh.repo, entry.github.repo) and
-                mem.eql(u8, gh.ref, entry.github.ref) and
-                mem.eql(u8, gh.root, entry.github.root)) return entry,
-            .url => |url| if (mem.eql(u8, url.str, entry.url.str) and
-                mem.eql(u8, url.root, entry.url.root)) return entry,
-            .local => |local| if (mem.eql(u8, local.path, entry.local.path) and
-                mem.eql(u8, local.root, entry.local.root)) return entry,
-        }
-    }
-
-    return ret;
-}
-
-fn resolveLatest(
-    self: Self,
-    arena: *std.heap.ArenaAllocator,
-) !*Lockfile.Entry {
-    const allocator = &arena.allocator;
-    const ret = try allocator.create(Lockfile.Entry);
-    ret.* = switch (self.src) {
-        .pkg => |pkg| .{
-            .pkg = .{
-                .user = pkg.user,
-                .name = pkg.name,
-                .repository = pkg.repository,
-                .version = try api.getLatest(
-                    allocator,
-                    pkg.repository,
-                    pkg.user,
-                    pkg.name,
-                    pkg.version,
-                ),
-            },
-        },
-        .github => |gh| Lockfile.Entry{
-            .github = .{
-                .user = gh.user,
-                .repo = gh.repo,
-                .ref = gh.ref,
-                .commit = try api.getHeadCommit(allocator, gh.user, gh.repo, gh.ref),
-                .root = gh.root,
-            },
-        },
-        .url => |url| Lockfile.Entry{
-            .url = .{
-                .str = url.str,
-                .root = url.root,
-            },
-        },
-        .local => |local| Lockfile.Entry{
-            .local = .{
-                .path = local.path,
-                .root = local.root,
-            },
-        },
-    };
-
-    return ret;
-}
-
-pub fn resolve(
-    self: Self,
-    arena: *std.heap.ArenaAllocator,
-    lockfile: *Lockfile,
-) !*Lockfile.Entry {
-    return self.findLatestMatch(lockfile) orelse blk: {
-        const entry = try self.resolveLatest(arena);
-        try lockfile.entries.append(entry);
-        break :blk entry;
-    };
-}
 
 /// There are four ways for a dependency to be declared in the project file:
 ///
@@ -189,10 +95,10 @@ pub fn fromZNode(allocator: *Allocator, node: *zzz.ZNode) !Self {
     // check if only one child node and that it has no children
     if (node.*.child.?.value == .String and node.*.child.?.child == null) {
         if (node.*.child.?.sibling != null) return error.Unknown;
-        const key = try zGetString(node);
+        const key = try utils.zGetString(node);
 
-        const info = try parseUserRepo(key);
-        const ver_str = try zGetString(node.*.child.?);
+        const info = try utils.parseUserRepo(key);
+        const ver_str = try utils.zGetString(node.*.child.?);
         return Self{
             .alias = info.repo,
             .src = .{
@@ -207,9 +113,9 @@ pub fn fromZNode(allocator: *Allocator, node: *zzz.ZNode) !Self {
     }
 
     // search for src node
-    const alias = try zGetString(node);
+    const alias = try utils.zGetString(node);
     const src_node = blk: {
-        var it = ZChildIterator.init(node);
+        var it = utils.ZChildIterator.init(node);
 
         while (it.next()) |child| {
             switch (child.value) {
@@ -221,7 +127,7 @@ pub fn fromZNode(allocator: *Allocator, node: *zzz.ZNode) !Self {
 
     const src: Source = blk: {
         const child = src_node.child orelse return error.SrcNeedsChild;
-        const src_str = try zGetString(child);
+        const src_str = try utils.zGetString(child);
         const src_type = inline for (std.meta.fields(SourceType)) |field| {
             if (mem.eql(u8, src_str, field.name)) break @field(SourceType, field.name);
         } else return error.InvalidSrcTag;
@@ -229,30 +135,30 @@ pub fn fromZNode(allocator: *Allocator, node: *zzz.ZNode) !Self {
         break :blk switch (src_type) {
             .pkg => .{
                 .pkg = .{
-                    .user = (try zFindString(child, "user")) orelse return error.MissingUser,
-                    .name = (try zFindString(child, "name")) orelse alias,
-                    .version = try version.Range.parse(allocator, (try zFindString(child, "version")) orelse return error.MissingVersion),
-                    .repository = (try zFindString(child, "repository")) orelse build_options.default_repo,
+                    .user = (try utils.zFindString(child, "user")) orelse return error.MissingUser,
+                    .name = (try utils.zFindString(child, "name")) orelse alias,
+                    .version = try version.Range.parse(allocator, (try utils.zFindString(child, "version")) orelse return error.MissingVersion),
+                    .repository = (try utils.zFindString(child, "repository")) orelse build_options.default_repo,
                 },
             },
             .github => .{
                 .github = .{
-                    .user = (try zFindString(child, "user")) orelse return error.GithubMissingUser,
-                    .repo = (try zFindString(child, "repo")) orelse return error.GithubMissingRepo,
-                    .ref = (try zFindString(child, "ref")) orelse return error.GithubMissingRef,
-                    .root = (try zFindString(node, "root")) orelse "src/main.zig",
+                    .user = (try utils.zFindString(child, "user")) orelse return error.GithubMissingUser,
+                    .repo = (try utils.zFindString(child, "repo")) orelse return error.GithubMissingRepo,
+                    .ref = (try utils.zFindString(child, "ref")) orelse return error.GithubMissingRef,
+                    .root = try utils.zFindString(node, "root"),
                 },
             },
             .url => .{
                 .url = .{
-                    .str = try zGetString(child.child orelse return error.UrlMissingStr),
-                    .root = (try zFindString(node, "root")) orelse "src/main.zig",
+                    .str = try utils.zGetString(child.child orelse return error.UrlMissingStr),
+                    .root = try utils.zFindString(node, "root"),
                 },
             },
             .local => .{
                 .local = .{
-                    .path = try zGetString(child.child orelse return error.UrlMissingStr),
-                    .root = (try zFindString(node, "root")) orelse "src/main.zig",
+                    .path = try utils.zGetString(child.child orelse return error.UrlMissingStr),
+                    .root = try utils.zFindString(node, "root"),
                 },
             },
         };
@@ -584,42 +490,42 @@ pub fn addToZNode(
             var src = try tree.addNode(alias, .{ .String = "src" });
             var node = try tree.addNode(src, .{ .String = "pkg" });
 
-            try zPutKeyString(tree, node, "user", pkg.user);
+            try utils.zPutKeyString(tree, node, "user", pkg.user);
             if (explicit or !std.mem.eql(u8, pkg.name, self.alias)) {
-                try zPutKeyString(tree, node, "name", pkg.name);
+                try utils.zPutKeyString(tree, node, "name", pkg.name);
             }
 
             const ver_str = try std.fmt.allocPrint(&arena.allocator, "{}", .{pkg.version});
-            try zPutKeyString(tree, node, "version", ver_str);
+            try utils.zPutKeyString(tree, node, "version", ver_str);
             if (explicit or !std.mem.eql(u8, pkg.repository, build_options.default_repo)) {
-                try zPutKeyString(tree, node, "repository", pkg.repository);
+                try utils.zPutKeyString(tree, node, "repository", pkg.repository);
             }
         },
         .github => |gh| {
             var src = try tree.addNode(alias, .{ .String = "src" });
             var github = try tree.addNode(src, .{ .String = "github" });
-            try zPutKeyString(tree, github, "user", gh.user);
-            try zPutKeyString(tree, github, "repo", gh.repo);
-            try zPutKeyString(tree, github, "ref", gh.ref);
+            try utils.zPutKeyString(tree, github, "user", gh.user);
+            try utils.zPutKeyString(tree, github, "repo", gh.repo);
+            try utils.zPutKeyString(tree, github, "ref", gh.ref);
 
-            if (explicit or !std.mem.eql(u8, gh.root, "src/main.zig")) {
-                try zPutKeyString(tree, alias, "root", gh.root);
+            if (explicit or gh.root != null) {
+                try utils.zPutKeyString(tree, alias, "root", gh.root orelse utils.default_root);
             }
         },
         .url => |url| {
             var src = try tree.addNode(alias, .{ .String = "src" });
-            try zPutKeyString(tree, src, "url", url.str);
+            try utils.zPutKeyString(tree, src, "url", url.str);
 
-            if (explicit or !std.mem.eql(u8, url.root, "src/main.zig")) {
-                try zPutKeyString(tree, alias, "root", url.root);
+            if (explicit or url.root != null) {
+                try utils.zPutKeyString(tree, alias, "root", url.root orelse utils.default_root);
             }
         },
         .local => |local| {
             var src = try tree.addNode(alias, .{ .String = "src" });
-            try zPutKeyString(tree, src, "local", local.path);
+            try utils.zPutKeyString(tree, src, "local", local.path);
 
-            if (explicit or !std.mem.eql(u8, local.root, "src/main.zig")) {
-                try zPutKeyString(tree, alias, "root", local.root);
+            if (explicit or local.root != null) {
+                try utils.zPutKeyString(tree, alias, "root", local.root orelse utils.default_root);
             }
         },
     }

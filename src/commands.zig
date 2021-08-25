@@ -7,9 +7,7 @@ const known_folders = @import("known-folders");
 const build_options = @import("build_options");
 const api = @import("api.zig");
 const Project = @import("Project.zig");
-const Lockfile = @import("Lockfile.zig");
 const Dependency = @import("Dependency.zig");
-const DependencyTree = @import("DependencyTree.zig");
 const Engine = @import("Engine.zig");
 const utils = @import("utils.zig");
 
