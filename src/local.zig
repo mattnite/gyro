@@ -5,6 +5,7 @@ const Project = @import("Project.zig");
 const utils = @import("utils.zig");
 
 const Allocator = std.mem.Allocator;
+const ArenaAllocator = std.heap.ArenaAllocator;
 
 pub const name = "local";
 pub const Resolution = []const u8;
@@ -17,10 +18,27 @@ pub const ResolutionEntry = struct {
 pub const FetchError = error{Todo} ||
     @typeInfo(@typeInfo(@TypeOf(std.fs.Dir.openDir)).Fn.return_type.?).ErrorUnion.error_set ||
     @typeInfo(@typeInfo(@TypeOf(std.fs.path.join)).Fn.return_type.?).ErrorUnion.error_set ||
-    @typeInfo(@typeInfo(@TypeOf(Project.fromDir)).Fn.return_type.?).ErrorUnion.error_set;
+    @typeInfo(@typeInfo(@TypeOf(Project.fromDir)).Fn.return_type.?).ErrorUnion.error_set ||
+    @typeInfo(@typeInfo(@TypeOf(updateBasePaths)).Fn.return_type.?).ErrorUnion.error_set;
 
 const FetchQueue = Engine.MultiQueueImpl(Resolution, FetchError);
 const ResolutionTable = std.ArrayListUnmanaged(ResolutionEntry);
+
+pub fn updateBasePaths(
+    arena: *ArenaAllocator,
+    base_path: []const u8,
+    deps: *std.ArrayListUnmanaged(Dependency),
+) !void {
+    for (deps.items) |*dep| if (dep.src == .local) {
+        const resolved = try std.fs.path.resolve(
+            arena.child_allocator,
+            &.{ base_path, dep.src.local.path },
+        );
+        defer arena.child_allocator.free(resolved);
+
+        dep.src.local.path = try std.fs.path.relative(&arena.allocator, ".", resolved);
+    };
+}
 
 /// local source types should never be in the lockfile
 pub fn deserializeLockfileEntry(
@@ -32,7 +50,7 @@ pub fn deserializeLockfileEntry(
     _ = allocator;
     _ = it;
     _ = resolutions;
-    return error.ShouldNotHappen;
+    return error.LocalsDontLock;
 }
 
 /// does nothing because we don't lock local source types
@@ -45,7 +63,6 @@ pub fn serializeResolutions(
 }
 
 pub fn dedupeResolveAndFetch(
-    arena: *std.heap.ArenaAllocator,
     dep_table: []const Dependency.Source,
     resolutions: []const ResolutionEntry,
     fetch_queue: *FetchQueue,
@@ -53,17 +70,27 @@ pub fn dedupeResolveAndFetch(
 ) FetchError!void {
     _ = resolutions;
 
+    const arena = &fetch_queue.items(.arena)[i];
     const dep = &dep_table[fetch_queue.items(.edge)[i].to].local;
 
-    var dir = try std.fs.cwd().openDir(dep.path, .{});
-    defer dir.close();
+    var base_dir = try std.fs.cwd().openDir(dep.path, .{});
+    defer base_dir.close();
 
-    var project = try Project.fromDir(&arena.allocator, dir, .{});
+    const project_file = try base_dir.createFile("gyro.zzz", .{
+        .read = true,
+        .truncate = false,
+        .exclusive = false,
+    });
+    defer project_file.close();
+
+    const text = try project_file.reader().readAllAlloc(&arena.allocator, std.math.maxInt(usize));
+    const project = try Project.fromUnownedText(arena.child_allocator, text);
     defer project.destroy();
 
     const root = dep.root orelse utils.default_root;
     fetch_queue.items(.path)[i] = try std.fs.path.join(&arena.allocator, &.{ dep.path, root });
     try fetch_queue.items(.deps)[i].appendSlice(arena.child_allocator, project.deps.items);
+    try updateBasePaths(arena, dep.path, &fetch_queue.items(.deps)[i]);
 }
 
 pub fn updateResolution(

@@ -380,7 +380,6 @@ pub fn add(
         else => return error.Todo,
     }
 
-    // TODO: detect collisions in subpackages (both directions)
     const repository = build_options.default_repo;
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
@@ -446,7 +445,7 @@ pub fn add(
                 );
 
                 const root_file = if (root_path) |rp| rp else if (text_opt) |t| get_root: {
-                    const subproject = try Project.fromText(&arena.allocator, t);
+                    const subproject = try Project.fromUnownedText(&arena.allocator, t);
                     defer subproject.destroy();
 
                     var ret: []const u8 = utils.default_root;
@@ -507,7 +506,7 @@ pub fn add(
                 defer project_file.close();
 
                 const text = try project_file.readToEndAlloc(&arena.allocator, std.math.maxInt(usize));
-                const subproject = try Project.fromText(&arena.allocator, text);
+                const subproject = try Project.fromUnownedText(&arena.allocator, text);
                 defer subproject.destroy();
 
                 const detected_root = if (subproject.packages.count() == 1)

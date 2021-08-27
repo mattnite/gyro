@@ -11,71 +11,32 @@ const Self = @This();
 
 allocator: *Allocator,
 text: []const u8,
+owns_text: bool,
 packages: std.StringHashMap(Package),
 deps: std.ArrayList(Dependency),
 build_deps: std.ArrayList(Dependency),
 
 pub const Iterator = struct {
-    inner: std.StringHashMap(Package).Iterator,
+    inner: std.StringHashMapUnmanaged(Package).Iterator,
 
     pub fn next(self: *Iterator) ?*Package {
         return if (self.inner.next()) |entry| &entry.value_ptr.* else null;
     }
 };
 
-fn init(allocator: *Allocator, file: std.fs.File) !Self {
-    return Self{
-        .allocator = allocator,
-        .text = try file.readToEndAlloc(allocator, std.math.maxInt(usize)),
-        .packages = std.StringHashMap(Package).init(allocator),
-        .deps = std.ArrayList(Dependency).init(allocator),
-        .build_deps = std.ArrayList(Dependency).init(allocator),
-    };
-}
+fn create(allocator: *Allocator, text: []const u8, owns_text: bool) !*Self {
+    const ret = try allocator.create(Self);
+    errdefer allocator.destroy(ret);
 
-fn deinit(self: *Self) void {
-    var it = self.packages.iterator();
-    while (it.next()) |entry| {
-        entry.value_ptr.deinit();
-        _ = self.packages.remove(entry.key_ptr.*);
-    }
-
-    self.deps.deinit();
-    self.build_deps.deinit();
-    self.packages.deinit();
-    self.allocator.free(self.text);
-}
-
-pub fn destroy(self: *Self) void {
-    self.deinit();
-    self.allocator.destroy(self);
-}
-
-pub fn contains(self: Self, name: []const u8) bool {
-    return self.packages.contains(name);
-}
-
-pub fn get(self: Self, name: []const u8) ?*Package {
-    return if (self.packages.getEntry(name)) |entry| &entry.value_ptr.* else null;
-}
-
-pub fn iterator(self: Self) Iterator {
-    return Iterator{ .inner = self.packages.iterator() };
-}
-
-pub fn fromText(allocator: *Allocator, text: []const u8) !*Self {
-    var ret = try allocator.create(Self);
     ret.* = Self{
         .allocator = allocator,
         .text = text,
+        .owns_text = owns_text,
         .packages = std.StringHashMap(Package).init(allocator),
         .deps = std.ArrayList(Dependency).init(allocator),
         .build_deps = std.ArrayList(Dependency).init(allocator),
     };
-    errdefer {
-        ret.deinit();
-        allocator.destroy(ret);
-    }
+    errdefer ret.deinit();
 
     if (std.mem.indexOf(u8, ret.text, "\r\n") != null) {
         std.log.err("gyro.zzz requires LF line endings, not CRLF", .{});
@@ -149,8 +110,31 @@ pub fn fromText(allocator: *Allocator, text: []const u8) !*Self {
     return ret;
 }
 
+fn deinit(self: *Self) void {
+    var it = self.packages.iterator();
+    while (it.next()) |entry| {
+        entry.value_ptr.deinit();
+        _ = self.packages.remove(entry.key_ptr.*);
+    }
+
+    self.deps.deinit();
+    self.build_deps.deinit();
+    self.packages.deinit();
+    if (self.owns_text)
+        self.allocator.free(self.text);
+}
+
+pub fn destroy(self: *Self) void {
+    self.deinit();
+    self.allocator.destroy(self);
+}
+
+pub fn fromUnownedText(allocator: *Allocator, text: []const u8) !*Self {
+    return try Self.create(allocator, text, false);
+}
+
 pub fn fromFile(allocator: *Allocator, file: std.fs.File) !*Self {
-    return fromText(allocator, try file.reader().readAllAlloc(allocator, std.math.maxInt(usize)));
+    return Self.create(allocator, try file.reader().readAllAlloc(allocator, std.math.maxInt(usize)), true);
 }
 
 pub fn fromDir(
@@ -161,7 +145,7 @@ pub fn fromDir(
     const file = try dir.openFile("gyro.zzz", flags);
     defer file.close();
 
-    return fromFile(allocator, file);
+    return Self.fromFile(allocator, file);
 }
 
 pub fn write(self: Self, writer: anytype) !void {
@@ -194,4 +178,16 @@ pub fn toFile(self: *Self, file: std.fs.File) !void {
     try file.setEndPos(0);
     try file.seekTo(0);
     try self.write(file.writer());
+}
+
+pub fn contains(self: Self, name: []const u8) bool {
+    return self.packages.contains(name);
+}
+
+pub fn get(self: Self, name: []const u8) ?*Package {
+    return if (self.packages.getEntry(name)) |entry| &entry.value_ptr.* else null;
+}
+
+pub fn iterator(self: Self) Iterator {
+    return Iterator{ .inner = self.packages.iterator() };
 }

@@ -5,6 +5,7 @@ const Engine = @import("Engine.zig");
 const Dependency = @import("Dependency.zig");
 const Project = @import("Project.zig");
 const utils = @import("utils.zig");
+const local = @import("local.zig");
 
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
@@ -63,13 +64,14 @@ pub fn serializeResolutions(
     writer: anytype,
 ) !void {
     for (resolutions) |entry| {
-        try writer.print("github {s} {s} {s} {s} {s}\n", .{
-            entry.user,
-            entry.repo,
-            entry.ref,
-            entry.root,
-            entry.commit,
-        });
+        if (entry.dep_idx != null)
+            try writer.print("github {s} {s} {s} {s} {s}\n", .{
+                entry.user,
+                entry.repo,
+                entry.ref,
+                entry.root,
+                entry.commit,
+            });
     }
 }
 
@@ -135,31 +137,41 @@ fn fetch(
         try entry.done();
     }
 
-    const root = dep.github.root orelse utils.default_root;
-    path.* = try std.fs.path.join(&arena.allocator, &.{
+    const base_path = try std.fs.path.join(arena.child_allocator, &.{
         ".gyro",
         entry_name,
         "pkg",
-        root,
     });
-    _ = deps;
+    defer arena.child_allocator.free(base_path);
 
-    const file = try std.fs.cwd().openFile(path.*.?, .{});
-    defer file.close();
+    const root = dep.github.root orelse utils.default_root;
+    path.* = try std.fs.path.join(&arena.allocator, &.{ base_path, root });
 
-    var project = try Project.fromFile(&arena.allocator, file);
+    var base_dir = try std.fs.cwd().openDir(base_path, .{});
+    defer base_dir.close();
+
+    const project_file = try base_dir.createFile("gyro.zzz", .{
+        .read = true,
+        .truncate = false,
+        .exclusive = false,
+    });
+    defer project_file.close();
+
+    const text = try project_file.reader().readAllAlloc(&arena.allocator, std.math.maxInt(usize));
+    const project = try Project.fromUnownedText(arena.child_allocator, text);
     defer project.destroy();
 
     try deps.appendSlice(arena.child_allocator, project.deps.items);
+    try local.updateBasePaths(arena, base_path, deps);
 }
 
 pub fn dedupeResolveAndFetch(
-    arena: *std.heap.ArenaAllocator,
     dep_table: []const Dependency.Source,
     resolutions: []const ResolutionEntry,
     fetch_queue: *FetchQueue,
     i: usize,
 ) FetchError!void {
+    const arena = &fetch_queue.items(.arena)[i];
     const dep_idx = fetch_queue.items(.edge)[i].to;
     if (findResolution(dep_table[dep_idx], resolutions)) |res_idx| {
         if (resolutions[res_idx].dep_idx) |idx| {
@@ -210,6 +222,8 @@ pub fn dedupeResolveAndFetch(
         &fetch_queue.items(.deps)[i],
         &fetch_queue.items(.path)[i],
     );
+
+    assert(fetch_queue.items(.path)[i] != null);
 }
 
 pub fn updateResolution(

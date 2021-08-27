@@ -6,6 +6,7 @@ const Dependency = @import("Dependency.zig");
 const api = @import("api.zig");
 const cache = @import("cache.zig");
 const utils = @import("utils.zig");
+const local = @import("local.zig");
 
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
@@ -64,12 +65,13 @@ pub fn serializeResolutions(
     writer: anytype,
 ) !void {
     for (resolutions) |resolution|
-        try writer.print("pkg {s} {s} {s} {}\n", .{
-            resolution.repository,
-            resolution.user,
-            resolution.name,
-            resolution.semver,
-        });
+        if (resolution.dep_idx != null)
+            try writer.print("pkg {s} {s} {s} {}\n", .{
+                resolution.repository,
+                resolution.user,
+                resolution.name,
+                resolution.semver,
+            });
 }
 
 fn findResolution(dep: Dependency.Source, resolutions: []const ResolutionEntry) ?usize {
@@ -147,6 +149,10 @@ fn fetch(
             );
     }
 
+    const base_path = try std.fs.path.join(arena.child_allocator, &.{ ".gyro", entry_name, "pkg" });
+    defer arena.child_allocator.free(base_path);
+
+    try local.updateBasePaths(arena, base_path, deps);
     path.* = try std.fs.path.join(&arena.allocator, &.{
         ".gyro",
         entry_name,
@@ -164,12 +170,12 @@ fn fetch(
 }
 
 pub fn dedupeResolveAndFetch(
-    arena: *std.heap.ArenaAllocator,
     dep_table: []const Dependency.Source,
     resolutions: []const ResolutionEntry,
     fetch_queue: *FetchQueue,
     i: usize,
 ) FetchError!void {
+    const arena = &fetch_queue.items(.arena)[i];
     const dep_idx = fetch_queue.items(.edge)[i].to;
     if (findResolution(dep_table[dep_idx], resolutions)) |res_idx| {
         if (resolutions[res_idx].dep_idx) |idx| {
@@ -220,6 +226,8 @@ pub fn dedupeResolveAndFetch(
         &fetch_queue.items(.deps)[i],
         &fetch_queue.items(.path)[i],
     );
+
+    assert(fetch_queue.items(.path)[i] != null);
 }
 
 pub fn updateResolution(

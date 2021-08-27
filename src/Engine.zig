@@ -112,11 +112,8 @@ pub const Resolutions = blk: {
         }
 
         pub fn fromReader(allocator: *Allocator, reader: anytype) !Self {
-            const text = try reader.readAllAlloc(allocator, std.math.maxInt(usize));
-            errdefer allocator.free(text);
-
             var ret = Self{
-                .text = text,
+                .text = try reader.readAllAlloc(allocator, std.math.maxInt(usize)),
                 .tables = undefined,
                 .edges = undefined,
             };
@@ -127,17 +124,26 @@ pub const Resolutions = blk: {
             inline for (std.meta.fields(Edges)) |field|
                 @field(ret.edges, field.name) = field.field_type{};
 
-            var line_it = std.mem.tokenize(u8, text, "\n");
-            while (line_it.next()) |line| {
+            errdefer ret.deinit(allocator);
+
+            var line_it = std.mem.tokenize(u8, ret.text, "\n");
+            var count: usize = 0;
+            iterate: while (line_it.next()) |line| : (count += 1) {
                 var it = std.mem.tokenize(u8, line, " ");
                 const first = it.next() orelse return error.EmptyLine;
                 inline for (Sources) |source| {
                     if (std.mem.eql(u8, first, source.name)) {
-                        try source.deserializeLockfileEntry(
+                        source.deserializeLockfileEntry(
                             allocator,
                             &it,
                             &@field(ret.tables, source.name),
-                        );
+                        ) catch |err| {
+                            std.log.warn(
+                                "invalid lockfile entry on line {}, {s} -- ignoring and removing:\n{s}\n",
+                                .{ count + 1, @errorName(err), line },
+                            );
+                            continue :iterate;
+                        };
                         break;
                     }
                 } else {
@@ -162,6 +168,7 @@ pub fn MultiQueueImpl(comptime Resolution: type, comptime Error: type) type {
             new_entry: Resolution,
             err: Error,
         } = undefined,
+        arena: ArenaAllocator,
         path: ?[]const u8 = null,
         deps: std.ArrayListUnmanaged(Dependency),
     });
@@ -231,6 +238,19 @@ pub const FetchQueue = blk: {
                 inline for (Sources) |source|
                     @field(self.tables, source.name).deinit(allocator);
             }
+
+            pub fn append(self: *@This(), allocator: *Allocator, src_type: Dependency.SourceType, edge: Edge) !void {
+                inline for (Sources) |source| {
+                    if (src_type == @field(Dependency.SourceType, source.name)) {
+                        try @field(self.tables, source.name).append(allocator, edge);
+                        break;
+                    }
+                } else {
+                    std.log.err("unsupported dependency source type: {}", .{src_type});
+                    assert(false);
+                    return error.Explained;
+                }
+            }
         };
 
         pub fn init() Self {
@@ -250,19 +270,20 @@ pub const FetchQueue = blk: {
         pub fn append(
             self: *Self,
             allocator: *Allocator,
-            source_type: Dependency.SourceType,
+            src_type: Dependency.SourceType,
             edge: Edge,
         ) !void {
             inline for (Sources) |source| {
-                if (source_type == @field(Dependency.SourceType, source.name)) {
+                if (src_type == @field(Dependency.SourceType, source.name)) {
                     try @field(self.tables, source.name).append(allocator, .{
+                        .arena = ArenaAllocator.init(allocator),
                         .edge = edge,
                         .deps = std.ArrayListUnmanaged(Dependency){},
                     });
                     break;
                 }
             } else {
-                std.log.err("unsupported dependency source type: {}", .{source_type});
+                std.log.err("unsupported dependency source type: {}", .{src_type});
                 assert(false);
                 return error.Explained;
             }
@@ -274,16 +295,24 @@ pub const FetchQueue = blk: {
             } else true;
         }
 
-        pub fn clearAndLoad(self: *Self, allocator: *Allocator, next: Next) !void {
+        pub fn clearAndLoad(self: *Self, arena: *ArenaAllocator, next: Next) !void {
             // clear current table
             inline for (Sources) |source| {
                 for (@field(self.tables, source.name).items(.deps)) |*dep| {
-                    dep.deinit(allocator);
+                    dep.deinit(arena.child_allocator);
+                }
+
+                for (@field(self.tables, source.name).items(.arena)) |*thread_arena| {
+                    while (thread_arena.state.buffer_list.popFirst()) |node|
+                        arena.state.buffer_list.prepend(node);
+
+                    arena.state.end_index += thread_arena.state.end_index;
                 }
 
                 @field(self.tables, source.name).shrinkRetainingCapacity(0);
                 for (@field(next.tables, source.name).items) |edge| {
-                    try @field(self.tables, source.name).append(allocator, .{
+                    try @field(self.tables, source.name).append(arena.child_allocator, .{
+                        .arena = ArenaAllocator.init(arena.child_allocator),
                         .edge = edge,
                         .deps = std.ArrayListUnmanaged(Dependency){},
                     });
@@ -293,7 +322,6 @@ pub const FetchQueue = blk: {
 
         pub fn parallelFetch(
             self: *Self,
-            arena: *ArenaAllocator,
             dep_table: DepTable,
             resolutions: Resolutions,
         ) !void {
@@ -308,7 +336,6 @@ pub const FetchQueue = blk: {
                         .{},
                         source.dedupeResolveAndFetch,
                         .{
-                            arena,
                             dep_table.items,
                             @field(resolutions.tables, source.name).items,
                             &@field(self.tables, source.name),
@@ -405,7 +432,7 @@ pub fn fetch(self: *Engine) !void {
         defer next.deinit(self.allocator);
 
         {
-            try self.fetch_queue.parallelFetch(&self.arena, self.dep_table, self.resolutions);
+            try self.fetch_queue.parallelFetch(self.dep_table, self.resolutions);
             inline for (Sources) |source| {
                 // update resolutions
                 for (@field(self.fetch_queue.tables, source.name).items(.result)) |_, i|
@@ -438,18 +465,7 @@ pub fn fetch(self: *Engine) !void {
                             .alias = dep.alias,
                         };
 
-                        // TODO: FIX WORKAROUND FOR COMPTIME
-                        if (dep.src == Dependency.Source.pkg) {
-                            try next.tables.pkg.append(self.allocator, edge);
-                        } else if (dep.src == Dependency.Source.github) {
-                            try next.tables.github.append(self.allocator, edge);
-                        } else if (dep.src == Dependency.Source.local) {
-                            try next.tables.local.append(self.allocator, edge);
-                        } else if (dep.src == Dependency.Source.url) {
-                            try next.tables.url.append(self.allocator, edge);
-                        }
-
-                        // OH NO I CAN'T DO AN ELSE HERE WITHOUT THE COMPILER CRASHING
+                        try next.append(self.allocator, dep.src, edge);
                     }
                 }
 
@@ -461,7 +477,7 @@ pub fn fetch(self: *Engine) !void {
             }
         }
 
-        try self.fetch_queue.clearAndLoad(self.allocator, next);
+        try self.fetch_queue.clearAndLoad(&self.arena, next);
     }
 
     // TODO: check for circular dependencies

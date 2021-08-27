@@ -21,31 +21,36 @@ pub fn deserializeLockfileEntry(
     it: *std.mem.TokenIterator(u8),
     resolutions: *ResolutionTable,
 ) !void {
-    try resolutions.append(allocator, .{
+    const entry = ResolutionEntry{
         .root = it.next() orelse return error.NoRoot,
         .str = it.next() orelse return error.NoUrl,
-    });
+    };
+
+    if (std.mem.startsWith(u8, entry.str, "file://"))
+        return error.OldLocalFormat;
+
+    try resolutions.append(allocator, entry);
 }
 
 pub fn serializeResolutions(
     resolutions: []const ResolutionEntry,
     writer: anytype,
 ) !void {
-    for (resolutions) |entry| {
-        try writer.print("url {s} {s}\n", .{
-            entry.root,
-            entry.str,
-        });
-    }
+    for (resolutions) |entry|
+        if (entry.dep_idx != null)
+            try writer.print("url {s} {s}\n", .{
+                entry.root,
+                entry.str,
+            });
 }
 
 pub fn dedupeResolveAndFetch(
-    arena: *std.heap.ArenaAllocator,
     dep_table: []const Dependency.Source,
     resolutions: []const ResolutionEntry,
     fetch_queue: *FetchQueue,
     i: usize,
 ) FetchError!void {
+    const arena = &fetch_queue.items(.arena)[i];
     _ = arena;
     _ = dep_table;
     _ = resolutions;
