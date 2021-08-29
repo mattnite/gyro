@@ -4,7 +4,6 @@ const clap = @import("clap");
 const version = @import("version");
 const zzz = @import("zzz");
 const known_folders = @import("known-folders");
-const build_options = @import("build_options");
 const api = @import("api.zig");
 const Project = @import("Project.zig");
 const Lockfile = @import("Lockfile.zig");
@@ -416,7 +415,7 @@ pub fn add(
     }
 
     // TODO: detect collisions in subpackages (both directions)
-    const repository = build_options.default_repo;
+    const repository = default_repo;
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
@@ -537,7 +536,7 @@ pub fn add(
                                 .min = latest,
                                 .kind = .caret,
                             },
-                            .repository = build_options.default_repo,
+                            .repository = default_repo,
                             .ver_str = stream.getWritten(),
                         },
                     },

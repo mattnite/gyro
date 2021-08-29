@@ -357,7 +357,7 @@ pub fn postPublish(
     const authorization = try std.fmt.allocPrint(allocator, "Bearer github {s}", .{access_token});
     defer allocator.free(authorization);
 
-    const url = "https://" ++ @import("build_options").default_repo ++ "/publish";
+    const url = "https://" ++ default_repo ++ "/publish";
     var headers = zfetch.Headers.init(allocator);
     defer headers.deinit();
 

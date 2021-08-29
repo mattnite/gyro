@@ -2,7 +2,6 @@ const std = @import("std");
 const version = @import("version");
 const zzz = @import("zzz");
 const uri = @import("uri");
-const build_options = @import("build_options");
 const Lockfile = @import("Lockfile.zig");
 const DependencyTree = @import("DependencyTree.zig");
 const api = @import("api.zig");
@@ -186,7 +185,7 @@ pub fn fromZNode(allocator: *Allocator, node: *zzz.ZNode) !Self {
                     .name = info.repo,
                     .ver_str = ver_str,
                     .version = try version.Range.parse(allocator, ver_str),
-                    .repository = build_options.default_repo,
+                    .repository = default_repo,
                 },
             },
         };
@@ -219,7 +218,7 @@ pub fn fromZNode(allocator: *Allocator, node: *zzz.ZNode) !Self {
                     .name = (try zFindString(child, "name")) orelse alias,
                     .ver_str = (try zFindString(child, "version")) orelse return error.MissingVersion,
                     .version = try version.Range.parse(allocator, (try zFindString(child, "version")) orelse return error.MissingVersion),
-                    .repository = (try zFindString(child, "repository")) orelse build_options.default_repo,
+                    .repository = (try zFindString(child, "repository")) orelse default_repo,
                 },
             },
             .github => .{
@@ -310,7 +309,7 @@ test "default repo pkg" {
                 .name = "something",
                 .ver_str = "^0.1.0",
                 .version = try version.Range.parse(testing.allocator, "^0.1.0"),
-                .repository = build_options.default_repo,
+                .repository = default_repo,
             },
         },
     }, try fromString(testing.allocator, "matt/something: ^0.1.0"));
@@ -334,7 +333,7 @@ test "aliased, default repo pkg" {
                 .name = "blarg",
                 .ver_str = "^0.1.0",
                 .version = try version.Range.parse(testing.allocator, "^0.1.0"),
-                .repository = build_options.default_repo,
+                .repository = default_repo,
             },
         },
     };
@@ -565,7 +564,7 @@ pub fn addToZNode(
     switch (self.src) {
         .pkg => |pkg| if (!explicit and
             std.mem.eql(u8, self.alias, pkg.name) and
-            std.mem.eql(u8, pkg.repository, build_options.default_repo))
+            std.mem.eql(u8, pkg.repository, default_repo))
         {
             var fifo = std.fifo.LinearFifo(u8, .{ .Dynamic = {} }).init(&arena.allocator);
             try fifo.writer().print("{s}/{s}", .{ pkg.user, pkg.name });
@@ -581,7 +580,7 @@ pub fn addToZNode(
             }
 
             try zPutKeyString(tree, node, "version", pkg.ver_str);
-            if (explicit or !std.mem.eql(u8, pkg.repository, build_options.default_repo)) {
+            if (explicit or !std.mem.eql(u8, pkg.repository, default_repo)) {
                 try zPutKeyString(tree, node, "repository", pkg.repository);
             }
         },
