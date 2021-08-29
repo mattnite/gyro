@@ -475,7 +475,7 @@ test "entry from pkg: default repository" {
         .pkg = .{
             .user = "matt",
             .name = "something",
-            .repository = build_options.default_repo,
+            .repository = default_repo,
             .version = version.Semver{
                 .major = 0,
                 .minor = 1,
@@ -561,7 +561,7 @@ test "lockfile with example of all" {
             .pkg = .{
                 .user = "matt",
                 .name = "something",
-                .repository = build_options.default_repo,
+                .repository = default_repo,
                 .version = version.Semver{
                     .major = 0,
                     .minor = 1,

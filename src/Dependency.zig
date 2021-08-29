@@ -309,7 +309,7 @@ test "default repo pkg" {
                 .name = "something",
                 .ver_str = "^0.1.0",
                 .version = try version.Range.parse(testing.allocator, "^0.1.0"),
-                .repository = build_options.default_repo,
+                .repository = default_repo,
             },
         },
     }, try fromString(testing.allocator, "matt/something: ^0.1.0"));
@@ -333,7 +333,7 @@ test "aliased, default repo pkg" {
                 .name = "blarg",
                 .ver_str = "^0.1.0",
                 .version = try version.Range.parse(testing.allocator, "^0.1.0"),
-                .repository = build_options.default_repo,
+                .repository = default_repo,
             },
         },
     };
