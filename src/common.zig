@@ -1,6 +1,7 @@
 const std = @import("std");
 const zzz = @import("zzz");
 
+pub const default_repo = "astrolabe.pm";
 pub const default_root = "src/main.zig";
 
 pub const ZChildIterator = struct {
