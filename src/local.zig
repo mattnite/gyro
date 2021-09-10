@@ -18,7 +18,7 @@ pub const ResolutionEntry = struct {
 pub const FetchError = error{Todo} ||
     @typeInfo(@typeInfo(@TypeOf(std.fs.Dir.openDir)).Fn.return_type.?).ErrorUnion.error_set ||
     @typeInfo(@typeInfo(@TypeOf(std.fs.path.join)).Fn.return_type.?).ErrorUnion.error_set ||
-    @typeInfo(@typeInfo(@TypeOf(Project.fromDir)).Fn.return_type.?).ErrorUnion.error_set ||
+    @typeInfo(@typeInfo(@TypeOf(Project.fromDirPath)).Fn.return_type.?).ErrorUnion.error_set ||
     @typeInfo(@typeInfo(@TypeOf(updateBasePaths)).Fn.return_type.?).ErrorUnion.error_set;
 
 const FetchQueue = Engine.MultiQueueImpl(Resolution, FetchError);
@@ -84,7 +84,7 @@ pub fn dedupeResolveAndFetch(
     defer project_file.close();
 
     const text = try project_file.reader().readAllAlloc(&arena.allocator, std.math.maxInt(usize));
-    const project = try Project.fromUnownedText(arena.child_allocator, text);
+    const project = try Project.fromUnownedText(arena.child_allocator, dep.path, text);
     defer project.destroy();
 
     const root = dep.root orelse utils.default_root;

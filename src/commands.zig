@@ -4,7 +4,6 @@ const clap = @import("clap");
 const version = @import("version");
 const zzz = @import("zzz");
 const known_folders = @import("known-folders");
-const build_options = @import("build_options");
 const api = @import("api.zig");
 const Project = @import("Project.zig");
 const Dependency = @import("Dependency.zig");
@@ -23,12 +22,7 @@ fn assertFileExistsInCwd(subpath: []const u8) !void {
 }
 
 pub fn fetch(allocator: *Allocator) !void {
-    try assertFileExistsInCwd("gyro.zzz");
-
-    const project_file = try std.fs.cwd().openFile("gyro.zzz", .{});
-    defer project_file.close();
-
-    const project = try Project.fromFile(allocator, project_file);
+    const project = try Project.fromDirPath(allocator, ".");
     defer project.destroy();
 
     const lockfile = try std.fs.cwd().createFile("gyro.lock", .{
@@ -77,7 +71,6 @@ const EnvInfo = struct {
 
 pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
     try assertFileExistsInCwd("build.zig");
-    try assertFileExistsInCwd("gyro.zzz");
 
     var fifo = std.fifo.LinearFifo(u8, .{ .Dynamic = {} }).init(allocator);
     defer fifo.deinit();
@@ -133,10 +126,15 @@ pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
     );
     defer std.fs.cwd().deleteFile("build_runner.zig") catch {};
 
-    const project_file = try std.fs.cwd().openFile("gyro.zzz", .{});
-    defer project_file.close();
+    const project = blk: {
+        const project_file = std.fs.cwd().openFile("gyro.zzz", .{}) catch |err| switch (err) {
+            error.FileNotFound => break :blk try Project.fromUnownedText(allocator, ".", ""),
+            else => |e| return e,
+        };
+        defer project_file.close();
 
-    const project = try Project.fromFile(allocator, project_file);
+        break :blk try Project.fromFile(allocator, ".", project_file);
+    };
     defer project.destroy();
 
     const lockfile = try std.fs.cwd().createFile("gyro.lock", .{
@@ -215,10 +213,7 @@ pub fn package(
     output_dir: ?[]const u8,
     names: []const []const u8,
 ) !void {
-    const file = try std.fs.cwd().openFile("gyro.zzz", .{ .read = true });
-    defer file.close();
-
-    var project = try Project.fromFile(allocator, file);
+    const project = try Project.fromDirPath(allocator, ".");
     defer project.destroy();
 
     if (project.packages.count() == 0) {
@@ -380,7 +375,7 @@ pub fn add(
         else => return error.Todo,
     }
 
-    const repository = build_options.default_repo;
+    const repository = utils.default_repo;
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
@@ -391,7 +386,7 @@ pub fn add(
     });
     defer file.close();
 
-    var project = try Project.fromFile(allocator, file);
+    var project = try Project.fromFile(allocator, ".", file);
     defer project.destroy();
 
     const dep_list = if (build_deps)
@@ -445,7 +440,7 @@ pub fn add(
                 );
 
                 const root_file = if (root_path) |rp| rp else if (text_opt) |t| get_root: {
-                    const subproject = try Project.fromUnownedText(&arena.allocator, t);
+                    const subproject = try Project.fromUnownedText(&arena.allocator, ".", t);
                     defer subproject.destroy();
 
                     var ret: []const u8 = utils.default_root;
@@ -493,20 +488,13 @@ pub fn add(
                                 .min = latest,
                                 .kind = .caret,
                             },
-                            .repository = build_options.default_repo,
+                            .repository = utils.default_repo,
                         },
                     },
                 };
             },
             .local => blk: {
-                const path = try std.fs.path.join(allocator, &.{ target, "gyro.zzz" });
-                defer allocator.free(path);
-
-                const project_file = try std.fs.cwd().openFile(path, .{});
-                defer project_file.close();
-
-                const text = try project_file.readToEndAlloc(&arena.allocator, std.math.maxInt(usize));
-                const subproject = try Project.fromUnownedText(&arena.allocator, text);
+                const subproject = try Project.fromDirPath(allocator, target);
                 defer subproject.destroy();
 
                 const detected_root = if (subproject.packages.count() == 1)
@@ -575,7 +563,7 @@ pub fn rm(
     });
     defer file.close();
 
-    var project = try Project.fromFile(allocator, file);
+    var project = try Project.fromFile(allocator, ".", file);
     defer project.destroy();
 
     const dep_list = if (build_deps)
@@ -630,7 +618,7 @@ pub fn publish(allocator: *Allocator, pkg: ?[]const u8) !void {
     };
     defer file.close();
 
-    var project = try Project.fromFile(allocator, file);
+    var project = try Project.fromFile(allocator, ".", file);
     defer project.destroy();
 
     if (project.packages.count() == 0) {
@@ -769,7 +757,7 @@ fn validateNoRedirects(allocator: *Allocator) !void {
     });
     defer redirect_file.close();
 
-    var redirects = try Project.fromFile(allocator, redirect_file);
+    var redirects = try Project.fromFile(allocator, ".", redirect_file);
     defer redirects.destroy();
 
     if (redirects.deps.items.len > 0 or redirects.build_deps.items.len > 0) {
@@ -812,10 +800,10 @@ pub fn redirect(
     });
     defer redirect_file.close();
 
-    var project = try Project.fromFile(allocator, project_file);
+    var project = try Project.fromFile(allocator, ".", project_file);
     defer project.destroy();
 
-    var redirects = try Project.fromFile(allocator, redirect_file);
+    var redirects = try Project.fromFile(allocator, ".", redirect_file);
     defer redirects.destroy();
 
     if (check) {
@@ -861,16 +849,7 @@ pub fn redirect(
         try redirect_deps.append(dep.*);
         const root = switch (dep.src) {
             .pkg => |pkg| blk: {
-                const local_path = try std.fs.path.resolve(allocator, &.{
-                    path,
-                    "gyro.zzz",
-                });
-                defer allocator.free(local_path);
-
-                const local_project_file = try std.fs.openFileAbsolute(local_path, .{});
-                defer local_project_file.close();
-
-                var local_project = try Project.fromFile(allocator, local_project_file);
+                var local_project = try Project.fromDirPath(allocator, path);
                 defer local_project.destroy();
 
                 const result = local_project.packages.get(pkg.name) orelse {

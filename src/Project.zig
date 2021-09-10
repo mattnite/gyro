@@ -4,12 +4,14 @@ const version = @import("version");
 const Package = @import("Package.zig");
 const Dependency = @import("Dependency.zig");
 const utils = @import("utils.zig");
+
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 
 const Self = @This();
 
 allocator: *Allocator,
+base_dir: []const u8,
 text: []const u8,
 owns_text: bool,
 packages: std.StringHashMap(Package),
@@ -24,12 +26,18 @@ pub const Iterator = struct {
     }
 };
 
-fn create(allocator: *Allocator, text: []const u8, owns_text: bool) !*Self {
+fn create(
+    allocator: *Allocator,
+    base_dir: []const u8,
+    text: []const u8,
+    owns_text: bool,
+) !*Self {
     const ret = try allocator.create(Self);
     errdefer allocator.destroy(ret);
 
     ret.* = Self{
         .allocator = allocator,
+        .base_dir = base_dir,
         .text = text,
         .owns_text = owns_text,
         .packages = std.StringHashMap(Package).init(allocator),
@@ -111,6 +119,7 @@ fn create(allocator: *Allocator, text: []const u8, owns_text: bool) !*Self {
 }
 
 fn deinit(self: *Self) void {
+    std.log.debug("deiniting project for {s}", .{self.base_dir});
     var it = self.packages.iterator();
     while (it.next()) |entry| {
         entry.value_ptr.deinit();
@@ -129,23 +138,30 @@ pub fn destroy(self: *Self) void {
     self.allocator.destroy(self);
 }
 
-pub fn fromUnownedText(allocator: *Allocator, text: []const u8) !*Self {
-    return try Self.create(allocator, text, false);
+pub fn fromUnownedText(allocator: *Allocator, base_dir: []const u8, text: []const u8) !*Self {
+    return try Self.create(allocator, base_dir, text, false);
 }
 
-pub fn fromFile(allocator: *Allocator, file: std.fs.File) !*Self {
-    return Self.create(allocator, try file.reader().readAllAlloc(allocator, std.math.maxInt(usize)), true);
+pub fn fromFile(allocator: *Allocator, base_dir: []const u8, file: std.fs.File) !*Self {
+    return Self.create(
+        allocator,
+        base_dir,
+        try file.reader().readAllAlloc(allocator, std.math.maxInt(usize)),
+        true,
+    );
 }
 
-pub fn fromDir(
+pub fn fromDirPath(
     allocator: *Allocator,
-    dir: std.fs.Dir,
-    flags: std.fs.File.OpenFlags,
+    base_dir: []const u8,
 ) !*Self {
-    const file = try dir.openFile("gyro.zzz", flags);
+    var dir = try std.fs.cwd().openDir(base_dir, .{});
+    defer dir.close();
+
+    const file = try dir.openFile("gyro.zzz", .{});
     defer file.close();
 
-    return Self.fromFile(allocator, file);
+    return Self.fromFile(allocator, base_dir, file);
 }
 
 pub fn write(self: Self, writer: anytype) !void {

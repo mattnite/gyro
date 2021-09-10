@@ -1,5 +1,8 @@
-usingnamespace std.build;
 const std = @import("std");
+
+const Builder = std.build.Builder;
+const LibExeObjStep = std.build.LibExeObjStep;
+const Pkg = std.build.Pkg;
 
 const clap = .{
     .name = "clap",
@@ -80,19 +83,14 @@ pub fn build(b: *Builder) !void {
     const target = b.standardTargetOptions(.{});
     const mode = b.standardReleaseOptions();
 
-    const repository = b.option([]const u8, "repo", "default package index (default is astrolabe.pm)");
-
     const gyro = b.addExecutable("gyro", "src/main.zig");
     gyro.setTarget(target);
     gyro.setBuildMode(mode);
-    gyro.addBuildOption([]const u8, "default_repo", repository orelse "astrolabe.pm");
     gyro.install();
     addAllPkgs(gyro);
 
     const tests = b.addTest("src/main.zig");
     tests.setBuildMode(mode);
-    tests.addBuildOption([]const u8, "default_repo", repository orelse "astrolabe.pm");
-
     addAllPkgs(tests);
 
     const test_step = b.step("test", "Run tests");

@@ -158,7 +158,7 @@ fn fetch(
     defer project_file.close();
 
     const text = try project_file.reader().readAllAlloc(&arena.allocator, std.math.maxInt(usize));
-    const project = try Project.fromUnownedText(arena.child_allocator, text);
+    const project = try Project.fromUnownedText(arena.child_allocator, ".", text);
     defer project.destroy();
 
     try deps.appendSlice(arena.child_allocator, project.deps.items);

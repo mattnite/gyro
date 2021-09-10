@@ -433,24 +433,29 @@ pub fn fetch(self: *Engine) !void {
 
         {
             try self.fetch_queue.parallelFetch(self.dep_table, self.resolutions);
-            inline for (Sources) |source| {
-                // update resolutions
-                for (@field(self.fetch_queue.tables, source.name).items(.result)) |_, i|
-                    try source.updateResolution(
-                        self.allocator,
-                        &@field(self.resolutions.tables, source.name),
-                        self.dep_table.items,
-                        &@field(self.fetch_queue.tables, source.name),
-                        i,
-                    );
 
-                for (@field(self.fetch_queue.tables, source.name).items(.path)) |opt_path, i|
-                    if (opt_path) |path|
+            // inline for workaround because the compiler wasn't generating the right code for this
+            for (self.fetch_queue.tables.pkg.items(.result)) |_, i|
+                try Sources[0].updateResolution(self.allocator, &self.resolutions.tables.pkg, self.dep_table.items, &self.fetch_queue.tables.pkg, i);
+            for (self.fetch_queue.tables.github.items(.result)) |_, i|
+                try Sources[1].updateResolution(self.allocator, &self.resolutions.tables.github, self.dep_table.items, &self.fetch_queue.tables.github, i);
+            for (self.fetch_queue.tables.local.items(.result)) |_, i|
+                try Sources[2].updateResolution(self.allocator, &self.resolutions.tables.local, self.dep_table.items, &self.fetch_queue.tables.local, i);
+            for (self.fetch_queue.tables.url.items(.result)) |_, i|
+                try Sources[3].updateResolution(self.allocator, &self.resolutions.tables.url, self.dep_table.items, &self.fetch_queue.tables.url, i);
+
+            inline for (Sources) |source| {
+                for (@field(self.fetch_queue.tables, source.name).items(.path)) |opt_path, i| {
+                    if (opt_path) |path| {
                         try self.paths.putNoClobber(
                             self.allocator,
                             @field(self.fetch_queue.tables, source.name).items(.edge)[i].to,
                             path,
                         );
+
+                        std.log.debug("path: {s}", .{path});
+                    }
+                }
 
                 // set up next batch of deps to fetch
                 for (@field(self.fetch_queue.tables, source.name).items(.deps)) |deps, i| {
@@ -480,6 +485,11 @@ pub fn fetch(self: *Engine) !void {
         try self.fetch_queue.clearAndLoad(&self.arena, next);
     }
 
+    std.log.debug("path table:", .{});
+    var it = self.paths.iterator();
+    while (it.next()) |entry|
+        std.log.debug("{}: {s}", .{ entry.key_ptr.*, entry.value_ptr.* });
+
     // TODO: check for circular dependencies
 }
 
@@ -501,12 +511,11 @@ pub fn writeDepBeginRoot(self: *Engine, writer: anytype, indent: usize, edge: Ed
     try writer.print(".path = FileSource{{\n", .{});
 
     try writer.writeByteNTimes(' ', 4 * (indent + 2));
+    std.log.debug("printing path: {s}", .{self.paths.get(edge.to).?});
     try writer.print(".path = \"{s}\",\n", .{self.paths.get(edge.to).?});
 
     try writer.writeByteNTimes(' ', 4 * (indent + 1));
     try writer.print("}},\n", .{});
-
-    _ = self;
 }
 
 pub fn writeDepEndRoot(writer: anytype, indent: usize) !void {
