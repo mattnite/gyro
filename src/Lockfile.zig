@@ -4,7 +4,7 @@ const zzz = @import("zzz");
 const api = @import("api.zig");
 const uri = @import("uri");
 const Dependency = @import("Dependency.zig");
-usingnamespace @import("common.zig");
+const utils = @import("utils.zig");
 
 const Self = @This();
 const Allocator = std.mem.Allocator;
@@ -71,7 +71,7 @@ pub const Entry = union(enum) {
             const repo = it.next() orelse return error.NoRepo;
             ret = Entry{
                 .pkg = .{
-                    .repository = if (std.mem.eql(u8, repo, "default")) default_repo else repo,
+                    .repository = if (std.mem.eql(u8, repo, "default")) utils.default_repo else repo,
                     .user = it.next() orelse return error.NoUser,
                     .name = it.next() orelse return error.NoName,
                     .version = try version.Semver.parse(allocator, it.next() orelse return error.NoVersion),
@@ -128,8 +128,8 @@ pub const Entry = union(enum) {
         var deps = std.ArrayListUnmanaged(Dependency){};
         var ztree = zzz.ZTree(1, 1000){};
         var root = try ztree.appendText(text);
-        if (zFindChild(root, "deps")) |deps_node| {
-            var it = ZChildIterator.init(deps_node);
+        if (utils.zFindChild(root, "deps")) |deps_node| {
+            var it = utils.ZChildIterator.init(deps_node);
             while (it.next()) |node|
                 try deps.append(
                     &arena.allocator,
@@ -140,19 +140,19 @@ pub const Entry = union(enum) {
         switch (self) {
             .url, .github => {
                 // search for pkg with matching root file
-                if (zFindChild(root, "pkgs")) |pkgs_node| {
+                if (utils.zFindChild(root, "pkgs")) |pkgs_node| {
                     const entry_root = switch (self) {
                         .url => |url| url.root,
                         .github => |gh| gh.root,
                         else => unreachable,
                     };
 
-                    var pkg_it = ZChildIterator.init(pkgs_node);
+                    var pkg_it = utils.ZChildIterator.init(pkgs_node);
                     while (pkg_it.next()) |pkg_node| {
-                        const pkg_root = (try zFindString(pkg_node, "root")) orelse "src/main.zig";
+                        const pkg_root = (try utils.zFindString(pkg_node, "root")) orelse "src/main.zig";
                         if (std.mem.eql(u8, pkg_root, entry_root)) {
-                            if (zFindChild(pkg_node, "deps")) |deps_node| {
-                                var it = ZChildIterator.init(deps_node);
+                            if (utils.zFindChild(pkg_node, "deps")) |deps_node| {
+                                var it = utils.ZChildIterator.init(deps_node);
                                 while (it.next()) |dep_node| {
                                     const dep = try Dependency.fromZNode(arena.child_allocator, dep_node);
                                     try deps.append(&arena.allocator, dep);
@@ -197,7 +197,7 @@ pub const Entry = union(enum) {
                 var text = try file.reader().readAllAlloc(&arena.allocator, std.math.maxInt(usize));
                 var tree = zzz.ZTree(1, 1000){};
                 var root = try tree.appendText(text);
-                break :blk (try zFindString(root, "root")) orelse {
+                break :blk (try utils.zFindString(root, "root")) orelse {
                     std.log.err("Root missing for package: {s}/{s}-{} from {s}", .{
                         pkg.user,
                         pkg.name,
@@ -285,19 +285,19 @@ pub const Entry = union(enum) {
                 try ver_stream.writer().print("{}", .{pkg.version});
 
                 var node = try tree.addNode(root, .{ .String = "pkg" });
-                try zPutKeyString(&tree, node, "user", pkg.user);
-                try zPutKeyString(&tree, node, "name", pkg.name);
-                try zPutKeyString(&tree, node, "version", ver_stream.getWritten());
-                try zPutKeyString(&tree, node, "repository", pkg.repository);
+                try utils.zPutKeyString(&tree, node, "user", pkg.user);
+                try utils.zPutKeyString(&tree, node, "name", pkg.name);
+                try utils.zPutKeyString(&tree, node, "version", ver_stream.getWritten());
+                try utils.zPutKeyString(&tree, node, "repository", pkg.repository);
             },
             .github => |gh| {
                 var node = try tree.addNode(root, .{ .String = "github" });
-                try zPutKeyString(&tree, node, "user", gh.user);
-                try zPutKeyString(&tree, node, "repo", gh.repo);
-                try zPutKeyString(&tree, node, "commit", gh.commit);
+                try utils.zPutKeyString(&tree, node, "user", gh.user);
+                try utils.zPutKeyString(&tree, node, "repo", gh.repo);
+                try utils.zPutKeyString(&tree, node, "commit", gh.commit);
             },
             .url => |url| {
-                try zPutKeyString(&tree, root, "url", url.str);
+                try utils.zPutKeyString(&tree, root, "url", url.str);
             },
             .local => |local| return try allocator.dupe(u8, local.path),
         }
@@ -376,7 +376,7 @@ pub const Entry = union(enum) {
     pub fn write(self: Entry, writer: anytype) !void {
         switch (self) {
             .pkg => |pkg| {
-                const repo = if (std.mem.eql(u8, pkg.repository, default_repo))
+                const repo = if (std.mem.eql(u8, pkg.repository, utils.default_repo))
                     "default"
                 else
                     pkg.repository;
@@ -475,7 +475,7 @@ test "entry from pkg: default repository" {
         .pkg = .{
             .user = "matt",
             .name = "something",
-            .repository = default_repo,
+            .repository = utils.default_repo,
             .version = version.Semver{
                 .major = 0,
                 .minor = 1,
@@ -561,7 +561,7 @@ test "lockfile with example of all" {
             .pkg = .{
                 .user = "matt",
                 .name = "something",
-                .repository = default_repo,
+                .repository = utils.default_repo,
                 .version = version.Semver{
                     .major = 0,
                     .minor = 1,

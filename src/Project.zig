@@ -5,8 +5,7 @@ const Package = @import("Package.zig");
 const Dependency = @import("Dependency.zig");
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
-
-usingnamespace @import("common.zig");
+const utils = @import("utils.zig");
 
 const Self = @This();
 
@@ -85,12 +84,12 @@ pub fn fromText(allocator: *Allocator, text: []const u8) !*Self {
 
     var tree = zzz.ZTree(1, 1000){};
     var root = try tree.appendText(ret.text);
-    if (zFindChild(root, "pkgs")) |pkgs| {
-        var it = ZChildIterator.init(pkgs);
+    if (utils.zFindChild(root, "pkgs")) |pkgs| {
+        var it = utils.ZChildIterator.init(pkgs);
         while (it.next()) |node| {
-            const name = try zGetString(node);
+            const name = try utils.zGetString(node);
 
-            const ver_str = (try zFindString(node, "version")) orelse {
+            const ver_str = (try utils.zFindString(node, "version")) orelse {
                 std.log.err("missing version string in package", .{});
                 return error.Explained;
             };
@@ -118,8 +117,8 @@ pub fn fromText(allocator: *Allocator, text: []const u8) !*Self {
         }
     }
 
-    if (zFindChild(root, "deps")) |deps| {
-        var it = ZChildIterator.init(deps);
+    if (utils.zFindChild(root, "deps")) |deps| {
+        var it = utils.ZChildIterator.init(deps);
         while (it.next()) |dep_node| {
             const dep = try Dependency.fromZNode(allocator, dep_node);
             for (ret.deps.items) |other| {
@@ -133,8 +132,8 @@ pub fn fromText(allocator: *Allocator, text: []const u8) !*Self {
         }
     }
 
-    if (zFindChild(root, "build_deps")) |build_deps| {
-        var it = ZChildIterator.init(build_deps);
+    if (utils.zFindChild(root, "build_deps")) |build_deps| {
+        var it = utils.ZChildIterator.init(build_deps);
         while (it.next()) |dep_node| {
             const dep = try Dependency.fromZNode(allocator, dep_node);
             for (ret.build_deps.items) |other| {

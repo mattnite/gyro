@@ -5,7 +5,7 @@ const uri = @import("uri");
 const Lockfile = @import("Lockfile.zig");
 const DependencyTree = @import("DependencyTree.zig");
 const api = @import("api.zig");
-usingnamespace @import("common.zig");
+const utils = @import("utils.zig");
 
 const Self = @This();
 const Allocator = std.mem.Allocator;
@@ -173,10 +173,10 @@ pub fn fromZNode(allocator: *Allocator, node: *zzz.ZNode) !Self {
     // check if only one child node and that it has no children
     if (node.*.child.?.value == .String and node.*.child.?.child == null) {
         if (node.*.child.?.sibling != null) return error.Unknown;
-        const key = try zGetString(node);
+        const key = try utils.zGetString(node);
 
-        const info = try parseUserRepo(key);
-        const ver_str = try zGetString(node.*.child.?);
+        const info = try utils.parseUserRepo(key);
+        const ver_str = try utils.zGetString(node.*.child.?);
         return Self{
             .alias = info.repo,
             .src = .{
@@ -185,16 +185,16 @@ pub fn fromZNode(allocator: *Allocator, node: *zzz.ZNode) !Self {
                     .name = info.repo,
                     .ver_str = ver_str,
                     .version = try version.Range.parse(allocator, ver_str),
-                    .repository = default_repo,
+                    .repository = utils.default_repo,
                 },
             },
         };
     }
 
     // search for src node
-    const alias = try zGetString(node);
+    const alias = try utils.zGetString(node);
     const src_node = blk: {
-        var it = ZChildIterator.init(node);
+        var it = utils.ZChildIterator.init(node);
 
         while (it.next()) |child| {
             switch (child.value) {
@@ -206,7 +206,7 @@ pub fn fromZNode(allocator: *Allocator, node: *zzz.ZNode) !Self {
 
     const src: Source = blk: {
         const child = src_node.child orelse return error.SrcNeedsChild;
-        const src_str = try zGetString(child);
+        const src_str = try utils.zGetString(child);
         const src_type = inline for (std.meta.fields(SourceType)) |field| {
             if (mem.eql(u8, src_str, field.name)) break @field(SourceType, field.name);
         } else return error.InvalidSrcTag;
@@ -214,31 +214,31 @@ pub fn fromZNode(allocator: *Allocator, node: *zzz.ZNode) !Self {
         break :blk switch (src_type) {
             .pkg => .{
                 .pkg = .{
-                    .user = (try zFindString(child, "user")) orelse return error.MissingUser,
-                    .name = (try zFindString(child, "name")) orelse alias,
-                    .ver_str = (try zFindString(child, "version")) orelse return error.MissingVersion,
-                    .version = try version.Range.parse(allocator, (try zFindString(child, "version")) orelse return error.MissingVersion),
-                    .repository = (try zFindString(child, "repository")) orelse default_repo,
+                    .user = (try utils.zFindString(child, "user")) orelse return error.MissingUser,
+                    .name = (try utils.zFindString(child, "name")) orelse alias,
+                    .ver_str = (try utils.zFindString(child, "version")) orelse return error.MissingVersion,
+                    .version = try version.Range.parse(allocator, (try utils.zFindString(child, "version")) orelse return error.MissingVersion),
+                    .repository = (try utils.zFindString(child, "repository")) orelse utils.default_repo,
                 },
             },
             .github => .{
                 .github = .{
-                    .user = (try zFindString(child, "user")) orelse return error.GithubMissingUser,
-                    .repo = (try zFindString(child, "repo")) orelse return error.GithubMissingRepo,
-                    .ref = (try zFindString(child, "ref")) orelse return error.GithubMissingRef,
-                    .root = (try zFindString(node, "root")) orelse "src/main.zig",
+                    .user = (try utils.zFindString(child, "user")) orelse return error.GithubMissingUser,
+                    .repo = (try utils.zFindString(child, "repo")) orelse return error.GithubMissingRepo,
+                    .ref = (try utils.zFindString(child, "ref")) orelse return error.GithubMissingRef,
+                    .root = (try utils.zFindString(node, "root")) orelse "src/main.zig",
                 },
             },
             .url => .{
                 .url = .{
-                    .str = try zGetString(child.child orelse return error.UrlMissingStr),
-                    .root = (try zFindString(node, "root")) orelse "src/main.zig",
+                    .str = try utils.zGetString(child.child orelse return error.UrlMissingStr),
+                    .root = (try utils.zFindString(node, "root")) orelse "src/main.zig",
                 },
             },
             .local => .{
                 .local = .{
-                    .path = try zGetString(child.child orelse return error.UrlMissingStr),
-                    .root = (try zFindString(node, "root")) orelse "src/main.zig",
+                    .path = try utils.zGetString(child.child orelse return error.UrlMissingStr),
+                    .root = (try utils.zFindString(node, "root")) orelse "src/main.zig",
                 },
             },
         };
@@ -309,7 +309,7 @@ test "default repo pkg" {
                 .name = "something",
                 .ver_str = "^0.1.0",
                 .version = try version.Range.parse(testing.allocator, "^0.1.0"),
-                .repository = default_repo,
+                .repository = utils.default_repo,
             },
         },
     }, try fromString(testing.allocator, "matt/something: ^0.1.0"));
@@ -333,7 +333,7 @@ test "aliased, default repo pkg" {
                 .name = "blarg",
                 .ver_str = "^0.1.0",
                 .version = try version.Range.parse(testing.allocator, "^0.1.0"),
-                .repository = default_repo,
+                .repository = utils.default_repo,
             },
         },
     };
@@ -564,7 +564,7 @@ pub fn addToZNode(
     switch (self.src) {
         .pkg => |pkg| if (!explicit and
             std.mem.eql(u8, self.alias, pkg.name) and
-            std.mem.eql(u8, pkg.repository, default_repo))
+            std.mem.eql(u8, pkg.repository, utils.default_repo))
         {
             var fifo = std.fifo.LinearFifo(u8, .{ .Dynamic = {} }).init(&arena.allocator);
             try fifo.writer().print("{s}/{s}", .{ pkg.user, pkg.name });
@@ -574,41 +574,41 @@ pub fn addToZNode(
             var src = try tree.addNode(alias, .{ .String = "src" });
             var node = try tree.addNode(src, .{ .String = "pkg" });
 
-            try zPutKeyString(tree, node, "user", pkg.user);
+            try utils.zPutKeyString(tree, node, "user", pkg.user);
             if (explicit or !std.mem.eql(u8, pkg.name, self.alias)) {
-                try zPutKeyString(tree, node, "name", pkg.name);
+                try utils.zPutKeyString(tree, node, "name", pkg.name);
             }
 
-            try zPutKeyString(tree, node, "version", pkg.ver_str);
-            if (explicit or !std.mem.eql(u8, pkg.repository, default_repo)) {
-                try zPutKeyString(tree, node, "repository", pkg.repository);
+            try utils.zPutKeyString(tree, node, "version", pkg.ver_str);
+            if (explicit or !std.mem.eql(u8, pkg.repository, utils.default_repo)) {
+                try utils.zPutKeyString(tree, node, "repository", pkg.repository);
             }
         },
         .github => |gh| {
             var src = try tree.addNode(alias, .{ .String = "src" });
             var github = try tree.addNode(src, .{ .String = "github" });
-            try zPutKeyString(tree, github, "user", gh.user);
-            try zPutKeyString(tree, github, "repo", gh.repo);
-            try zPutKeyString(tree, github, "ref", gh.ref);
+            try utils.zPutKeyString(tree, github, "user", gh.user);
+            try utils.zPutKeyString(tree, github, "repo", gh.repo);
+            try utils.zPutKeyString(tree, github, "ref", gh.ref);
 
             if (explicit or !std.mem.eql(u8, gh.root, "src/main.zig")) {
-                try zPutKeyString(tree, alias, "root", gh.root);
+                try utils.zPutKeyString(tree, alias, "root", gh.root);
             }
         },
         .url => |url| {
             var src = try tree.addNode(alias, .{ .String = "src" });
-            try zPutKeyString(tree, src, "url", url.str);
+            try utils.zPutKeyString(tree, src, "url", url.str);
 
             if (explicit or !std.mem.eql(u8, url.root, "src/main.zig")) {
-                try zPutKeyString(tree, alias, "root", url.root);
+                try utils.zPutKeyString(tree, alias, "root", url.root);
             }
         },
         .local => |local| {
             var src = try tree.addNode(alias, .{ .String = "src" });
-            try zPutKeyString(tree, src, "local", local.path);
+            try utils.zPutKeyString(tree, src, "local", local.path);
 
             if (explicit or !std.mem.eql(u8, local.root, "src/main.zig")) {
-                try zPutKeyString(tree, alias, "root", local.root);
+                try utils.zPutKeyString(tree, alias, "root", local.root);
             }
         },
     }

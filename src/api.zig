@@ -6,7 +6,7 @@ const zzz = @import("zzz");
 const uri = @import("uri");
 const Dependency = @import("Dependency.zig");
 const Package = @import("Package.zig");
-usingnamespace @import("common.zig");
+const utils = @import("utils.zig");
 
 const Allocator = std.mem.Allocator;
 
@@ -357,7 +357,7 @@ pub fn postPublish(
     const authorization = try std.fmt.allocPrint(allocator, "Bearer github {s}", .{access_token});
     defer allocator.free(authorization);
 
-    const url = "https://" ++ default_repo ++ "/publish";
+    const url = "https://" ++ utils.default_repo ++ "/publish";
     var headers = zfetch.Headers.init(allocator);
     defer headers.deinit();
 

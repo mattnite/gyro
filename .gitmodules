@@ -21,7 +21,7 @@
 	url = https://github.com/MasterQ32/zig-network.git
 [submodule "libs/iguanaTLS"]
 	path = libs/iguanaTLS
-	url = https://github.com/alexnask/iguanaTLS.git
+	url = https://github.com/marler8997/iguanaTLS.git
 [submodule "libs/version"]
 	path = libs/version
 	url = https://github.com/mattnite/version.git
