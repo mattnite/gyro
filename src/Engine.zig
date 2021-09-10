@@ -452,8 +452,6 @@ pub fn fetch(self: *Engine) !void {
                             @field(self.fetch_queue.tables, source.name).items(.edge)[i].to,
                             path,
                         );
-
-                        std.log.debug("path: {s}", .{path});
                     }
                 }
 
@@ -485,11 +483,6 @@ pub fn fetch(self: *Engine) !void {
         try self.fetch_queue.clearAndLoad(&self.arena, next);
     }
 
-    std.log.debug("path table:", .{});
-    var it = self.paths.iterator();
-    while (it.next()) |entry|
-        std.log.debug("{}: {s}", .{ entry.key_ptr.*, entry.value_ptr.* });
-
     // TODO: check for circular dependencies
 }
 
@@ -499,11 +492,11 @@ pub fn writeLockfile(self: Engine, writer: anytype) !void {
 }
 
 pub fn writeDepBeginRoot(self: *Engine, writer: anytype, indent: usize, edge: Edge) !void {
-    try writer.writeByteNTimes(' ', 4 * indent);
-    try writer.print("pub const {s} = Pkg{{\n", .{
-        try utils.escape(&self.arena.allocator, edge.alias),
-    });
+    const escaped = try utils.escape(self.allocator, edge.alias);
+    defer self.allocator.free(escaped);
 
+    try writer.writeByteNTimes(' ', 4 * indent);
+    try writer.print("pub const {s} = Pkg{{\n", .{escaped});
     try writer.writeByteNTimes(' ', 4 * (indent + 1));
     try writer.print(".name = \"{s}\",\n", .{edge.alias});
 
@@ -511,7 +504,6 @@ pub fn writeDepBeginRoot(self: *Engine, writer: anytype, indent: usize, edge: Ed
     try writer.print(".path = FileSource{{\n", .{});
 
     try writer.writeByteNTimes(' ', 4 * (indent + 2));
-    std.log.debug("printing path: {s}", .{self.paths.get(edge.to).?});
     try writer.print(".path = \"{s}\",\n", .{self.paths.get(edge.to).?});
 
     try writer.writeByteNTimes(' ', 4 * (indent + 1));
@@ -687,7 +679,7 @@ pub fn writeDepsZig(self: *Engine, writer: anytype) !void {
 
 pub fn genBuildDeps(self: Engine) ![]std.build.Pkg {
     _ = self;
-    return &[_]std.build.Pkg{};
+    return error.Todo;
 }
 
 test "Resolutions" {

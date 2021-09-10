@@ -49,9 +49,7 @@ pub fn serializeResolutions(
             try writer.print("url {s} {s}\n", .{
                 entry.root,
                 entry.str,
-            })
-        else
-            std.log.debug("empty resolution", .{});
+            });
 }
 
 fn findResolution(dep: Dependency.Source, resolutions: []const ResolutionEntry) ?usize {
@@ -120,8 +118,6 @@ fn fetch(
 
     const root = dep.url.root orelse utils.default_root;
     path.* = try std.fs.path.join(&arena.allocator, &.{ base_path, root });
-    std.log.debug("path = {s}", .{path.*});
-
     var base_dir = try std.fs.cwd().openDir(base_path, .{});
     defer base_dir.close();
 

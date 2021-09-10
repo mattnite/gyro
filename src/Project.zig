@@ -119,7 +119,6 @@ fn create(
 }
 
 fn deinit(self: *Self) void {
-    std.log.debug("deiniting project for {s}", .{self.base_dir});
     var it = self.packages.iterator();
     while (it.next()) |entry| {
         entry.value_ptr.deinit();
