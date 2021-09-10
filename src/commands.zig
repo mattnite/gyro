@@ -9,7 +9,7 @@ const Project = @import("Project.zig");
 const Lockfile = @import("Lockfile.zig");
 const Dependency = @import("Dependency.zig");
 const DependencyTree = @import("DependencyTree.zig");
-usingnamespace @import("common.zig");
+const utils = @import("utils.zig");
 
 const Allocator = std.mem.Allocator;
 
@@ -313,7 +313,7 @@ pub fn init(
     errdefer std.fs.cwd().deleteFile("gyro.zzz") catch {};
     defer file.close();
 
-    const info = try parseUserRepo(link orelse return);
+    const info = try utils.parseUserRepo(link orelse return);
 
     var repo_tree = try api.getGithubRepo(allocator, info.user, info.repo);
     defer repo_tree.deinit();
@@ -334,7 +334,7 @@ pub fn init(
         \\  {s}:
         \\    version: 0.0.0
         \\
-    , .{try normalizeName(info.repo)});
+    , .{try utils.normalizeName(info.repo)});
 
     try maybePrintKey("description", "description", repo_root, writer);
 
@@ -415,7 +415,7 @@ pub fn add(
     }
 
     // TODO: detect collisions in subpackages (both directions)
-    const repository = default_repo;
+    const repository = utils.default_repo;
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
@@ -465,7 +465,7 @@ pub fn add(
     }
 
     for (targets) |target| {
-        const info = try parseUserRepo(target);
+        const info = try utils.parseUserRepo(target);
         const dep = switch (src_tag) {
             .github => blk: {
                 var value_tree = try api.getGithubRepo(&arena.allocator, info.user, info.repo);
@@ -491,19 +491,19 @@ pub fn add(
                     const subproject = try Project.fromText(&arena.allocator, t);
                     defer subproject.destroy();
 
-                    var ret: []const u8 = default_root;
+                    var ret: []const u8 = utils.default_root;
                     if (subproject.packages.count() == 1)
                         ret = if (subproject.packages.iterator().next().?.value_ptr.root) |r|
                             try arena.allocator.dupe(u8, r)
                         else
-                            default_root;
+                            utils.default_root;
 
                     // TODO try other matching methods
 
                     break :get_root ret;
-                } else default_root;
+                } else utils.default_root;
 
-                const name = try normalizeName(info.repo);
+                const name = try utils.normalizeName(info.repo);
                 try verifyUniqueAlias(name, dep_list.items, to);
 
                 break :blk Dependency{
@@ -536,7 +536,7 @@ pub fn add(
                                 .min = latest,
                                 .kind = .caret,
                             },
-                            .repository = default_repo,
+                            .repository = utils.default_repo,
                             .ver_str = stream.getWritten(),
                         },
                     },
@@ -579,10 +579,10 @@ pub fn add(
                 try verifyUniqueAlias(a, dep_list.items, to);
 
                 const r = root_path orelse (detected_root orelse root_blk: {
-                    std.log.info("no explicit or detected root path for '{s}', using default: " ++ default_root, .{
+                    std.log.info("no explicit or detected root path for '{s}', using default: " ++ utils.default_root, .{
                         target,
                     });
-                    break :root_blk default_root;
+                    break :root_blk utils.default_root;
                 });
                 break :blk Dependency{
                     .alias = a,

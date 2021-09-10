@@ -3,7 +3,7 @@ const Dependency = @import("Dependency.zig");
 const Lockfile = @import("Lockfile.zig");
 const Project = @import("Project.zig");
 const Package = @import("Package.zig");
-usingnamespace @import("common.zig");
+const utils = @import("utils.zig");
 
 const Self = @This();
 const Allocator = std.mem.Allocator;
@@ -214,7 +214,7 @@ pub fn printZig(self: *Self, writer: anytype) !void {
         const alias = try escape(self.arena.child_allocator, entry.value_ptr.name);
         defer self.arena.child_allocator.free(alias);
 
-        const root = entry.value_ptr.root orelse default_root;
+        const root = entry.value_ptr.root orelse utils.default_root;
         try writer.print(
             \\    pub const {s} = std.build.Pkg{{
             \\        .name = "{s}",
