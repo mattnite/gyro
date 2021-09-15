@@ -162,7 +162,6 @@ fn fetch(
     defer project.destroy();
 
     try deps.appendSlice(arena.child_allocator, project.deps.items);
-    try local.updateBasePaths(arena, base_path, deps);
 }
 
 pub fn dedupeResolveAndFetch(

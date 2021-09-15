@@ -105,6 +105,7 @@ fn fetch(
         var content_dir = try entry.contentDir();
         defer content_dir.close();
 
+        // TODO: allow user to strip directories from a tarball
         try api.getTarGz(allocator, dep.url.str, content_dir);
         try entry.done();
     }
@@ -133,7 +134,6 @@ fn fetch(
     defer project.destroy();
 
     try deps.appendSlice(arena.child_allocator, project.deps.items);
-    try local.updateBasePaths(arena, base_path, deps);
 }
 
 pub fn dedupeResolveAndFetch(

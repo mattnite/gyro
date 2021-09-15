@@ -677,9 +677,89 @@ pub fn writeDepsZig(self: *Engine, writer: anytype) !void {
     try writer.print("}};\n", .{});
 }
 
-pub fn genBuildDeps(self: Engine) ![]std.build.Pkg {
-    _ = self;
-    return error.Todo;
+fn recursivePrint(pkg: std.build.Pkg, depth: usize) void {
+    const stdout = std.io.getStdOut().writer();
+    stdout.writeByteNTimes(' ', depth) catch {};
+    stdout.print("{s}\n", .{pkg.name}) catch {};
+
+    if (pkg.dependencies) |deps| for (deps) |dep|
+        recursivePrint(dep, depth + 1);
+}
+
+/// arena only stores the arraylists, not text, return slice is allocated in the arena
+pub fn genBuildDeps(self: Engine, arena: *ArenaAllocator) !std.ArrayList(std.build.Pkg) {
+    const allocator = arena.child_allocator;
+
+    var ret = std.ArrayList(std.build.Pkg).init(allocator);
+    errdefer ret.deinit();
+
+    for (self.edges.items) |edge| {
+        switch (edge.from) {
+            .root => |root| if (root == .build) {
+                var stack = std.ArrayList(struct {
+                    current: usize,
+                    edge_idx: usize,
+                    deps: std.ArrayListUnmanaged(std.build.Pkg),
+                }).init(allocator);
+                defer stack.deinit();
+
+                var current = edge.to;
+                var edge_idx = 1 + edge.to;
+                var deps = std.ArrayListUnmanaged(std.build.Pkg){};
+
+                while (true) {
+                    while (edge_idx < self.edges.items.len) : (edge_idx += 1) {
+                        switch (self.edges.items[edge_idx].from) {
+                            .index => |idx| if (idx == current) {
+                                try deps.append(&arena.allocator, .{
+                                    .name = self.edges.items[edge_idx].alias,
+                                    .path = .{
+                                        .path = self.paths.get(self.edges.items[edge_idx].to).?,
+                                    },
+                                });
+
+                                try stack.append(.{
+                                    .current = current,
+                                    .edge_idx = edge_idx,
+                                    .deps = deps,
+                                });
+
+                                current = edge_idx;
+                                edge_idx += 1;
+                                deps = std.ArrayListUnmanaged(std.build.Pkg){};
+                                break;
+                            },
+                            else => {},
+                        }
+                    } else if (stack.items.len > 0) {
+                        const pop = stack.pop();
+                        if (deps.items.len > 0)
+                            pop.deps.items[pop.deps.items.len - 1].dependencies = deps.items;
+
+                        current = pop.current;
+                        edge_idx = 1 + pop.edge_idx;
+                        deps = pop.deps;
+                    } else {
+                        break;
+                    }
+                }
+
+                try ret.append(.{
+                    .name = edge.alias,
+                    .path = .{ .path = self.paths.get(edge.to).? },
+                    .dependencies = deps.items,
+                });
+
+                assert(stack.items.len == 0);
+            },
+            else => {},
+        }
+    }
+
+    for (ret.items) |entry|
+        recursivePrint(entry, 0);
+
+    return ret;
 }
 
 test "Resolutions" {

@@ -134,6 +134,9 @@ fn fetch(
         try entry.done();
     }
 
+    const base_path = try std.fs.path.join(arena.child_allocator, &.{ ".gyro", entry_name, "pkg" });
+    defer arena.child_allocator.free(base_path);
+
     const manifest = try entry.dir.openFile("manifest.zzz", .{});
     defer manifest.close();
 
@@ -148,9 +151,6 @@ fn fetch(
                 try Dependency.fromZNode(allocator, node),
             );
     }
-
-    const base_path = try std.fs.path.join(arena.child_allocator, &.{ ".gyro", entry_name, "pkg" });
-    defer arena.child_allocator.free(base_path);
 
     try local.updateBasePaths(arena, base_path, deps);
     path.* = try std.fs.path.join(&arena.allocator, &.{

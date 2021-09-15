@@ -160,9 +160,11 @@ pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
     try engine.writeDepsZig(deps_file.writer());
 
     // TODO: configurable local cache
-    const pkgs = try engine.genBuildDeps();
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
+
+    const pkgs = try engine.genBuildDeps(&arena);
+    defer pkgs.deinit();
 
     const b = try std.build.Builder.create(
         &arena.allocator,
@@ -180,7 +182,7 @@ pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
         .path = .{
             .path = "build.zig",
         },
-        .dependencies = pkgs,
+        .dependencies = pkgs.items,
     });
 
     const run_cmd = runner.run();

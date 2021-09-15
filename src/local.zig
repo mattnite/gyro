@@ -18,8 +18,7 @@ pub const ResolutionEntry = struct {
 pub const FetchError = error{Todo} ||
     @typeInfo(@typeInfo(@TypeOf(std.fs.Dir.openDir)).Fn.return_type.?).ErrorUnion.error_set ||
     @typeInfo(@typeInfo(@TypeOf(std.fs.path.join)).Fn.return_type.?).ErrorUnion.error_set ||
-    @typeInfo(@typeInfo(@TypeOf(Project.fromDirPath)).Fn.return_type.?).ErrorUnion.error_set ||
-    @typeInfo(@typeInfo(@TypeOf(updateBasePaths)).Fn.return_type.?).ErrorUnion.error_set;
+    @typeInfo(@typeInfo(@TypeOf(Project.fromDirPath)).Fn.return_type.?).ErrorUnion.error_set;
 
 const FetchQueue = Engine.MultiQueueImpl(Resolution, FetchError);
 const ResolutionTable = std.ArrayListUnmanaged(ResolutionEntry);
@@ -87,10 +86,10 @@ pub fn dedupeResolveAndFetch(
     const project = try Project.fromUnownedText(arena.child_allocator, dep.path, text);
     defer project.destroy();
 
+    // TODO: resolve path when default root
     const root = dep.root orelse utils.default_root;
     fetch_queue.items(.path)[i] = try std.fs.path.join(&arena.allocator, &.{ dep.path, root });
     try fetch_queue.items(.deps)[i].appendSlice(arena.child_allocator, project.deps.items);
-    try updateBasePaths(arena, dep.path, &fetch_queue.items(.deps)[i]);
 }
 
 pub fn updateResolution(

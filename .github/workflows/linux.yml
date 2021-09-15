@@ -28,6 +28,3 @@ jobs:
 
     - name: Bootstrap build 32-bit
       run: zig build test -Dbootstrap -Dtarget=i386-linux-gnu --prefix tmp
-
-    #- name: Self Hosted
-    #  run: zig-out/bin/gyro build test

@@ -11,6 +11,7 @@ const ArenaAllocator = std.heap.ArenaAllocator;
 const Self = @This();
 
 allocator: *Allocator,
+arena: ArenaAllocator,
 base_dir: []const u8,
 text: []const u8,
 owns_text: bool,
@@ -37,6 +38,7 @@ fn create(
 
     ret.* = Self{
         .allocator = allocator,
+        .arena = ArenaAllocator.init(allocator),
         .base_dir = base_dir,
         .text = text,
         .owns_text = owns_text,
@@ -85,32 +87,29 @@ fn create(
         }
     }
 
-    if (utils.zFindChild(root, "deps")) |deps| {
-        var it = utils.ZChildIterator.init(deps);
-        while (it.next()) |dep_node| {
-            const dep = try Dependency.fromZNode(allocator, dep_node);
-            for (ret.deps.items) |other| {
-                if (std.mem.eql(u8, dep.alias, other.alias)) {
-                    std.log.err("'{s}' alias in 'deps' is declared multiple times", .{dep.alias});
-                    return error.Explained;
-                }
-            } else {
-                try ret.deps.append(dep);
-            }
-        }
-    }
+    inline for (.{ "deps", "build_deps" }) |deps_field| {
+        if (utils.zFindChild(root, deps_field)) |deps| {
+            var it = utils.ZChildIterator.init(deps);
+            while (it.next()) |dep_node| {
+                var dep = try Dependency.fromZNode(allocator, dep_node);
+                for (ret.deps.items) |other| {
+                    if (std.mem.eql(u8, dep.alias, other.alias)) {
+                        std.log.err("'{s}' alias in 'deps' is declared multiple times", .{dep.alias});
+                        return error.Explained;
+                    }
+                } else {
+                    if (dep.src == .local) {
+                        const resolved = try std.fs.path.resolve(
+                            allocator,
+                            &.{ base_dir, dep.src.local.path },
+                        );
+                        defer allocator.free(resolved);
 
-    if (utils.zFindChild(root, "build_deps")) |build_deps| {
-        var it = utils.ZChildIterator.init(build_deps);
-        while (it.next()) |dep_node| {
-            const dep = try Dependency.fromZNode(allocator, dep_node);
-            for (ret.build_deps.items) |other| {
-                if (std.mem.eql(u8, dep.alias, other.alias)) {
-                    std.log.err("'{s}' alias in 'build_deps' is declared multiple times", .{dep.alias});
-                    return error.Explained;
+                        dep.src.local.path = try std.fs.path.relative(&ret.arena.allocator, ".", resolved);
+                    }
+
+                    try @field(ret, deps_field).append(dep);
                 }
-            } else {
-                try ret.build_deps.append(dep);
             }
         }
     }

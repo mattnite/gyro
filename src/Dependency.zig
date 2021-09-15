@@ -190,6 +190,15 @@ fn fromString(allocator: *Allocator, str: []const u8) !Self {
     return Self.fromZNode(allocator, root.*.child.?);
 }
 
+fn expectNullStrEqual(expected: ?[]const u8, actual: ?[]const u8) !void {
+    if (expected) |e| if (actual) |a| {
+        try testing.expectEqualStrings(e, a);
+        return;
+    };
+
+    try testing.expectEqual(expected, actual);
+}
+
 fn expectDepEqual(expected: Self, actual: Self) !void {
     try testing.expectEqualStrings(expected.alias, actual.alias);
     try testing.expectEqual(@as(SourceType, expected.src), @as(SourceType, actual.src));
@@ -205,15 +214,15 @@ fn expectDepEqual(expected: Self, actual: Self) !void {
             try testing.expectEqualStrings(gh.user, actual.src.github.user);
             try testing.expectEqualStrings(gh.repo, actual.src.github.repo);
             try testing.expectEqualStrings(gh.ref, actual.src.github.ref);
-            try testing.expectEqualStrings(gh.root, actual.src.github.root);
+            try expectNullStrEqual(gh.root, actual.src.github.root);
         },
         .url => |url| {
             try testing.expectEqualStrings(url.str, actual.src.url.str);
-            try testing.expectEqualStrings(url.root, actual.src.url.root);
+            try expectNullStrEqual(url.root, actual.src.url.root);
         },
         .local => |local| {
             try testing.expectEqualStrings(local.path, actual.src.local.path);
-            try testing.expectEqualStrings(local.root, actual.src.local.root);
+            try expectNullStrEqual(local.root, actual.src.local.root);
         },
     };
 }
