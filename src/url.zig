@@ -118,7 +118,7 @@ fn fetch(
     defer arena.child_allocator.free(base_path);
 
     const root = dep.url.root orelse utils.default_root;
-    path.* = try std.fs.path.join(&arena.allocator, &.{ base_path, root });
+    path.* = try utils.joinPathConvertSep(arena, &.{ base_path, root });
     var base_dir = try std.fs.cwd().openDir(base_path, .{});
     defer base_dir.close();
 

@@ -23,22 +23,6 @@ pub const FetchError = error{Todo} ||
 const FetchQueue = Engine.MultiQueueImpl(Resolution, FetchError);
 const ResolutionTable = std.ArrayListUnmanaged(ResolutionEntry);
 
-pub fn updateBasePaths(
-    arena: *ArenaAllocator,
-    base_path: []const u8,
-    deps: *std.ArrayListUnmanaged(Dependency),
-) !void {
-    for (deps.items) |*dep| if (dep.src == .local) {
-        const resolved = try std.fs.path.resolve(
-            arena.child_allocator,
-            &.{ base_path, dep.src.local.path },
-        );
-        defer arena.child_allocator.free(resolved);
-
-        dep.src.local.path = try std.fs.path.relative(&arena.allocator, ".", resolved);
-    };
-}
-
 /// local source types should never be in the lockfile
 pub fn deserializeLockfileEntry(
     allocator: *Allocator,
@@ -88,7 +72,7 @@ pub fn dedupeResolveAndFetch(
 
     // TODO: resolve path when default root
     const root = dep.root orelse utils.default_root;
-    fetch_queue.items(.path)[i] = try std.fs.path.join(&arena.allocator, &.{ dep.path, root });
+    fetch_queue.items(.path)[i] = try utils.joinPathConvertSep(arena, &.{ dep.path, root });
     try fetch_queue.items(.deps)[i].appendSlice(arena.child_allocator, project.deps.items);
 }
 

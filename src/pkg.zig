@@ -6,7 +6,6 @@ const Dependency = @import("Dependency.zig");
 const api = @import("api.zig");
 const cache = @import("cache.zig");
 const utils = @import("utils.zig");
-const local = @import("local.zig");
 
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
@@ -102,6 +101,22 @@ fn findMatch(dep_table: []const Dependency.Source, dep_idx: usize, edges: []cons
     } else null;
 }
 
+fn updateBasePaths(
+    arena: *std.heap.ArenaAllocator,
+    base_path: []const u8,
+    deps: *std.ArrayListUnmanaged(Dependency),
+) !void {
+    for (deps.items) |*dep| if (dep.src == .local) {
+        const resolved = try std.fs.path.resolve(
+            arena.child_allocator,
+            &.{ base_path, dep.src.local.path },
+        );
+        defer arena.child_allocator.free(resolved);
+
+        dep.src.local.path = try std.fs.path.relative(&arena.allocator, ".", resolved);
+    };
+}
+
 fn fetch(
     arena: *std.heap.ArenaAllocator,
     dep: Dependency.Source,
@@ -152,8 +167,8 @@ fn fetch(
             );
     }
 
-    try local.updateBasePaths(arena, base_path, deps);
-    path.* = try std.fs.path.join(&arena.allocator, &.{
+    try updateBasePaths(arena, base_path, deps);
+    path.* = try utils.joinPathConvertSep(arena, &.{
         ".gyro",
         entry_name,
         "pkg",

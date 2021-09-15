@@ -503,8 +503,14 @@ pub fn writeDepBeginRoot(self: *Engine, writer: anytype, indent: usize, edge: Ed
     try writer.writeByteNTimes(' ', 4 * (indent + 1));
     try writer.print(".path = FileSource{{\n", .{});
 
+    const path = if (std.builtin.target.os.tag == .windows)
+        try std.mem.replaceOwned(u8, self.allocator, self.paths.get(edge.to).?, "\\", "\\\\")
+    else
+        self.paths.get(edge.to).?;
+    defer if (std.builtin.target.os.tag == .windows) self.allocator.free(path);
+
     try writer.writeByteNTimes(' ', 4 * (indent + 2));
-    try writer.print(".path = \"{s}\",\n", .{self.paths.get(edge.to).?});
+    try writer.print(".path = \"{s}\",\n", .{path});
 
     try writer.writeByteNTimes(' ', 4 * (indent + 1));
     try writer.print("}},\n", .{});
@@ -528,8 +534,14 @@ pub fn writeDepBegin(self: Engine, writer: anytype, indent: usize, edge: Edge) !
     try writer.writeByteNTimes(' ', 4 * (indent + 1));
     try writer.print(".path = FileSource{{\n", .{});
 
+    const path = if (std.builtin.target.os.tag == .windows)
+        try std.mem.replaceOwned(u8, self.allocator, self.paths.get(edge.to).?, "\\", "\\\\")
+    else
+        self.paths.get(edge.to).?;
+    defer if (std.builtin.target.os.tag == .windows) self.allocator.free(path);
+
     try writer.writeByteNTimes(' ', 4 * (indent + 2));
-    try writer.print(".path = \"{s}\",\n", .{self.paths.get(edge.to).?});
+    try writer.print(".path = \"{s}\",\n", .{path});
 
     try writer.writeByteNTimes(' ', 4 * (indent + 1));
     try writer.print("}},\n", .{});
@@ -629,7 +641,7 @@ pub fn writeDepsZig(self: *Engine, writer: anytype) !void {
         switch (edge.from) {
             .root => |root| if (root == .normal) {
                 try writer.print("        artifact.addPackage(pkgs.{s});\n", .{
-                    edge.alias,
+                    try utils.escape(&self.arena.allocator, edge.alias),
                 });
             },
             else => {},

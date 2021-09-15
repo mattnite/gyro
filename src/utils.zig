@@ -107,6 +107,28 @@ pub fn escape(allocator: *std.mem.Allocator, str: []const u8) ![]const u8 {
     } else try allocator.dupe(u8, str);
 }
 
+pub fn joinPathConvertSep(arena: *std.heap.ArenaAllocator, inputs: []const []const u8) ![]const u8 {
+    const allocator = arena.child_allocator;
+    var components = try std.ArrayList([]const u8).initCapacity(allocator, inputs.len);
+    defer {
+        for (components.items) |comp|
+            allocator.free(comp);
+
+        components.deinit();
+    }
+
+    for (inputs) |input|
+        try components.append(try std.mem.replaceOwned(
+            u8,
+            allocator,
+            input,
+            std.fs.path.sep_str_posix,
+            std.fs.path.sep_str,
+        ));
+
+    return std.fs.path.join(&arena.allocator, components.items);
+}
+
 test "normalize zig-zig" {
     try std.testing.expectError(error.Overlap, normalizeName("zig-zig"));
 }

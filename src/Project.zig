@@ -129,6 +129,8 @@ fn deinit(self: *Self) void {
     self.packages.deinit();
     if (self.owns_text)
         self.allocator.free(self.text);
+
+    self.arena.deinit();
 }
 
 pub fn destroy(self: *Self) void {
