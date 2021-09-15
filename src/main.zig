@@ -2,7 +2,6 @@ const std = @import("std");
 const builtin = @import("builtin");
 const clap = @import("clap");
 const zfetch = @import("zfetch");
-const build_options = @import("build_options");
 const Dependency = @import("Dependency.zig");
 const cmds = @import("commands.zig");
 
