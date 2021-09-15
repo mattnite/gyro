@@ -346,7 +346,7 @@ test "github default root" {
                 .user = "test",
                 .repo = "something",
                 .ref = "main",
-                .root = "src/main.zig",
+                .root = null,
             },
         },
     };
@@ -392,7 +392,7 @@ test "raw default root" {
         .src = .{
             .url = .{
                 .str = "https://astrolabe.pm",
-                .root = "src/main.zig",
+                .root = null,
             },
         },
     };
@@ -433,7 +433,7 @@ test "local with default root" {
         .src = .{
             .local = .{
                 .path = "mypkgs/cool-project",
-                .root = "src/main.zig",
+                .root = null,
             },
         },
     };
