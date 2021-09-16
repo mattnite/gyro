@@ -95,6 +95,40 @@ pub fn normalizeName(name: []const u8) ![]const u8 {
     return name[begin..end];
 }
 
+pub fn escape(allocator: *std.mem.Allocator, str: []const u8) ![]const u8 {
+    return for (str) |c| {
+        if (!std.ascii.isAlNum(c) and c != '_') {
+            var buf = try allocator.alloc(u8, str.len + 3);
+            std.mem.copy(u8, buf, "@\"");
+            std.mem.copy(u8, buf[2..], str);
+            buf[buf.len - 1] = '"';
+            break buf;
+        }
+    } else try allocator.dupe(u8, str);
+}
+
+pub fn joinPathConvertSep(arena: *std.heap.ArenaAllocator, inputs: []const []const u8) ![]const u8 {
+    const allocator = arena.child_allocator;
+    var components = try std.ArrayList([]const u8).initCapacity(allocator, inputs.len);
+    defer {
+        for (components.items) |comp|
+            allocator.free(comp);
+
+        components.deinit();
+    }
+
+    for (inputs) |input|
+        try components.append(try std.mem.replaceOwned(
+            u8,
+            allocator,
+            input,
+            std.fs.path.sep_str_posix,
+            std.fs.path.sep_str,
+        ));
+
+    return std.fs.path.join(&arena.allocator, components.items);
+}
+
 test "normalize zig-zig" {
     try std.testing.expectError(error.Overlap, normalizeName("zig-zig"));
 }

@@ -16,7 +16,6 @@ version: version.Semver,
 project: *Project,
 root: ?[]const u8,
 files: std.ArrayList([]const u8),
-deps: std.ArrayList(Dependency),
 
 // meta info
 description: ?[]const u8,
@@ -30,14 +29,12 @@ pub fn init(
     name: []const u8,
     ver: version.Semver,
     project: *Project,
-    deps: []Dependency,
 ) !Self {
     var ret = Self{
         .arena = std.heap.ArenaAllocator.init(allocator),
         .name = name,
         .version = ver,
         .project = project,
-        .deps = std.ArrayList(Dependency).init(allocator),
         .files = std.ArrayList([]const u8).init(allocator),
         .tags = std.ArrayList([]const u8).init(allocator),
 
@@ -48,14 +45,12 @@ pub fn init(
         .source_url = null,
     };
 
-    try ret.deps.appendSlice(deps);
     return ret;
 }
 
 pub fn deinit(self: *Self) void {
     self.tags.deinit();
     self.files.deinit();
-    self.deps.deinit();
     self.arena.deinit();
 }
 
@@ -68,19 +63,8 @@ pub fn fillFromZNode(
         while (it.next()) |path| try self.files.append(try utils.zGetString(path));
     }
 
-    if (utils.zFindChild(node, "deps")) |deps| {
-        var it = utils.ZChildIterator.init(deps);
-        while (it.next()) |dep_node| {
-            const dep = try Dependency.fromZNode(self.arena.child_allocator, dep_node);
-            for (self.deps.items) |other| {
-                if (std.mem.eql(u8, dep.alias, other.alias)) {
-                    std.log.err("'{s}' alias in 'deps' for '{s}' is declared multiple times", .{ dep.alias, self.name });
-                    return error.Explained;
-                }
-            } else {
-                try self.deps.append(dep);
-            }
-        }
+    if (utils.zFindChild(node, "deps") != null) {
+        std.log.warn("subdependencies are no longer supported", .{});
     }
 
     if (utils.zFindChild(node, "tags")) |tags| {
@@ -117,9 +101,8 @@ fn createManifest(self: *Self, tree: *zzz.ZTree(1, 1000)) !void {
     }
 
     // TODO: check for collisions between different deps sets
-    if (self.deps.items.len > 0 or self.project.deps.items.len > 0) {
+    if (self.project.deps.items.len > 0) {
         var deps = try tree.addNode(root, .{ .String = "deps" });
-        for (self.deps.items) |dep| try dep.addToZNode(&self.arena, tree, deps, true);
         for (self.project.deps.items) |dep| try dep.addToZNode(&self.arena, tree, deps, true);
     }
 
@@ -204,7 +187,6 @@ pub fn addToZNode(
     arena: *std.heap.ArenaAllocator,
     tree: *zzz.ZTree(1, 1000),
     parent: *zzz.ZNode,
-    explicit: bool,
 ) !void {
     var node = try tree.addNode(parent, .{ .String = self.name });
     var ver_str = try std.fmt.allocPrint(&arena.allocator, "{}", .{self.version});
@@ -223,10 +205,5 @@ pub fn addToZNode(
     if (self.tags.items.len > 0) {
         var tags = try tree.addNode(node, .{ .String = "tags" });
         for (self.tags.items) |tag| _ = try tree.addNode(tags, .{ .String = tag });
-    }
-
-    if (self.deps.items.len > 0) {
-        var deps = try tree.addNode(node, .{ .String = "deps" });
-        for (self.deps.items) |dep| try dep.addToZNode(arena, tree, deps, explicit);
     }
 }

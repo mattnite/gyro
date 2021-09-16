@@ -6,89 +6,46 @@ const zzz = @import("zzz");
 const known_folders = @import("known-folders");
 const api = @import("api.zig");
 const Project = @import("Project.zig");
-const Lockfile = @import("Lockfile.zig");
 const Dependency = @import("Dependency.zig");
-const DependencyTree = @import("DependencyTree.zig");
+const Engine = @import("Engine.zig");
 const utils = @import("utils.zig");
 
 const Allocator = std.mem.Allocator;
 
-const FetchContext = struct {
-    project_file: std.fs.File,
-    lock_file: std.fs.File,
-
-    project: *Project,
-    lockfile: Lockfile,
-    dep_tree: *DependencyTree,
-    build_dep_tree: *DependencyTree,
-
-    fn deinit(self: *FetchContext) void {
-        self.lockfile.save(self.lock_file) catch {};
-        self.build_dep_tree.destroy();
-        self.dep_tree.destroy();
-        self.lockfile.deinit();
-        self.project.destroy();
-
-        // TODO: delete lockfile if it doesn't have anything in it
-        self.lock_file.close();
-        self.project_file.close();
-    }
-};
-
-pub fn fetchImpl(allocator: *Allocator) !FetchContext {
-    const project_file = std.fs.cwd().openFile(
-        "gyro.zzz",
-        .{ .read = true },
-    ) catch |err| {
+fn assertFileExistsInCwd(subpath: []const u8) !void {
+    std.fs.cwd().access(subpath, .{ .read = true }) catch |err| {
         return if (err == error.FileNotFound) blk: {
-            std.log.err("Missing gyro.zzz project file", .{});
+            std.log.err("no {s} in current working directory", .{subpath});
             break :blk error.Explained;
         } else err;
-    };
-    errdefer project_file.close();
-
-    const lock_file = try std.fs.cwd().createFile(
-        "gyro.lock",
-        .{ .truncate = false, .read = true },
-    );
-    errdefer lock_file.close();
-
-    var project = try Project.fromFile(allocator, project_file);
-    errdefer project.destroy();
-
-    var lockfile = try Lockfile.fromFile(allocator, lock_file);
-    errdefer lockfile.deinit();
-
-    const dep_tree = try DependencyTree.generate(
-        allocator,
-        &lockfile,
-        project,
-        false,
-    );
-    errdefer dep_tree.destroy();
-
-    const build_dep_tree = try DependencyTree.generate(
-        allocator,
-        &lockfile,
-        project,
-        true,
-    );
-    errdefer build_dep_tree.destroy();
-
-    try lockfile.fetchAll();
-    return FetchContext{
-        .project_file = project_file,
-        .lock_file = lock_file,
-        .project = project,
-        .lockfile = lockfile,
-        .dep_tree = dep_tree,
-        .build_dep_tree = build_dep_tree,
     };
 }
 
 pub fn fetch(allocator: *Allocator) !void {
-    var ctx = try fetchImpl(allocator);
-    defer ctx.deinit();
+    const project = try Project.fromDirPath(allocator, ".");
+    defer project.destroy();
+
+    const lockfile = try std.fs.cwd().createFile("gyro.lock", .{
+        .read = true,
+        .truncate = false,
+    });
+    defer lockfile.close();
+
+    const deps_file = try std.fs.cwd().createFile("deps.zig", .{
+        .truncate = true,
+    });
+    defer deps_file.close();
+
+    var engine = try Engine.init(allocator, project, lockfile.reader());
+    defer engine.deinit();
+
+    try engine.fetch();
+
+    try lockfile.setEndPos(0);
+    try lockfile.seekTo(0);
+    try engine.writeLockfile(lockfile.writer());
+
+    try engine.writeDepsZig(deps_file.writer());
 }
 
 pub fn update(
@@ -113,15 +70,7 @@ const EnvInfo = struct {
 };
 
 pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
-    var ctx = try fetchImpl(allocator);
-    defer ctx.deinit();
-
-    std.fs.cwd().access("build.zig", .{ .read = true }) catch |err| {
-        return if (err == error.FileNotFound) blk: {
-            std.log.err("no build.zig in current working directory", .{});
-            break :blk error.Explained;
-        } else err;
-    };
+    try assertFileExistsInCwd("build.zig");
 
     var fifo = std.fifo.LinearFifo(u8, .{ .Dynamic = {} }).init(allocator);
     defer fifo.deinit();
@@ -177,16 +126,45 @@ pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
     );
     defer std.fs.cwd().deleteFile("build_runner.zig") catch {};
 
-    // TODO: configurable local cache
-    const pkgs = try ctx.build_dep_tree.assemblePkgs(std.build.Pkg{
-        .name = "gyro",
-        .path = .{
-            .path = "deps.zig",
-        },
-    });
+    const project = blk: {
+        const project_file = std.fs.cwd().openFile("gyro.zzz", .{}) catch |err| switch (err) {
+            error.FileNotFound => break :blk try Project.fromUnownedText(allocator, ".", ""),
+            else => |e| return e,
+        };
+        defer project_file.close();
 
+        break :blk try Project.fromFile(allocator, ".", project_file);
+    };
+    defer project.destroy();
+
+    const lockfile = try std.fs.cwd().createFile("gyro.lock", .{
+        .read = true,
+        .truncate = false,
+    });
+    defer lockfile.close();
+
+    const deps_file = try std.fs.cwd().createFile("deps.zig", .{
+        .truncate = true,
+    });
+    defer deps_file.close();
+
+    var engine = try Engine.init(allocator, project, lockfile.reader());
+    defer engine.deinit();
+
+    try engine.fetch();
+
+    try lockfile.setEndPos(0);
+    try lockfile.seekTo(0);
+    try engine.writeLockfile(lockfile.writer());
+
+    try engine.writeDepsZig(deps_file.writer());
+
+    // TODO: configurable local cache
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
+
+    const pkgs = try engine.genBuildDeps(&arena);
+    defer pkgs.deinit();
 
     const b = try std.build.Builder.create(
         &arena.allocator,
@@ -197,11 +175,6 @@ pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
     );
     defer b.destroy();
 
-    const deps_file = try std.fs.cwd().createFile("deps.zig", .{ .truncate = true });
-    defer deps_file.close();
-
-    try ctx.dep_tree.printZig(deps_file.writer());
-
     b.resolveInstallPrefix(null, .{});
     const runner = b.addExecutable("build", "build_runner.zig");
     runner.addPackage(std.build.Pkg{
@@ -209,7 +182,7 @@ pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
         .path = .{
             .path = "build.zig",
         },
-        .dependencies = pkgs,
+        .dependencies = pkgs.items,
     });
 
     const run_cmd = runner.run();
@@ -242,10 +215,7 @@ pub fn package(
     output_dir: ?[]const u8,
     names: []const []const u8,
 ) !void {
-    const file = try std.fs.cwd().openFile("gyro.zzz", .{ .read = true });
-    defer file.close();
-
-    var project = try Project.fromFile(allocator, file);
+    const project = try Project.fromDirPath(allocator, ".");
     defer project.destroy();
 
     if (project.packages.count() == 0) {
@@ -385,16 +355,10 @@ pub fn init(
 }
 
 // check for alias collisions
-fn verifyUniqueAlias(alias: []const u8, deps: []const Dependency, to: ?[]const u8) !void {
+fn verifyUniqueAlias(alias: []const u8, deps: []const Dependency) !void {
     for (deps) |dep| {
         if (std.mem.eql(u8, alias, dep.alias)) {
-            if (to) |t|
-                std.log.err("The alias '{s}' is already in use for a subdependency of '{s}'", .{
-                    alias,
-                    t,
-                })
-            else
-                std.log.err("The alias '{s}' is already in use for this project", .{alias});
+            std.log.err("The alias '{s}' is already in use for this project", .{alias});
             return error.Explained;
         }
     }
@@ -406,7 +370,6 @@ pub fn add(
     alias: ?[]const u8,
     build_deps: bool,
     root_path: ?[]const u8,
-    to: ?[]const u8,
     targets: []const []const u8,
 ) !void {
     switch (src_tag) {
@@ -414,7 +377,6 @@ pub fn add(
         else => return error.Todo,
     }
 
-    // TODO: detect collisions in subpackages (both directions)
     const repository = utils.default_repo;
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
@@ -426,15 +388,10 @@ pub fn add(
     });
     defer file.close();
 
-    var project = try Project.fromFile(allocator, file);
+    var project = try Project.fromFile(allocator, ".", file);
     defer project.destroy();
 
-    const dep_list = if (to) |t|
-        if (project.packages.getEntry(t)) |entry| &entry.value_ptr.deps else {
-            std.log.err("{s} is not a an exported package", .{t});
-            return error.Explained;
-        }
-    else if (build_deps)
+    const dep_list = if (build_deps)
         &project.build_deps
     else
         &project.deps;
@@ -455,10 +412,7 @@ pub fn add(
     for (targets) |target| {
         for (dep_list.items) |dep| {
             if (std.mem.eql(u8, target, dep.alias)) {
-                if (to) |t|
-                    std.log.err("{s} is already a dependency of {s}", .{ target, t })
-                else
-                    std.log.err("{s} is already a dependency", .{target});
+                std.log.err("{s} is already a dependency", .{target});
                 return error.Explained;
             }
         }
@@ -488,7 +442,7 @@ pub fn add(
                 );
 
                 const root_file = if (root_path) |rp| rp else if (text_opt) |t| get_root: {
-                    const subproject = try Project.fromText(&arena.allocator, t);
+                    const subproject = try Project.fromUnownedText(&arena.allocator, ".", t);
                     defer subproject.destroy();
 
                     var ret: []const u8 = utils.default_root;
@@ -504,7 +458,7 @@ pub fn add(
                 } else utils.default_root;
 
                 const name = try utils.normalizeName(info.repo);
-                try verifyUniqueAlias(name, dep_list.items, to);
+                try verifyUniqueAlias(name, dep_list.items);
 
                 break :blk Dependency{
                     .alias = name,
@@ -524,7 +478,7 @@ pub fn add(
                 var stream = std.io.fixedBufferStream(buf);
                 try stream.writer().print("^{}", .{latest});
 
-                try verifyUniqueAlias(info.repo, dep_list.items, to);
+                try verifyUniqueAlias(info.repo, dep_list.items);
 
                 break :blk Dependency{
                     .alias = info.repo,
@@ -537,20 +491,12 @@ pub fn add(
                                 .kind = .caret,
                             },
                             .repository = utils.default_repo,
-                            .ver_str = stream.getWritten(),
                         },
                     },
                 };
             },
             .local => blk: {
-                const path = try std.fs.path.join(allocator, &.{ target, "gyro.zzz" });
-                defer allocator.free(path);
-
-                const project_file = try std.fs.cwd().openFile(path, .{});
-                defer project_file.close();
-
-                const text = try project_file.readToEndAlloc(&arena.allocator, std.math.maxInt(usize));
-                const subproject = try Project.fromText(&arena.allocator, text);
+                const subproject = try Project.fromDirPath(allocator, target);
                 defer subproject.destroy();
 
                 const detected_root = if (subproject.packages.count() == 1)
@@ -576,7 +522,7 @@ pub fn add(
                     return error.Explained;
                 });
 
-                try verifyUniqueAlias(a, dep_list.items, to);
+                try verifyUniqueAlias(a, dep_list.items);
 
                 const r = root_path orelse (detected_root orelse root_blk: {
                     std.log.info("no explicit or detected root path for '{s}', using default: " ++ utils.default_root, .{
@@ -607,14 +553,8 @@ pub fn add(
 pub fn rm(
     allocator: *Allocator,
     build_deps: bool,
-    from: ?[]const u8,
     targets: []const []const u8,
 ) !void {
-    if (build_deps and from != null) {
-        std.log.err("packages can't have build subdependencies", .{});
-        return error.Explained;
-    }
-
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
@@ -625,15 +565,10 @@ pub fn rm(
     });
     defer file.close();
 
-    var project = try Project.fromFile(allocator, file);
+    var project = try Project.fromFile(allocator, ".", file);
     defer project.destroy();
 
-    const dep_list = if (from) |f|
-        if (project.packages.getEntry(f)) |entry| &entry.value_ptr.deps else {
-            std.log.err("{s} is not a an exported package", .{f});
-            return error.Explained;
-        }
-    else if (build_deps)
+    const dep_list = if (build_deps)
         &project.build_deps
     else
         &project.deps;
@@ -654,10 +589,7 @@ pub fn rm(
         for (dep_list.items) |dep| {
             if (std.mem.eql(u8, target, dep.alias)) break;
         } else {
-            if (from) |f|
-                std.log.err("{s} is not a dependency of {s}", .{ target, f })
-            else
-                std.log.err("{s} is not a dependency", .{target});
+            std.log.err("{s} is not a dependency", .{target});
 
             return error.Explained;
         }
@@ -688,7 +620,7 @@ pub fn publish(allocator: *Allocator, pkg: ?[]const u8) !void {
     };
     defer file.close();
 
-    var project = try Project.fromFile(allocator, file);
+    var project = try Project.fromFile(allocator, ".", file);
     defer project.destroy();
 
     if (project.packages.count() == 0) {
@@ -827,7 +759,7 @@ fn validateNoRedirects(allocator: *Allocator) !void {
     });
     defer redirect_file.close();
 
-    var redirects = try Project.fromFile(allocator, redirect_file);
+    var redirects = try Project.fromFile(allocator, ".", redirect_file);
     defer redirects.destroy();
 
     if (redirects.deps.items.len > 0 or redirects.build_deps.items.len > 0) {
@@ -870,10 +802,10 @@ pub fn redirect(
     });
     defer redirect_file.close();
 
-    var project = try Project.fromFile(allocator, project_file);
+    var project = try Project.fromFile(allocator, ".", project_file);
     defer project.destroy();
 
-    var redirects = try Project.fromFile(allocator, redirect_file);
+    var redirects = try Project.fromFile(allocator, ".", redirect_file);
     defer redirects.destroy();
 
     if (check) {
@@ -919,16 +851,7 @@ pub fn redirect(
         try redirect_deps.append(dep.*);
         const root = switch (dep.src) {
             .pkg => |pkg| blk: {
-                const local_path = try std.fs.path.resolve(allocator, &.{
-                    path,
-                    "gyro.zzz",
-                });
-                defer allocator.free(local_path);
-
-                const local_project_file = try std.fs.openFileAbsolute(local_path, .{});
-                defer local_project_file.close();
-
-                var local_project = try Project.fromFile(allocator, local_project_file);
+                var local_project = try Project.fromDirPath(allocator, path);
                 defer local_project.destroy();
 
                 const result = local_project.packages.get(pkg.name) orelse {

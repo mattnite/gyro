@@ -83,7 +83,7 @@ If you'd like to build from source, the only thing you need is the Zig compiler:
 
 ```
 git clone --recursive https://github.com/mattnite/gyro.git
-zig build
+zig build -Drelease-safe
 ```
 
 ## How tos
