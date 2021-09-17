@@ -216,6 +216,7 @@ pub fn updateResolution(
         },
         .replace_me => |dep_idx| fetch_queue.items(.edge)[i].to = dep_idx,
         .err => |err| return err,
+        // TODO: update resolution table
         .copy_deps => |queue_idx| try fetch_queue.items(.deps)[i].appendSlice(
             allocator,
             fetch_queue.items(.deps)[queue_idx].items,
