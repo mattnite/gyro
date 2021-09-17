@@ -104,9 +104,34 @@ fn findMatch(dep_table: []const Dependency.Source, dep_idx: usize, edges: []cons
     } else null;
 }
 
+// a partial would be one that matches the user and repo
+fn findPartialMatch(
+    allocator: *Allocator,
+    dep_table: []const Dependency.Source,
+    commit: []const u8,
+    dep_idx: usize,
+    edges: []const Engine.Edge,
+) !?usize {
+    const dep = dep_table[dep_idx].github;
+    return for (edges) |edge| {
+        const other = dep_table[edge.to].github;
+        if (std.mem.eql(u8, dep.user, other.user) and
+            std.mem.eql(u8, dep.repo, other.repo))
+        {
+            const other_commit = try api.getHeadCommit(allocator, other.user, other.repo, other.ref);
+            defer allocator.free(other_commit);
+
+            if (std.mem.eql(u8, commit, other_commit)) {
+                break edge.to;
+            }
+        }
+    } else null;
+}
+
 fn fetch(
     arena: *std.heap.ArenaAllocator,
     dep: Dependency.Source,
+    done: bool,
     commit: Resolution,
     deps: *std.ArrayListUnmanaged(Dependency),
     path: *?[]const u8,
@@ -122,7 +147,7 @@ fn fetch(
     var entry = try cache.getEntry(entry_name);
     defer entry.deinit();
 
-    if (!try entry.isDone()) {
+    if (!done and !try entry.isDone()) {
         var content_dir = try entry.contentDir();
         defer content_dir.close();
 
@@ -147,21 +172,23 @@ fn fetch(
     const root = dep.github.root orelse utils.default_root;
     path.* = try utils.joinPathConvertSep(arena, &.{ base_path, root });
 
-    var base_dir = try std.fs.cwd().openDir(base_path, .{});
-    defer base_dir.close();
+    if (!done) {
+        var base_dir = try std.fs.cwd().openDir(base_path, .{});
+        defer base_dir.close();
 
-    const project_file = try base_dir.createFile("gyro.zzz", .{
-        .read = true,
-        .truncate = false,
-        .exclusive = false,
-    });
-    defer project_file.close();
+        const project_file = try base_dir.createFile("gyro.zzz", .{
+            .read = true,
+            .truncate = false,
+            .exclusive = false,
+        });
+        defer project_file.close();
 
-    const text = try project_file.reader().readAllAlloc(&arena.allocator, std.math.maxInt(usize));
-    const project = try Project.fromUnownedText(arena.child_allocator, ".", text);
-    defer project.destroy();
+        const text = try project_file.reader().readAllAlloc(&arena.allocator, std.math.maxInt(usize));
+        const project = try Project.fromUnownedText(arena.child_allocator, ".", text);
+        defer project.destroy();
 
-    try deps.appendSlice(arena.child_allocator, project.deps.items);
+        try deps.appendSlice(arena.child_allocator, project.deps.items);
+    }
 }
 
 pub fn dedupeResolveAndFetch(
@@ -172,6 +199,7 @@ pub fn dedupeResolveAndFetch(
 ) FetchError!void {
     const arena = &fetch_queue.items(.arena)[i];
     const dep_idx = fetch_queue.items(.edge)[i].to;
+    var commit: []const u8 = undefined;
     if (findResolution(dep_table[dep_idx], resolutions)) |res_idx| {
         if (resolutions[res_idx].dep_idx) |idx| {
             fetch_queue.items(.result)[i] = .{
@@ -197,26 +225,39 @@ pub fn dedupeResolveAndFetch(
 
         return;
     } else {
-        fetch_queue.items(.result)[i] = .{
-            .new_entry = try api.getHeadCommit(
-                &arena.allocator,
-                dep_table[dep_idx].github.user,
-                dep_table[dep_idx].github.repo,
-                dep_table[dep_idx].github.ref,
-            ),
-        };
+        commit = try api.getHeadCommit(
+            &arena.allocator,
+            dep_table[dep_idx].github.user,
+            dep_table[dep_idx].github.repo,
+            dep_table[dep_idx].github.ref,
+        );
+
+        if (try findPartialMatch(arena.child_allocator, dep_table, commit, dep_idx, fetch_queue.items(.edge)[0..i])) |idx| {
+            fetch_queue.items(.result)[i] = .{
+                .copy_deps = idx,
+            };
+        } else {
+            fetch_queue.items(.result)[i] = .{
+                .new_entry = commit,
+            };
+        }
     }
 
-    // TODO: detect partial matches where the commit resolves to the same
+    var done = false;
     const resolution = switch (fetch_queue.items(.result)[i]) {
         .fill_resolution => |res_idx| resolutions[res_idx].commit,
-        .new_entry => |commit| commit,
+        .new_entry => |c| c,
+        .copy_deps => blk: {
+            done = true;
+            break :blk commit;
+        },
         else => unreachable,
     };
 
     try fetch(
         arena,
         dep_table[dep_idx],
+        done,
         resolution,
         &fetch_queue.items(.deps)[i],
         &fetch_queue.items(.path)[i],
@@ -253,9 +294,30 @@ pub fn updateResolution(
         },
         .replace_me => |dep_idx| fetch_queue.items(.edge)[i].to = dep_idx,
         .err => |err| return err,
-        .copy_deps => |queue_idx| try fetch_queue.items(.deps)[i].appendSlice(
-            allocator,
-            fetch_queue.items(.deps)[queue_idx].items,
-        ),
+        .copy_deps => |queue_idx| {
+            const commit = resolutions.items[
+                findResolution(
+                    dep_table[fetch_queue.items(.edge)[queue_idx].to],
+                    resolutions.items,
+                ).?
+            ].commit;
+
+            const dep_idx = fetch_queue.items(.edge)[i].to;
+            const gh = &dep_table[dep_idx].github;
+            const root = gh.root orelse utils.default_root;
+            try resolutions.append(allocator, .{
+                .user = gh.user,
+                .repo = gh.repo,
+                .ref = gh.ref,
+                .root = root,
+                .commit = commit,
+                .dep_idx = dep_idx,
+            });
+
+            try fetch_queue.items(.deps)[i].appendSlice(
+                allocator,
+                fetch_queue.items(.deps)[queue_idx].items,
+            );
+        },
     }
 }
