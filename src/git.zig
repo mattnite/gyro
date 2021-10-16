@@ -1,4 +1,5 @@
 const std = @import("std");
+const uri = @import("uri");
 const api = @import("api.zig");
 const cache = @import("cache.zig");
 const Engine = @import("Engine.zig");
@@ -7,14 +8,17 @@ const Project = @import("Project.zig");
 const utils = @import("utils.zig");
 const local = @import("local.zig");
 
+const c = @cImport({
+    @cInclude("git2.h");
+});
+
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
 
-pub const name = "github";
+pub const name = "git";
 pub const Resolution = []const u8;
 pub const ResolutionEntry = struct {
-    user: []const u8,
-    repo: []const u8,
+    url: []const u8,
     ref: []const u8,
     commit: []const u8,
     root: []const u8,
@@ -29,17 +33,16 @@ pub const ResolutionEntry = struct {
         _ = fmt;
         _ = options;
 
-        try writer.print("github.com/{s}/{s}:{s}/{s} -> {}", .{
-            entry.user,
-            entry.repo,
+        try writer.print("{s}:{s}/{s} -> {}", .{
+            entry.url,
             entry.commit,
             entry.root,
             entry.dep_idx,
         });
     }
 };
-pub const FetchError = error{Todo} ||
-    @typeInfo(@typeInfo(@TypeOf(api.getHeadCommit)).Fn.return_type.?).ErrorUnion.error_set ||
+pub const FetchError =
+    @typeInfo(@typeInfo(@TypeOf(getHeadCommit)).Fn.return_type.?).ErrorUnion.error_set ||
     @typeInfo(@typeInfo(@TypeOf(fetch)).Fn.return_type.?).ErrorUnion.error_set;
 
 const FetchQueue = Engine.MultiQueueImpl(Resolution, FetchError);
@@ -51,8 +54,7 @@ pub fn deserializeLockfileEntry(
     resolutions: *ResolutionTable,
 ) !void {
     try resolutions.append(allocator, .{
-        .user = it.next() orelse return error.NoUser,
-        .repo = it.next() orelse return error.NoRepo,
+        .url = it.next() orelse return error.Url,
         .ref = it.next() orelse return error.NoRef,
         .root = it.next() orelse return error.NoRoot,
         .commit = it.next() orelse return error.NoCommit,
@@ -65,9 +67,8 @@ pub fn serializeResolutions(
 ) !void {
     for (resolutions) |entry| {
         if (entry.dep_idx != null)
-            try writer.print("github {s} {s} {s} {s} {s}\n", .{
-                entry.user,
-                entry.repo,
+            try writer.print("git {s} {s} {s} {s}\n", .{
+                entry.url,
                 entry.ref,
                 entry.root,
                 entry.commit,
@@ -76,11 +77,10 @@ pub fn serializeResolutions(
 }
 
 fn findResolution(dep: Dependency.Source, resolutions: []const ResolutionEntry) ?usize {
-    const root = dep.github.root orelse utils.default_root;
+    const root = dep.git.root orelse utils.default_root;
     return for (resolutions) |entry, j| {
-        if (std.mem.eql(u8, dep.github.user, entry.user) and
-            std.mem.eql(u8, dep.github.repo, entry.repo) and
-            std.mem.eql(u8, dep.github.ref, entry.ref) and
+        if (std.mem.eql(u8, dep.git.url, entry.url) and
+            std.mem.eql(u8, dep.git.ref, entry.ref) and
             std.mem.eql(u8, root, entry.root))
         {
             break j;
@@ -89,13 +89,12 @@ fn findResolution(dep: Dependency.Source, resolutions: []const ResolutionEntry) 
 }
 
 fn findMatch(dep_table: []const Dependency.Source, dep_idx: usize, edges: []const Engine.Edge) ?usize {
-    const dep = dep_table[dep_idx].github;
+    const dep = dep_table[dep_idx].git;
     const root = dep.root orelse utils.default_root;
     return for (edges) |edge| {
-        const other = dep_table[edge.to].github;
+        const other = dep_table[edge.to].git;
         const other_root = other.root orelse utils.default_root;
-        if (std.mem.eql(u8, dep.user, other.user) and
-            std.mem.eql(u8, dep.repo, other.repo) and
+        if (std.mem.eql(u8, dep.url, other.url) and
             std.mem.eql(u8, dep.ref, other.ref) and
             std.mem.eql(u8, root, other_root))
         {
@@ -104,7 +103,123 @@ fn findMatch(dep_table: []const Dependency.Source, dep_idx: usize, edges: []cons
     } else null;
 }
 
-// a partial would be one that matches the user and repo
+// TODO: do certificates properly
+//fn passCert(cert: [*c]c.git_cert, valid: c_int, host: [*c]const u8, payload: ?*c_void) callconv(.C) c_int {
+//    _ = cert;
+//    _ = valid;
+//    _ = host;
+//    _ = payload;
+//    return 0;
+//}
+
+const RemoteHeadEntry = struct {
+    oid: [c.GIT_OID_HEXSZ]u8,
+    name: []const u8,
+};
+
+fn getHeadCommit(allocator: *Allocator, url: []const u8, ref: []const u8) ![]const u8 {
+    // if ref is the same size as an OID and hex format then treat it as a commit
+    if (ref.len == c.GIT_OID_HEXSZ) {
+        for (ref) |char| {
+            if (!std.ascii.isXDigit(char))
+                break;
+        } else return allocator.dupe(u8, ref);
+    }
+
+    const url_z = try std.mem.dupeZ(allocator, u8, url);
+    defer allocator.free(url_z);
+
+    var remote: ?*c.git_remote = null;
+    var err = c.git_remote_create_anonymous(&remote, null, url_z);
+    if (err < 0) {
+        const last_error = c.git_error_last();
+        std.log.err("{s}", .{last_error.*.message});
+        return error.GitRemoteCreate;
+    }
+    defer c.git_remote_free(remote);
+
+    var callbacks: c.git_remote_callbacks = undefined;
+    err = c.git_remote_init_callbacks(&callbacks, c.GIT_REMOTE_CALLBACKS_VERSION);
+    if (err < 0) {
+        const last_error = c.git_error_last();
+        std.log.err("{s}", .{last_error.*.message});
+        return error.GitRemoteInitCallbacks;
+    }
+
+    //callbacks.certificate_check = passCert;
+    err = c.git_remote_connect(remote, c.GIT_DIRECTION_FETCH, &callbacks, null, null);
+    if (err < 0) {
+        const last_error = c.git_error_last();
+        std.log.err("{s}", .{last_error.*.message});
+        return error.GitRemoteConnect;
+    }
+
+    var refs_ptr: [*c][*c]c.git_remote_head = undefined;
+    var refs_len: usize = undefined;
+    err = c.git_remote_ls(&refs_ptr, &refs_len, remote);
+    if (err < 0) {
+        const last_error = c.git_error_last();
+        std.log.err("{s}", .{last_error.*.message});
+        return error.GitRemoteLs;
+    }
+
+    var refs = std.ArrayList(RemoteHeadEntry).init(allocator);
+    defer {
+        for (refs.items) |entry|
+            allocator.free(entry.name);
+
+        refs.deinit();
+    }
+
+    var i: usize = 0;
+    while (i < refs_len) : (i += 1) {
+        const len = std.mem.lenZ(refs_ptr[i].*.name);
+        try refs.append(.{
+            .oid = undefined,
+            .name = try allocator.dupeZ(u8, refs_ptr[i].*.name[0..len]),
+        });
+
+        _ = c.git_oid_fmt(&refs.items[refs.items.len - 1].oid, &refs_ptr[i].*.oid);
+    }
+
+    inline for (&[_][]const u8{ "refs/tags/", "refs/heads/" }) |prefix| {
+        for (refs.items) |entry| {
+            if (std.mem.startsWith(u8, entry.name, prefix) and
+                std.mem.eql(u8, entry.name[prefix.len..], ref))
+            {
+                return allocator.dupe(u8, &entry.oid);
+            }
+        }
+    }
+
+    std.log.err("'{s}' ref not found", .{ref});
+    return error.Explained;
+}
+
+fn clone(allocator: *Allocator, url: []const u8, commit: []const u8, path: []const u8) !void {
+    std.log.info("cloning {s}: {s}", .{ url, commit });
+
+    const url_z = try allocator.dupeZ(u8, url);
+    defer allocator.free(url_z);
+
+    const path_z = try allocator.dupeZ(u8, path);
+    defer allocator.free(path_z);
+
+    var repo: ?*c.git_repository = null;
+    var options: c.git_clone_options = undefined;
+    _ = c.git_clone_options_init(&options, c.GIT_CLONE_OPTIONS_VERSION);
+    var err = c.git_clone(&repo, url_z, path_z, &options);
+    if (err < 0) {
+        const last_error = c.git_error_last();
+        std.log.err("{s}", .{last_error.*.message});
+        return error.Explained;
+    }
+    defer c.git_repository_free(repo);
+
+    _ = commit;
+    // TODO: checkout commit
+}
+
 fn findPartialMatch(
     allocator: *Allocator,
     dep_table: []const Dependency.Source,
@@ -112,13 +227,11 @@ fn findPartialMatch(
     dep_idx: usize,
     edges: []const Engine.Edge,
 ) !?usize {
-    const dep = dep_table[dep_idx].github;
+    const dep = dep_table[dep_idx].git;
     return for (edges) |edge| {
-        const other = dep_table[edge.to].github;
-        if (std.mem.eql(u8, dep.user, other.user) and
-            std.mem.eql(u8, dep.repo, other.repo))
-        {
-            const other_commit = try api.getHeadCommit(allocator, other.user, other.repo, other.ref);
+        const other = dep_table[edge.to].git;
+        if (std.mem.eql(u8, dep.url, other.url)) {
+            const other_commit = try getHeadCommit(allocator, other.url, other.ref);
             defer allocator.free(other_commit);
 
             if (std.mem.eql(u8, commit, other_commit)) {
@@ -137,30 +250,27 @@ fn fetch(
     path: *?[]const u8,
 ) !void {
     const allocator = arena.child_allocator;
-    const entry_name = try std.fmt.allocPrint(allocator, "{s}-{s}-github-{s}", .{
-        dep.github.repo,
-        dep.github.user,
-        commit,
-    });
+
+    var components = std.ArrayList([]const u8).init(allocator);
+    defer components.deinit();
+
+    const link = try uri.parse(dep.git.url);
+    const scheme = link.scheme orelse return error.NoUriScheme;
+    const end = dep.git.url.len - if (std.mem.endsWith(u8, dep.git.url, ".git"))
+        ".git".len
+    else
+        0;
+
+    var it = std.mem.tokenize(u8, dep.git.url[scheme.len + 1 .. end], "/");
+    while (it.next()) |comp|
+        try components.insert(0, comp);
+
+    try components.append(commit);
+    const entry_name = try std.mem.join(allocator, "-", components.items);
     defer allocator.free(entry_name);
 
     var entry = try cache.getEntry(entry_name);
     defer entry.deinit();
-
-    if (!done and !try entry.isDone()) {
-        var content_dir = try entry.contentDir();
-        defer content_dir.close();
-
-        try api.getGithubTarGz(
-            allocator,
-            dep.github.user,
-            dep.github.repo,
-            commit,
-            content_dir,
-        );
-
-        try entry.done();
-    }
 
     const base_path = try std.fs.path.join(arena.child_allocator, &.{
         ".gyro",
@@ -169,7 +279,18 @@ fn fetch(
     });
     defer arena.child_allocator.free(base_path);
 
-    const root = dep.github.root orelse utils.default_root;
+    if (!done and !try entry.isDone()) {
+        try clone(
+            allocator,
+            dep.git.url,
+            commit,
+            base_path,
+        );
+
+        try entry.done();
+    }
+
+    const root = dep.git.root orelse utils.default_root;
     path.* = try utils.joinPathConvertSep(arena, &.{ base_path, root });
 
     if (!done) {
@@ -225,11 +346,10 @@ pub fn dedupeResolveAndFetch(
 
         return;
     } else {
-        commit = try api.getHeadCommit(
+        commit = try getHeadCommit(
             &arena.allocator,
-            dep_table[dep_idx].github.user,
-            dep_table[dep_idx].github.repo,
-            dep_table[dep_idx].github.ref,
+            dep_table[dep_idx].git.url,
+            dep_table[dep_idx].git.ref,
         );
 
         if (try findPartialMatch(arena.child_allocator, dep_table, commit, dep_idx, fetch_queue.items(.edge)[0..i])) |idx| {
@@ -246,7 +366,7 @@ pub fn dedupeResolveAndFetch(
     var done = false;
     const resolution = switch (fetch_queue.items(.result)[i]) {
         .fill_resolution => |res_idx| resolutions[res_idx].commit,
-        .new_entry => |c| c,
+        .new_entry => |entry_commit| entry_commit,
         .copy_deps => blk: {
             done = true;
             break :blk commit;
@@ -281,12 +401,11 @@ pub fn updateResolution(
         },
         .new_entry => |commit| {
             const dep_idx = fetch_queue.items(.edge)[i].to;
-            const gh = &dep_table[dep_idx].github;
-            const root = gh.root orelse utils.default_root;
+            const git = &dep_table[dep_idx].git;
+            const root = git.root orelse utils.default_root;
             try resolutions.append(allocator, .{
-                .user = gh.user,
-                .repo = gh.repo,
-                .ref = gh.ref,
+                .url = git.url,
+                .ref = git.ref,
                 .root = root,
                 .commit = commit,
                 .dep_idx = dep_idx,
@@ -303,12 +422,11 @@ pub fn updateResolution(
             ].commit;
 
             const dep_idx = fetch_queue.items(.edge)[i].to;
-            const gh = &dep_table[dep_idx].github;
-            const root = gh.root orelse utils.default_root;
+            const git = &dep_table[dep_idx].git;
+            const root = git.root orelse utils.default_root;
             try resolutions.append(allocator, .{
-                .user = gh.user,
-                .repo = gh.repo,
-                .ref = gh.ref,
+                .url = git.url,
+                .ref = git.ref,
                 .root = root,
                 .commit = commit,
                 .dep_idx = dep_idx,

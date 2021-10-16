@@ -1,4 +1,8 @@
 const std = @import("std");
+const libgit2 = @import("libs/libgit2/libgit2.zig");
+const mbedtls = @import("libs/mbedtls/mbedtls.zig");
+const libssh2 = @import("libs/libssh2/libssh2.zig");
+
 const Builder = std.build.Builder;
 const LibExeObjStep = std.build.LibExeObjStep;
 const Pkg = std.build.Pkg;
@@ -87,6 +91,9 @@ pub fn build(b: *Builder) !void {
     gyro.setBuildMode(mode);
     gyro.install();
     addAllPkgs(gyro);
+    try libgit2.link(b, gyro, target);
+    mbedtls.link(gyro);
+    try libssh2.link(b, gyro, target);
 
     const tests = b.addTest("src/main.zig");
     tests.setBuildMode(mode);

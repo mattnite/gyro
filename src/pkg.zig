@@ -163,7 +163,7 @@ fn fetch(
         while (it.next()) |node|
             try deps.append(
                 allocator,
-                try Dependency.fromZNode(allocator, node),
+                try Dependency.fromZNode(arena, node),
             );
     }
 

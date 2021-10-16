@@ -4,17 +4,36 @@ const clap = @import("clap");
 const zfetch = @import("zfetch");
 const Dependency = @import("Dependency.zig");
 const cmds = @import("commands.zig");
+const loadSystemCerts = @import("certs.zig").loadSystemCerts;
+
+const c = @cImport({
+    @cInclude("git2.h");
+});
 
 pub const log_level: std.log.Level = if (builtin.mode == .Debug) .debug else .info;
 
-pub fn main() !void {
-    try zfetch.init();
-    defer zfetch.deinit();
+export fn gai_strerrorA(err: c_int) [*c]u8 {
+    _ = err;
+    return null;
+}
 
+pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
     const allocator = &gpa.allocator;
+    try zfetch.init();
+    defer zfetch.deinit();
+
+    const rc = c.git_libgit2_init();
+    if (rc < 0) {
+        const last_error = c.git_error_last();
+        std.log.err("{s}", .{last_error.*.message});
+        return error.Libgit2Init;
+    }
+    defer _ = c.git_libgit2_shutdown();
+
+    try loadSystemCerts(allocator);
     runCommands(allocator) catch |err| {
         switch (err) {
             error.Explained => std.process.exit(1),

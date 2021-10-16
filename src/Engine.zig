@@ -14,9 +14,9 @@ const assert = std.debug.assert;
 pub const DepTable = std.ArrayListUnmanaged(Dependency.Source);
 pub const Sources = .{
     @import("pkg.zig"),
-    @import("github.zig"),
     @import("local.zig"),
     @import("url.zig"),
+    @import("git.zig"),
 };
 
 pub const Edge = struct {
@@ -437,12 +437,12 @@ pub fn fetch(self: *Engine) !void {
             // inline for workaround because the compiler wasn't generating the right code for this
             for (self.fetch_queue.tables.pkg.items(.result)) |_, i|
                 try Sources[0].updateResolution(self.allocator, &self.resolutions.tables.pkg, self.dep_table.items, &self.fetch_queue.tables.pkg, i);
-            for (self.fetch_queue.tables.github.items(.result)) |_, i|
-                try Sources[1].updateResolution(self.allocator, &self.resolutions.tables.github, self.dep_table.items, &self.fetch_queue.tables.github, i);
             for (self.fetch_queue.tables.local.items(.result)) |_, i|
-                try Sources[2].updateResolution(self.allocator, &self.resolutions.tables.local, self.dep_table.items, &self.fetch_queue.tables.local, i);
+                try Sources[1].updateResolution(self.allocator, &self.resolutions.tables.local, self.dep_table.items, &self.fetch_queue.tables.local, i);
             for (self.fetch_queue.tables.url.items(.result)) |_, i|
-                try Sources[3].updateResolution(self.allocator, &self.resolutions.tables.url, self.dep_table.items, &self.fetch_queue.tables.url, i);
+                try Sources[2].updateResolution(self.allocator, &self.resolutions.tables.url, self.dep_table.items, &self.fetch_queue.tables.url, i);
+            for (self.fetch_queue.tables.git.items(.result)) |_, i|
+                try Sources[3].updateResolution(self.allocator, &self.resolutions.tables.git, self.dep_table.items, &self.fetch_queue.tables.git, i);
 
             inline for (Sources) |source| {
                 for (@field(self.fetch_queue.tables, source.name).items(.path)) |opt_path, i| {

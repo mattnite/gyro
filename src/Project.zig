@@ -91,7 +91,7 @@ fn create(
         if (utils.zFindChild(root, deps_field)) |deps| {
             var it = utils.ZChildIterator.init(deps);
             while (it.next()) |dep_node| {
-                var dep = try Dependency.fromZNode(allocator, dep_node);
+                var dep = try Dependency.fromZNode(&ret.arena, dep_node);
                 for (ret.deps.items) |other| {
                     if (std.mem.eql(u8, dep.alias, other.alias)) {
                         std.log.err("'{s}' alias in 'deps' is declared multiple times", .{dep.alias});

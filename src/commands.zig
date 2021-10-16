@@ -864,6 +864,7 @@ pub fn redirect(
                 break :blk try arena.allocator.dupe(u8, result.root orelse "src/main.zig");
             },
             .github => |github| github.root,
+            .git => |git| git.root,
             .url => |url| url.root,
             .local => |local| local.root,
         };
