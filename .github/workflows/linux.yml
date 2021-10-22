@@ -27,7 +27,7 @@ jobs:
       run: zig build test -Dtarget=i386-linux-gnu --prefix tmp
 
     - name: Build 64-bit
-      run: zig build test --prefix zig-out
+      run: zig build test
 
     - run: ls $GITHUB_WORKSPACE
     - run: ls $GITHUB_WORKSPACE/..
