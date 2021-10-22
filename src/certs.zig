@@ -8,16 +8,16 @@ extern fn git_mbedtls__set_cert_buf(buf: [*]const u8, len: usize) c_int;
 pub fn loadSystemCerts(allocator: *std.mem.Allocator) !void {
     switch (builtin.target.os.tag) {
         .windows => {
-            const c = @cImport({
-                @cInclude("wincrypt.h");
-            });
+            //const c = @cImport({
+            //    @cInclude("wincrypt.h");
+            //});
 
-            const store = c.CertOpenSystemStoreA(null, "ROOT");
-            if (store == null) {
-                std.log.err("failed to open system cert store", .{});
-                return error.Explained;
-            }
-            defer _ = c.CertCloseStore(store, 0);
+            //const store = c.CertOpenSystemStoreA(null, "ROOT");
+            //if (store == null) {
+            //    std.log.err("failed to open system cert store", .{});
+            //    return error.Explained;
+            //}
+            //defer _ = c.CertCloseStore(store, 0);
 
             //var cert: ?*c.PCCERT_CONTEXT = null;
             //while (true) {

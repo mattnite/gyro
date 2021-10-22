@@ -224,9 +224,14 @@ fn clone(
     const path_z = try allocator.dupeZ(u8, path);
     defer allocator.free(path_z);
 
+    const commit_z = try allocator.dupeZ(u8, commit);
+    defer allocator.free(commit_z);
+
     var repo: ?*c.git_repository = null;
     var options: c.git_clone_options = undefined;
     _ = c.git_clone_options_init(&options, c.GIT_CLONE_OPTIONS_VERSION);
+
+    options.checkout_branch = commit_z.ptr;
     var err = c.git_clone(&repo, url_z, path_z, &options);
     if (err < 0) {
         const last_error = c.git_error_last();
