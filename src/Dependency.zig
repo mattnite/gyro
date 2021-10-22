@@ -575,41 +575,41 @@ pub fn addToZNode(
             }
         },
         .github => |gh| {
+            if (explicit or gh.root != null) {
+                try utils.zPutKeyString(tree, alias, "root", gh.root orelse utils.default_root);
+            }
+
             var src = try tree.addNode(alias, .{ .String = "src" });
             var github = try tree.addNode(src, .{ .String = "github" });
             try utils.zPutKeyString(tree, github, "user", gh.user);
             try utils.zPutKeyString(tree, github, "repo", gh.repo);
             try utils.zPutKeyString(tree, github, "ref", gh.ref);
-
-            if (explicit or gh.root != null) {
-                try utils.zPutKeyString(tree, alias, "root", gh.root orelse utils.default_root);
-            }
         },
         .git => |g| {
+            if (explicit or g.root != null) {
+                try utils.zPutKeyString(tree, alias, "root", g.root orelse utils.default_root);
+            }
+
             var src = try tree.addNode(alias, .{ .String = "src" });
             var git = try tree.addNode(src, .{ .String = "git" });
             try utils.zPutKeyString(tree, git, "url", g.url);
             try utils.zPutKeyString(tree, git, "ref", g.ref);
-
-            if (explicit or g.root != null) {
-                try utils.zPutKeyString(tree, alias, "root", g.root orelse utils.default_root);
-            }
         },
         .url => |url| {
-            var src = try tree.addNode(alias, .{ .String = "src" });
-            try utils.zPutKeyString(tree, src, "url", url.str);
-
             if (explicit or url.root != null) {
                 try utils.zPutKeyString(tree, alias, "root", url.root orelse utils.default_root);
             }
+
+            var src = try tree.addNode(alias, .{ .String = "src" });
+            try utils.zPutKeyString(tree, src, "url", url.str);
         },
         .local => |local| {
-            var src = try tree.addNode(alias, .{ .String = "src" });
-            try utils.zPutKeyString(tree, src, "local", local.path);
-
             if (explicit or local.root != null) {
                 try utils.zPutKeyString(tree, alias, "root", local.root orelse utils.default_root);
             }
+
+            var src = try tree.addNode(alias, .{ .String = "src" });
+            try utils.zPutKeyString(tree, src, "local", local.path);
         },
     }
 }
@@ -699,22 +699,22 @@ test "serialize pkg explicit" {
 test "serialize github non-explicit" {
     const from =
         \\something:
+        \\  root: main.zig
         \\  src:
         \\    github:
         \\      user: test
         \\      repo: my_repo
         \\      ref: master
-        \\  root: main.zig
         \\
     ;
 
     const to =
         \\something:
+        \\  root: main.zig
         \\  src:
         \\    git:
         \\      url: "https://github.com/test/my_repo.git"
         \\      ref: master
-        \\  root: main.zig
         \\
     ;
 
@@ -747,22 +747,22 @@ test "serialize github non-explicit, default root" {
 test "serialize github explicit, default root" {
     const from =
         \\something:
+        \\  root: src/main.zig
         \\  src:
         \\    github:
         \\      user: test
         \\      repo: my_repo
         \\      ref: master
-        \\  root: src/main.zig
         \\
     ;
 
     const to =
         \\something:
+        \\  root: src/main.zig
         \\  src:
         \\    git:
         \\      url: "https://github.com/test/my_repo.git"
         \\      ref: master
-        \\  root: src/main.zig
     ;
 
     try serializeTest(from, to, true);
@@ -781,11 +781,11 @@ test "serialize github explicit" {
 
     const to =
         \\something:
+        \\  root: src/main.zig
         \\  src:
         \\    git:
         \\      url: "https://github.com/test/my_repo.git"
         \\      ref: master
-        \\  root: src/main.zig
         \\
     ;
 
@@ -795,9 +795,9 @@ test "serialize github explicit" {
 test "serialize url non-explicit" {
     const str =
         \\something:
+        \\  root: main.zig
         \\  src:
         \\    url: "https://github.com"
-        \\  root: main.zig
         \\
     ;
 
@@ -814,9 +814,9 @@ test "serialize url explicit" {
 
     const to =
         \\something:
+        \\  root: src/main.zig
         \\  src:
         \\    url: "https://github.com"
-        \\  root: src/main.zig
         \\
     ;
 

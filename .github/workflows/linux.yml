@@ -29,6 +29,8 @@ jobs:
     - name: Build 32-bit
       run: zig build test -Dtarget=i386-linux-gnu --prefix tmp
 
+    - run: echo $GITHUB_PATH
+
     - name: Fetch example project
-      run: pwd && find ../zig-out
+      run: pwd && find ..
       working-directory: tests
