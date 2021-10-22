@@ -91,12 +91,13 @@ pub fn build(b: *Builder) !void {
     gyro.setBuildMode(mode);
     gyro.install();
     addAllPkgs(gyro);
-    try libgit2.link(b, gyro, target);
+    try libgit2.link(b, gyro);
+    try libssh2.link(b, gyro);
     mbedtls.link(gyro);
-    try libssh2.link(b, gyro, target);
 
     const tests = b.addTest("src/main.zig");
     tests.setBuildMode(mode);
+    tests.setTarget(target);
     addAllPkgs(tests);
 
     const test_step = b.step("test", "Run tests");

@@ -22,7 +22,7 @@ const srcs = blk: {
         pathJoinRoot(&.{ "c", "src", "streams", "registry.c" }),
         pathJoinRoot(&.{ "c", "src", "streams", "socket.c" }),
         pathJoinRoot(&.{ "c", "src", "streams", "tls.c" }),
-        pathJoinRoot(&.{ "c", "src", "streams", "mbedtls.c" }),
+        pathJoinRoot(&.{"mbedtls.c"}),
         pathJoinRoot(&.{ "c", "src", "transports", "auth.c" }),
         pathJoinRoot(&.{ "c", "src", "transports", "credential.c" }),
         pathJoinRoot(&.{ "c", "src", "transports", "http.c" }),
@@ -237,7 +237,6 @@ const win32_srcs = &.{
 pub fn link(
     b: *std.build.Builder,
     artifact: *std.build.LibExeObjStep,
-    target: std.zig.CrossTarget,
 ) !void {
     var flags = std.ArrayList([]const u8).init(b.allocator);
     defer flags.deinit();
@@ -255,18 +254,18 @@ pub fn link(
         "-DGIT_SHA1_MBEDTLS=1",
     });
 
-    if (64 == target.getCpuArch().ptrBitWidth())
+    if (64 == artifact.target.getCpuArch().ptrBitWidth())
         try flags.append("-DGIT_ARCH_64=1");
 
     artifact.addCSourceFiles(srcs, flags.items);
-    if (target.isWindows()) {
+    if (artifact.target.isWindows()) {
         try flags.appendSlice(&.{
             "-DGIT_WIN32",
             "-DGIT_WINHTTP",
         });
         artifact.addCSourceFiles(win32_srcs, flags.items);
 
-        if (target.getAbi().isGnu()) {
+        if (artifact.target.getAbi().isGnu()) {
             artifact.addCSourceFiles(posix_srcs, flags.items);
             artifact.addCSourceFiles(unix_srcs, flags.items);
         }
@@ -275,7 +274,7 @@ pub fn link(
         artifact.addCSourceFiles(unix_srcs, flags.items);
     }
 
-    if (target.isLinux())
+    if (artifact.target.isLinux())
         try flags.appendSlice(&.{
             "-DGIT_USE_NSEC=1",
             "-DGIT_USE_STAT_MTIM=1",

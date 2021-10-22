@@ -53,10 +53,22 @@ pub const Source = union(enum) {
 
         switch (source) {
             .pkg => |pkg| try writer.print("{s}/{s}/{s}: {}", .{ pkg.repository, pkg.user, pkg.name, pkg.version }),
-            .github => |gh| try writer.print("github.com/{s}/{s}/{s}: {s}", .{ gh.user, gh.repo, gh.root, gh.ref }),
-            .url => |url| try writer.print("{s}/{s}", .{ url.str, url.root }),
-            .local => |local| try writer.print("{s}/{s}", .{ local.path, local.root }),
-            .git => |git| try writer.print("{s}:{s}/{s}", .{ git.url, git.ref, git.root }),
+            .github => |gh| {
+                const root = gh.root orelse utils.default_root;
+                try writer.print("github.com/{s}/{s}/{s}: {s}", .{ gh.user, gh.repo, root, gh.ref });
+            },
+            .url => |url| {
+                const root = url.root orelse utils.default_root;
+                try writer.print("{s}/{s}", .{ url.str, root });
+            },
+            .local => |local| {
+                const root = local.root orelse utils.default_root;
+                try writer.print("{s}/{s}", .{ local.path, root });
+            },
+            .git => |git| {
+                const root = git.root orelse utils.default_root;
+                try writer.print("{s}:{s}:{s}", .{ git.url, git.ref, root });
+            },
         }
     }
 };
@@ -148,12 +160,14 @@ pub fn fromZNode(arena: *std.heap.ArenaAllocator, node: *zzz.ZNode) !Self {
                 },
             },
             .github => gh: {
-                const user = (try utils.zFindString(child, "user")) orelse return error.GithubMissingUser;
-                const repo = (try utils.zFindString(child, "repo")) orelse return error.GithubMissingRepo;
+                const url = try std.fmt.allocPrint(&arena.allocator, "https://github.com/{s}/{s}.git", .{
+                    (try utils.zFindString(child, "user")) orelse return error.GithubMissingUser,
+                    (try utils.zFindString(child, "repo")) orelse return error.GithubMissingRepo,
+                });
 
                 break :gh .{
                     .git = .{
-                        .url = try std.fmt.allocPrint(&arena.allocator, "https://github.com/{s}/{s}.git", .{ user, repo }),
+                        .url = url,
                         .ref = (try utils.zFindString(child, "ref")) orelse return error.GithubMissingRef,
                         .root = try utils.zFindString(node, "root"),
                     },
@@ -380,9 +394,8 @@ test "github default root" {
     const expected = Self{
         .alias = "foo",
         .src = .{
-            .github = .{
-                .user = "test",
-                .repo = "something",
+            .git = .{
+                .url = "https://github.com/test/something.git",
                 .ref = "main",
                 .root = null,
             },
@@ -409,9 +422,8 @@ test "github explicit root" {
     const expected = Self{
         .alias = "foo",
         .src = .{
-            .github = .{
-                .user = "test",
-                .repo = "something",
+            .git = .{
+                .url = "https://github.com/test/something.git",
                 .ref = "main",
                 .root = "main.zig",
             },
@@ -646,7 +658,7 @@ fn serializeTest(from: []const u8, to: []const u8, explicit: bool) !void {
 }
 
 test "serialize pkg non-explicit" {
-    const str =
+    const from =
         \\something:
         \\  src:
         \\    pkg:
@@ -655,13 +667,13 @@ test "serialize pkg non-explicit" {
         \\
     ;
 
-    const expected = "test/something: ^0.0.0";
+    const to = "test/something: ^0.0.0";
 
-    try serializeTest(str, expected, false);
+    try serializeTest(from, to, false);
 }
 
 test "serialize pkg explicit" {
-    const str =
+    const from =
         \\something:
         \\  src:
         \\    pkg:
@@ -670,7 +682,7 @@ test "serialize pkg explicit" {
         \\
     ;
 
-    const expected =
+    const to =
         \\something:
         \\  src:
         \\    pkg:
@@ -681,11 +693,11 @@ test "serialize pkg explicit" {
         \\
     ;
 
-    try serializeTest(str, expected, true);
+    try serializeTest(from, to, true);
 }
 
 test "serialize github non-explicit" {
-    const str =
+    const from =
         \\something:
         \\  src:
         \\    github:
@@ -696,11 +708,21 @@ test "serialize github non-explicit" {
         \\
     ;
 
-    try serializeTest(str, str, false);
+    const to =
+        \\something:
+        \\  src:
+        \\    git:
+        \\      url: "https://github.com/test/my_repo.git"
+        \\      ref: master
+        \\  root: main.zig
+        \\
+    ;
+
+    try serializeTest(from, to, false);
 }
 
 test "serialize github non-explicit, default root" {
-    const str =
+    const from =
         \\something:
         \\  src:
         \\    github:
@@ -710,11 +732,20 @@ test "serialize github non-explicit, default root" {
         \\
     ;
 
-    try serializeTest(str, str, false);
+    const to =
+        \\something:
+        \\  src:
+        \\    git:
+        \\      url: "https://github.com/test/my_repo.git"
+        \\      ref: master
+        \\
+    ;
+
+    try serializeTest(from, to, false);
 }
 
 test "serialize github explicit, default root" {
-    const str =
+    const from =
         \\something:
         \\  src:
         \\    github:
@@ -725,7 +756,16 @@ test "serialize github explicit, default root" {
         \\
     ;
 
-    try serializeTest(str, str, true);
+    const to =
+        \\something:
+        \\  src:
+        \\    git:
+        \\      url: "https://github.com/test/my_repo.git"
+        \\      ref: master
+        \\  root: src/main.zig
+    ;
+
+    try serializeTest(from, to, true);
 }
 
 test "serialize github explicit" {
@@ -742,9 +782,8 @@ test "serialize github explicit" {
     const to =
         \\something:
         \\  src:
-        \\    github:
-        \\      user: test
-        \\      repo: my_repo
+        \\    git:
+        \\      url: "https://github.com/test/my_repo.git"
         \\      ref: master
         \\  root: src/main.zig
         \\

@@ -110,12 +110,12 @@ fn fetch(
         try entry.done();
     }
 
-    const base_path = try std.fs.path.join(arena.child_allocator, &.{
+    const base_path = try std.fs.path.join(allocator, &.{
         ".gyro",
         entry_name,
         "pkg",
     });
-    defer arena.child_allocator.free(base_path);
+    defer allocator.free(base_path);
 
     const root = dep.url.root orelse utils.default_root;
     path.* = try utils.joinPathConvertSep(arena, &.{ base_path, root });
@@ -130,13 +130,32 @@ fn fetch(
     defer project_file.close();
 
     const text = try project_file.reader().readAllAlloc(&arena.allocator, std.math.maxInt(usize));
-    const project = try Project.fromUnownedText(arena.child_allocator, ".", text);
-    defer project.destroy();
+    const project = try Project.fromUnownedText(allocator, base_path, text);
+    defer {
+        project.transferToArena(arena);
+        project.destroy();
+    }
 
-    try deps.appendSlice(arena.child_allocator, project.deps.items);
+    try deps.appendSlice(allocator, project.deps.items);
 }
 
 pub fn dedupeResolveAndFetch(
+    dep_table: []const Dependency.Source,
+    resolutions: []const ResolutionEntry,
+    fetch_queue: *FetchQueue,
+    i: usize,
+) void {
+    dedupeResolveAndFetchImpl(
+        dep_table,
+        resolutions,
+        fetch_queue,
+        i,
+    ) catch |err| {
+        fetch_queue.items(.result)[i] = .{ .err = err };
+    };
+}
+
+fn dedupeResolveAndFetchImpl(
     dep_table: []const Dependency.Source,
     resolutions: []const ResolutionEntry,
     fetch_queue: *FetchQueue,

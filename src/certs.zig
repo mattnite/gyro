@@ -1,21 +1,23 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 extern fn git_mbedtls__set_cert_location(path: ?[*:0]const u8, file: ?[*:0]const u8) c_int;
+extern fn git_mbedtls__set_cert_buf(buf: [*]const u8, len: usize) c_int;
 
 /// based off of golang's system cert finding code: https://golang.org/src/crypto/x509/
 pub fn loadSystemCerts(allocator: *std.mem.Allocator) !void {
-    switch (std.Target.current.os.tag) {
+    switch (builtin.target.os.tag) {
         .windows => {
-            //const c = @cImport({
-            //    @cInclude("wincrypt.h");
-            //});
+            const c = @cImport({
+                @cInclude("wincrypt.h");
+            });
 
-            //const store = c.CertOpenSystemStoreA(null, "ROOT");
-            //if (store == null) {
-            //    std.log.err("failed to open system cert store", .{});
-            //    return error.Explained;
-            //}
-            //defer _ = c.CertCloseStore(store, 0);
+            const store = c.CertOpenSystemStoreA(null, "ROOT");
+            if (store == null) {
+                std.log.err("failed to open system cert store", .{});
+                return error.Explained;
+            }
+            defer _ = c.CertCloseStore(store, 0);
 
             //var cert: ?*c.PCCERT_CONTEXT = null;
             //while (true) {
@@ -30,7 +32,7 @@ pub fn loadSystemCerts(allocator: *std.mem.Allocator) !void {
 
             //mbedtls_ssl_conf_ca_chain();
         },
-        .ios => {},
+        .ios => @compileError("TODO: ios certs"),
         .macos => {},
         .linux,
         .aix,
@@ -48,9 +50,12 @@ pub fn loadSystemCerts(allocator: *std.mem.Allocator) !void {
 fn loadUnixCerts(allocator: *std.mem.Allocator) !void {
     // TODO: env var overload
     const has_env_var = try std.process.hasEnvVar(allocator, "SSL_CERT_FILE");
-    const files: []const [:0]const u8 = if (has_env_var)
-        &.{try allocator.dupeZ(u8, try std.process.getEnvVarOwned(allocator, "SSL_CERT_FILE"))}
-    else switch (std.Target.current.os.tag) {
+    const files: []const [:0]const u8 = if (has_env_var) blk: {
+        const file_path = try std.process.getEnvVarOwned(allocator, "SSL_CERT_FILE");
+        defer allocator.free(file_path);
+
+        break :blk &.{try allocator.dupeZ(u8, file_path)};
+    } else switch (builtin.target.os.tag) {
         .linux => &.{
             // Debian/Ubuntu/Gentoo etc.
             "/etc/ssl/certs/ca-certificates.crt",
@@ -84,10 +89,9 @@ fn loadUnixCerts(allocator: *std.mem.Allocator) !void {
     defer if (has_env_var) allocator.free(files[0]);
 
     for (files) |path| {
-        std.log.debug("looking at path {s}", .{path});
         const rc = git_mbedtls__set_cert_location(path, null);
         if (rc == 0) {
-            std.log.debug("got it", .{});
+            std.log.debug("cert path: {s}", .{path});
             return;
         }
     }

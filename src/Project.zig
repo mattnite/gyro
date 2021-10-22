@@ -138,6 +138,14 @@ pub fn destroy(self: *Self) void {
     self.allocator.destroy(self);
 }
 
+pub fn transferToArena(self: *Self, arena: *ArenaAllocator) void {
+    while (self.arena.state.buffer_list.popFirst()) |node|
+        arena.state.buffer_list.prepend(node);
+
+    arena.state.end_index += self.arena.state.end_index;
+    self.arena.state.end_index = 0;
+}
+
 pub fn fromUnownedText(allocator: *Allocator, base_dir: []const u8, text: []const u8) !*Self {
     return try Self.create(allocator, base_dir, text, false);
 }

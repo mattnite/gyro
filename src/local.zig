@@ -50,6 +50,22 @@ pub fn dedupeResolveAndFetch(
     resolutions: []const ResolutionEntry,
     fetch_queue: *FetchQueue,
     i: usize,
+) void {
+    dedupeResolveAndFetchImpl(
+        dep_table,
+        resolutions,
+        fetch_queue,
+        i,
+    ) catch |err| {
+        fetch_queue.items(.result)[i] = .{ .err = err };
+    };
+}
+
+fn dedupeResolveAndFetchImpl(
+    dep_table: []const Dependency.Source,
+    resolutions: []const ResolutionEntry,
+    fetch_queue: *FetchQueue,
+    i: usize,
 ) FetchError!void {
     _ = resolutions;
 
@@ -68,7 +84,10 @@ pub fn dedupeResolveAndFetch(
 
     const text = try project_file.reader().readAllAlloc(&arena.allocator, std.math.maxInt(usize));
     const project = try Project.fromUnownedText(arena.child_allocator, dep.path, text);
-    defer project.destroy();
+    defer {
+        project.transferToArena(arena);
+        project.destroy();
+    }
 
     // TODO: resolve path when default root
     const root = dep.root orelse utils.default_root;

@@ -76,7 +76,10 @@ pub fn serializeResolutions(
     }
 }
 
-fn findResolution(dep: Dependency.Source, resolutions: []const ResolutionEntry) ?usize {
+fn findResolution(
+    dep: Dependency.Source,
+    resolutions: []const ResolutionEntry,
+) ?usize {
     const root = dep.git.root orelse utils.default_root;
     return for (resolutions) |entry, j| {
         if (std.mem.eql(u8, dep.git.url, entry.url) and
@@ -88,7 +91,11 @@ fn findResolution(dep: Dependency.Source, resolutions: []const ResolutionEntry) 
     } else null;
 }
 
-fn findMatch(dep_table: []const Dependency.Source, dep_idx: usize, edges: []const Engine.Edge) ?usize {
+fn findMatch(
+    dep_table: []const Dependency.Source,
+    dep_idx: usize,
+    edges: []const Engine.Edge,
+) ?usize {
     const dep = dep_table[dep_idx].git;
     const root = dep.root orelse utils.default_root;
     return for (edges) |edge| {
@@ -103,22 +110,18 @@ fn findMatch(dep_table: []const Dependency.Source, dep_idx: usize, edges: []cons
     } else null;
 }
 
-// TODO: do certificates properly
-//fn passCert(cert: [*c]c.git_cert, valid: c_int, host: [*c]const u8, payload: ?*c_void) callconv(.C) c_int {
-//    _ = cert;
-//    _ = valid;
-//    _ = host;
-//    _ = payload;
-//    return 0;
-//}
-
 const RemoteHeadEntry = struct {
     oid: [c.GIT_OID_HEXSZ]u8,
     name: []const u8,
 };
 
-fn getHeadCommit(allocator: *Allocator, url: []const u8, ref: []const u8) ![]const u8 {
-    // if ref is the same size as an OID and hex format then treat it as a commit
+fn getHeadCommit(
+    allocator: *Allocator,
+    url: []const u8,
+    ref: []const u8,
+) ![]const u8 {
+    // if ref is the same size as an OID and hex format then treat it as a
+    // commit
     if (ref.len == c.GIT_OID_HEXSZ) {
         for (ref) |char| {
             if (!std.ascii.isXDigit(char))
@@ -139,15 +142,23 @@ fn getHeadCommit(allocator: *Allocator, url: []const u8, ref: []const u8) ![]con
     defer c.git_remote_free(remote);
 
     var callbacks: c.git_remote_callbacks = undefined;
-    err = c.git_remote_init_callbacks(&callbacks, c.GIT_REMOTE_CALLBACKS_VERSION);
+    err = c.git_remote_init_callbacks(
+        &callbacks,
+        c.GIT_REMOTE_CALLBACKS_VERSION,
+    );
     if (err < 0) {
         const last_error = c.git_error_last();
         std.log.err("{s}", .{last_error.*.message});
         return error.GitRemoteInitCallbacks;
     }
 
-    //callbacks.certificate_check = passCert;
-    err = c.git_remote_connect(remote, c.GIT_DIRECTION_FETCH, &callbacks, null, null);
+    err = c.git_remote_connect(
+        remote,
+        c.GIT_DIRECTION_FETCH,
+        &callbacks,
+        null,
+        null,
+    );
     if (err < 0) {
         const last_error = c.git_error_last();
         std.log.err("{s}", .{last_error.*.message});
@@ -179,7 +190,10 @@ fn getHeadCommit(allocator: *Allocator, url: []const u8, ref: []const u8) ![]con
             .name = try allocator.dupeZ(u8, refs_ptr[i].*.name[0..len]),
         });
 
-        _ = c.git_oid_fmt(&refs.items[refs.items.len - 1].oid, &refs_ptr[i].*.oid);
+        _ = c.git_oid_fmt(
+            &refs.items[refs.items.len - 1].oid,
+            &refs_ptr[i].*.oid,
+        );
     }
 
     inline for (&[_][]const u8{ "refs/tags/", "refs/heads/" }) |prefix| {
@@ -193,10 +207,15 @@ fn getHeadCommit(allocator: *Allocator, url: []const u8, ref: []const u8) ![]con
     }
 
     std.log.err("'{s}' ref not found", .{ref});
-    return error.Explained;
+    return error.RefNotFound;
 }
 
-fn clone(allocator: *Allocator, url: []const u8, commit: []const u8, path: []const u8) !void {
+fn clone(
+    allocator: *Allocator,
+    url: []const u8,
+    commit: []const u8,
+    path: []const u8,
+) !void {
     std.log.info("cloning {s}: {s}", .{ url, commit });
 
     const url_z = try allocator.dupeZ(u8, url);
@@ -212,7 +231,7 @@ fn clone(allocator: *Allocator, url: []const u8, commit: []const u8, path: []con
     if (err < 0) {
         const last_error = c.git_error_last();
         std.log.err("{s}", .{last_error.*.message});
-        return error.Explained;
+        return error.GitClone;
     }
     defer c.git_repository_free(repo);
 
@@ -231,7 +250,11 @@ fn findPartialMatch(
     return for (edges) |edge| {
         const other = dep_table[edge.to].git;
         if (std.mem.eql(u8, dep.url, other.url)) {
-            const other_commit = try getHeadCommit(allocator, other.url, other.ref);
+            const other_commit = try getHeadCommit(
+                allocator,
+                other.url,
+                other.ref,
+            );
             defer allocator.free(other_commit);
 
             if (std.mem.eql(u8, commit, other_commit)) {
@@ -272,12 +295,12 @@ fn fetch(
     var entry = try cache.getEntry(entry_name);
     defer entry.deinit();
 
-    const base_path = try std.fs.path.join(arena.child_allocator, &.{
+    const base_path = try std.fs.path.join(allocator, &.{
         ".gyro",
         entry_name,
         "pkg",
     });
-    defer arena.child_allocator.free(base_path);
+    defer allocator.free(base_path);
 
     if (!done and !try entry.isDone()) {
         try clone(
@@ -304,11 +327,17 @@ fn fetch(
         });
         defer project_file.close();
 
-        const text = try project_file.reader().readAllAlloc(&arena.allocator, std.math.maxInt(usize));
-        const project = try Project.fromUnownedText(arena.child_allocator, ".", text);
-        defer project.destroy();
+        const text = try project_file.reader().readAllAlloc(
+            &arena.allocator,
+            std.math.maxInt(usize),
+        );
+        const project = try Project.fromUnownedText(allocator, base_path, text);
+        defer {
+            project.transferToArena(arena);
+            project.destroy();
+        }
 
-        try deps.appendSlice(arena.child_allocator, project.deps.items);
+        try deps.appendSlice(allocator, project.deps.items);
     }
 }
 
@@ -317,9 +346,26 @@ pub fn dedupeResolveAndFetch(
     resolutions: []const ResolutionEntry,
     fetch_queue: *FetchQueue,
     i: usize,
+) void {
+    dedupeResolveAndFetchImpl(
+        dep_table,
+        resolutions,
+        fetch_queue,
+        i,
+    ) catch |err| {
+        fetch_queue.items(.result)[i] = .{ .err = err };
+    };
+}
+
+fn dedupeResolveAndFetchImpl(
+    dep_table: []const Dependency.Source,
+    resolutions: []const ResolutionEntry,
+    fetch_queue: *FetchQueue,
+    i: usize,
 ) FetchError!void {
     const arena = &fetch_queue.items(.arena)[i];
     const dep_idx = fetch_queue.items(.edge)[i].to;
+
     var commit: []const u8 = undefined;
     if (findResolution(dep_table[dep_idx], resolutions)) |res_idx| {
         if (resolutions[res_idx].dep_idx) |idx| {
@@ -328,7 +374,11 @@ pub fn dedupeResolveAndFetch(
             };
 
             return;
-        } else if (findMatch(dep_table, dep_idx, fetch_queue.items(.edge)[0..i])) |idx| {
+        } else if (findMatch(
+            dep_table,
+            dep_idx,
+            fetch_queue.items(.edge)[0..i],
+        )) |idx| {
             fetch_queue.items(.result)[i] = .{
                 .replace_me = idx,
             };
@@ -339,7 +389,11 @@ pub fn dedupeResolveAndFetch(
                 .fill_resolution = res_idx,
             };
         }
-    } else if (findMatch(dep_table, dep_idx, fetch_queue.items(.edge)[0..i])) |idx| {
+    } else if (findMatch(
+        dep_table,
+        dep_idx,
+        fetch_queue.items(.edge)[0..i],
+    )) |idx| {
         fetch_queue.items(.result)[i] = .{
             .replace_me = idx,
         };
@@ -352,7 +406,14 @@ pub fn dedupeResolveAndFetch(
             dep_table[dep_idx].git.ref,
         );
 
-        if (try findPartialMatch(arena.child_allocator, dep_table, commit, dep_idx, fetch_queue.items(.edge)[0..i])) |idx| {
+        if (try findPartialMatch(
+            arena.child_allocator,
+            dep_table,
+            commit,
+            dep_idx,
+            fetch_queue.items(.edge)[0..i],
+        )) |idx| {
+            std.log.err("found partial match: {}", .{idx});
             fetch_queue.items(.result)[i] = .{
                 .copy_deps = idx,
             };
@@ -412,8 +473,15 @@ pub fn updateResolution(
             });
         },
         .replace_me => |dep_idx| fetch_queue.items(.edge)[i].to = dep_idx,
-        .err => |err| return err,
+        .err => |err| {
+            std.log.err("recieved error: {s} while getting dep: {}", .{
+                @errorName(err),
+                dep_table[fetch_queue.items(.edge)[i].to],
+            });
+            return error.Explained;
+        },
         .copy_deps => |queue_idx| {
+            std.log.err("queue_idx: {}", .{queue_idx});
             const commit = resolutions.items[
                 findResolution(
                     dep_table[fetch_queue.items(.edge)[queue_idx].to],

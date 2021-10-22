@@ -5,9 +5,11 @@ const zfetch = @import("zfetch");
 const Dependency = @import("Dependency.zig");
 const cmds = @import("commands.zig");
 const loadSystemCerts = @import("certs.zig").loadSystemCerts;
+//const threading = @import("./mbedtls_threading.zig");
 
 const c = @cImport({
     @cInclude("git2.h");
+    @cInclude("mbedtls/debug.h");
 });
 
 pub const log_level: std.log.Level = if (builtin.mode == .Debug) .debug else .info;
@@ -16,14 +18,24 @@ export fn gai_strerrorA(err: c_int) [*c]u8 {
     _ = err;
     return null;
 }
+extern fn git_mbedtls__insecure() void;
+extern fn git_mbedtls__set_debug() void;
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
+    //var gpa = std.heap.GeneralPurposeAllocator(.{
+    //    //.stack_trace_frames = 10,
+    //}){};
+    //defer _ = gpa.deinit();
 
-    const allocator = &gpa.allocator;
+    //const allocator = &gpa.allocator;
+    const allocator = std.heap.c_allocator;
     try zfetch.init();
     defer zfetch.deinit();
+
+    //threading.setAlt();
+    //defer threading.freeAlt();
+    if (builtin.mode == .Debug)
+        c.mbedtls_debug_set_threshold(1);
 
     const rc = c.git_libgit2_init();
     if (rc < 0) {
@@ -34,6 +46,11 @@ pub fn main() !void {
     defer _ = c.git_libgit2_shutdown();
 
     try loadSystemCerts(allocator);
+    if (std.process.hasEnvVarConstant("GYRO_INSECURE"))
+        git_mbedtls__insecure();
+
+    git_mbedtls__set_debug();
+
     runCommands(allocator) catch |err| {
         switch (err) {
             error.Explained => std.process.exit(1),

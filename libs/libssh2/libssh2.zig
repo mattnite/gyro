@@ -49,14 +49,13 @@ const config_dir = pathJoinRoot(&.{"config"});
 pub fn link(
     b: *std.build.Builder,
     artifact: *std.build.LibExeObjStep,
-    target: std.zig.CrossTarget,
 ) !void {
     var flags = std.ArrayList([]const u8).init(b.allocator);
     try flags.appendSlice(&.{
         "-DLIBSSH2_MBEDTLS",
     });
 
-    if (target.isWindows()) {
+    if (artifact.target.isWindows()) {
         try flags.appendSlice(&.{
             "-D_CRT_SECURE_NO_DEPRECATE=1",
             "-DHAVE_LIBCRYPT32",
@@ -66,7 +65,7 @@ pub fn link(
             "-DLIBSSH2_DH_GEX_NEW=1",
         });
 
-        if (target.getAbi().isGnu()) try flags.appendSlice(&.{
+        if (artifact.target.getAbi().isGnu()) try flags.appendSlice(&.{
             "-DHAVE_UNISTD_H",
             "-DHAVE_INTTYPES_H",
             "-DHAVE_SYS_TIME_H",

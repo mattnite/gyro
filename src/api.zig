@@ -394,6 +394,8 @@ fn request(
     var redirects: usize = 0;
     return while (redirects < 128) {
         var ret = try zfetch.Request.init(allocator, real_url, null);
+        errdefer ret.deinit();
+
         const link = try uri.parse(real_url);
         try headers.set("Host", link.host orelse return error.NoHost);
         try ret.do(method, headers.*, payload);
