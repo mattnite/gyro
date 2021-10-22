@@ -234,7 +234,7 @@ fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_vo
     var options: c.git_submodule_update_options = undefined;
     _ = c.git_submodule_update_options_init(&options, c.GIT_SUBMODULE_UPDATE_OPTIONS_VERSION);
 
-    std.log.info("submodule update", .{});
+    std.log.info("submodule update, path: {s}", .{c.git_submodule_path(sm)});
     var err = c.git_submodule_update(sm, 1, &options);
     if (err != 0)
         return error.GitSubmoduleUpdate;
