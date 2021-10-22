@@ -234,10 +234,12 @@ fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_vo
     var options: c.git_submodule_update_options = undefined;
     _ = c.git_submodule_update_options_init(&options, c.GIT_SUBMODULE_UPDATE_OPTIONS_VERSION);
 
+    std.log.info("submodule update", .{});
     var err = c.git_submodule_update(sm, 1, &options);
     if (err != 0)
         return error.GitSubmoduleUpdate;
 
+    std.log.info("submodule open", .{});
     var repo: ?*c.git_repository = null;
     err = c.git_submodule_open(&repo, sm);
     if (err != 0)
@@ -354,6 +356,7 @@ fn fetch(
     });
     defer allocator.free(base_path);
 
+    std.log.debug("base_path: {s}", .{base_path});
     if (!done and !try entry.isDone()) {
         try clone(
             allocator,
@@ -366,9 +369,7 @@ fn fetch(
     }
 
     const root = dep.git.root orelse utils.default_root;
-    std.log.debug("base_path: {s}, root: {s}", .{ base_path, root });
     path.* = try utils.joinPathConvertSep(arena, &.{ base_path, root });
-    std.log.debug("path: {s}", .{path.*});
 
     if (!done) {
         var base_dir = try std.fs.cwd().openDir(base_path, .{});
