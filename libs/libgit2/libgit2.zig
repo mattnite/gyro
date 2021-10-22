@@ -252,6 +252,7 @@ pub fn link(
         "-DGIT_HTTPS=1",
         "-DGIT_MBEDTLS=1",
         "-DGIT_SHA1_MBEDTLS=1",
+        "-fno-sanitize=all",
     });
 
     if (64 == artifact.target.getCpuArch().ptrBitWidth())
