@@ -7,7 +7,11 @@ deps:
   jedisct1/zigly: ^0.0.0
   bork:
     src:
-      github:
-        user: kristoff-it
-        repo: bork
+      git:
+        url: "https://github.com/kristoff-it/bork.git"
+        ref: master
+  upaya:
+    src:
+      git:
+        url: "https://github.com/prime31/zig-upaya.git"
         ref: master

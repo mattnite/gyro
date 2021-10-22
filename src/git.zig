@@ -210,6 +210,47 @@ fn getHeadCommit(
     return error.RefNotFound;
 }
 
+const CloneState = struct {
+    allocator: *Allocator,
+    base_path: []const u8,
+};
+
+fn submoduleCb(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_void) callconv(.C) c_int {
+    return if (submoduleCbImpl(sm, sm_name, payload)) 0 else |_| -1;
+}
+
+fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_void) !void {
+    const parent_state = @ptrCast(*CloneState, @alignCast(@alignOf(*CloneState), payload));
+    const allocator = parent_state.allocator;
+    const base_path = try std.fs.path.join(allocator, &.{ parent_state.base_path, std.mem.spanZ(sm_name) });
+    defer allocator.free(base_path);
+
+    var state = CloneState{
+        .allocator = allocator,
+        .base_path = base_path,
+    };
+
+    std.log.info("cloning submodule: {s}", .{c.git_submodule_url(sm)});
+    var options: c.git_submodule_update_options = undefined;
+    _ = c.git_submodule_update_options_init(&options, c.GIT_SUBMODULE_UPDATE_OPTIONS_VERSION);
+
+    var err = c.git_submodule_update(sm, 1, &options);
+    if (err != 0)
+        return error.GitSubmoduleUpdate;
+
+    var repo: ?*c.git_repository = null;
+    err = c.git_submodule_open(&repo, sm);
+    if (err != 0)
+        return error.GitSubmoduleOpen;
+    defer c.git_repository_free(repo);
+
+    err = c.git_submodule_foreach(repo, submoduleCb, &state);
+    if (err != 0) {
+        std.log.err("{s}", .{c.git_error_last().*.message});
+        return error.GitSubmoduleForeach;
+    }
+}
+
 fn clone(
     allocator: *Allocator,
     url: []const u8,
@@ -229,12 +270,22 @@ fn clone(
     _ = c.git_clone_options_init(&options, c.GIT_CLONE_OPTIONS_VERSION);
 
     var err = c.git_clone(&repo, url_z, path_z, &options);
-    if (err < 0) {
-        const last_error = c.git_error_last();
-        std.log.err("{s}", .{last_error.*.message});
+    if (err != 0) {
+        std.log.err("{s}", .{c.git_error_last().*.message});
         return error.GitClone;
     }
     defer c.git_repository_free(repo);
+
+    var state = CloneState{
+        .allocator = allocator,
+        .base_path = path,
+    };
+
+    err = c.git_submodule_foreach(repo, submoduleCb, &state);
+    if (err != 0) {
+        std.log.err("{s}", .{c.git_error_last().*.message});
+        return error.GitSubmoduleForeach;
+    }
 
     _ = commit;
     // TODO: checkout commit
@@ -289,7 +340,7 @@ fn fetch(
     while (it.next()) |comp|
         try components.insert(0, comp);
 
-    try components.append(commit);
+    try components.append(commit[0..8]);
     const entry_name = try std.mem.join(allocator, "-", components.items);
     defer allocator.free(entry_name);
 
