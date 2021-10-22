@@ -261,8 +261,6 @@ pub fn link(
     artifact.addCSourceFiles(srcs, flags.items);
     if (artifact.target.isWindows()) {
         try flags.appendSlice(&.{
-            "-DGIT_WIN32",
-            "-D_WIN32_WINNT=0x0600",
             "-DGIT_WINHTTP",
         });
         artifact.addCSourceFiles(win32_srcs, flags.items);
