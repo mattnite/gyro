@@ -33,8 +33,8 @@ jobs:
 
     - run: echo $(pwd)/zig-out/bin >> $GITHUB_PATH
 
-    - name: Bootstrap build
+    - name: Build 64-bit
       run: zig build test
 
-    - name: Bootstrap build 32-bit
+    - name: Build 32-bit
       run: zig build test -Dtarget=i386-windows-gnu --prefix tmp

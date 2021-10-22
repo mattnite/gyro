@@ -25,5 +25,5 @@ jobs:
 
     - run: echo "$(pwd)/zig-out/bin" >> $GITHUB_PATH
 
-    - name: Bootstrap build
+    - name: Build 64-bit
       run: zig build test

@@ -23,8 +23,11 @@ jobs:
       with:
         version: master
 
-    - name: Bootstrap build
+    - name: Build 64-bit
       run: zig build test --prefix zig-out
 
-    - name: Bootstrap build 32-bit
+    - name: Build 32-bit
       run: zig build test -Dtarget=i386-linux-gnu --prefix tmp
+
+    - name: Fetch example project
+      run: cd tests && ../zig-out/bin/gyro fetch
