@@ -30,4 +30,5 @@ jobs:
       run: zig build test -Dtarget=i386-linux-gnu --prefix tmp
 
     - name: Fetch example project
-      run: cd tests && ../zig-out/bin/gyro fetch
+      run: ../zig-out/bin/gyro fetch
+      working-directory: tests
