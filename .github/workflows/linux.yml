@@ -27,8 +27,10 @@ jobs:
       run: zig build test -Dtarget=i386-linux-gnu --prefix tmp
 
     - name: Build 64-bit
-      run: zig build test --prefix zig-out
+      run: |
+        zig build test --prefix zig-out
+        echo $GITHUB_ACTION_PATH/zig-out/bin/gyro >> $GITHUB_PATH
 
     - name: Fetch a test gyro.zzz file
-      run: ../../zig-out/bin/gyro fetch
+      run: gyro fetch
       working-directory: tests
