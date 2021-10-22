@@ -49,8 +49,6 @@ pub fn main() !void {
     if (!(builtin.target.os.tag == .linux) or std.process.hasEnvVarConstant("GYRO_INSECURE"))
         git_mbedtls__insecure();
 
-    git_mbedtls__set_debug();
-
     runCommands(allocator) catch |err| {
         switch (err) {
             error.Explained => std.process.exit(1),
