@@ -91,7 +91,6 @@ fn loadUnixCerts(allocator: *std.mem.Allocator) !void {
     for (files) |path| {
         const rc = git_mbedtls__set_cert_location(path, null);
         if (rc == 0) {
-            std.log.debug("cert path: {s}", .{path});
             return;
         }
     }

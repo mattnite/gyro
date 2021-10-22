@@ -40,12 +40,17 @@ pub fn fetch(allocator: *Allocator) !void {
     defer engine.deinit();
 
     try engine.fetch();
-
     try lockfile.setEndPos(0);
     try lockfile.seekTo(0);
     try engine.writeLockfile(lockfile.writer());
-
     try engine.writeDepsZig(deps_file.writer());
+
+    const project_file = try std.fs.cwd().openFile("gyro.zzz", .{
+        .write = true,
+    });
+    defer project_file.close();
+
+    try project.toFile(project_file);
 }
 
 pub fn update(
@@ -208,6 +213,13 @@ pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
             else => return err,
         }
     };
+
+    const project_file = try std.fs.cwd().openFile("gyro.zzz", .{
+        .write = true,
+    });
+    defer project_file.close();
+
+    try project.toFile(project_file);
 }
 
 pub fn package(
