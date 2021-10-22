@@ -29,10 +29,12 @@ jobs:
     - name: Build 64-bit
       run: zig build test --prefix zig-out
 
+    - run: ls $GITHUB_WORKSPACE
+    - run: ls $GITHUB_WORKSPACE/..
+    - run: ls $HOME
+
     - name: Fetch a test gyro.zzz file
       run: $HOME/zig-out/bin/gyro fetch
       working-directory: tests
 
-    - run: ls $GITHUB_WORKSPACE
-    - run: ls $GITHUB_WORKSPACE/..
-    - run: ls $HOME
+
