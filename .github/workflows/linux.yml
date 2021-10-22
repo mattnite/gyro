@@ -27,14 +27,13 @@ jobs:
       run: zig build test -Dtarget=i386-linux-gnu --prefix tmp
 
     - name: Build 64-bit
+      run: zig build
+
+    - name: Test
       run: zig build test
 
-    - run: ls $GITHUB_WORKSPACE
-    - run: ls $GITHUB_WORKSPACE/..
-    - run: ls $HOME
-
     - name: Fetch a test gyro.zzz file
-      run: $HOME/zig-out/bin/gyro fetch
+      run: ../zig-out/bin/gyro fetch
       working-directory: tests
 
 
