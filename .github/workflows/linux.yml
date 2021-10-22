@@ -35,5 +35,3 @@ jobs:
     - name: Fetch a test gyro.zzz file
       run: ../zig-out/bin/gyro fetch
       working-directory: tests
-
-

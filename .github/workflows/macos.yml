@@ -25,5 +25,12 @@ jobs:
 
     - run: echo "$(pwd)/zig-out/bin" >> $GITHUB_PATH
 
-    - name: Build 64-bit
+    - name: Build
+      run: zig build
+
+    - name: Test
       run: zig build test
+
+    - name: Fetch a test gyro.zzz file
+      run: ../zig-out/bin/gyro fetch
+      working-directory: tests
