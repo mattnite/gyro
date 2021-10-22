@@ -30,5 +30,9 @@ jobs:
       run: zig build test --prefix zig-out
 
     - name: Fetch a test gyro.zzz file
-      run: $GITHUB_WORKSPACE/zig-out/bin/gyro fetch
+      run: $HOME/zig-out/bin/gyro fetch
       working-directory: tests
+
+    - run: ls $GITHUB_WORKSPACE
+    - run: ls $GITHUB_WORKSPACE/..
+    - run: ls $HOME
