@@ -23,14 +23,11 @@ jobs:
       with:
         version: master
 
-    - name: Build 64-bit
-      run: zig build test --prefix zig-out
-
     - name: Build 32-bit
       run: zig build test -Dtarget=i386-linux-gnu --prefix tmp
 
-    - run: echo $GITHUB_PATH
-
-    - name: Fetch example project
-      run: pwd && find ..
-      working-directory: tests
+    - name: Build and test 64-bit
+      run: |
+        zig build test --prefix zig-out
+        cd tests
+        ../zig-out/bin/gyro fetch
