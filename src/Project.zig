@@ -99,16 +99,13 @@ fn create(
                     }
                 } else {
                     if (dep.src == .local) {
-                        std.log.debug("trying to resolve: {s}, {s}", .{ base_dir, dep.src.local.path });
                         const resolved = try std.fs.path.resolve(
                             allocator,
                             &.{ base_dir, dep.src.local.path },
                         );
                         defer allocator.free(resolved);
 
-                        std.log.debug("resolved: {s}", .{resolved});
                         dep.src.local.path = try std.fs.path.relative(&ret.arena.allocator, ".", resolved);
-                        std.log.debug("relative: {s}", .{dep.src.local.path});
                     }
 
                     try @field(ret, deps_field).append(dep);

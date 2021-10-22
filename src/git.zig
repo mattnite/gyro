@@ -276,6 +276,9 @@ fn clone(
     }
     defer c.git_repository_free(repo);
 
+    _ = commit;
+    // TODO: checkout commit
+
     var state = CloneState{
         .allocator = allocator,
         .base_path = path,
@@ -286,9 +289,6 @@ fn clone(
         std.log.err("{s}", .{c.git_error_last().*.message});
         return error.GitSubmoduleForeach;
     }
-
-    _ = commit;
-    // TODO: checkout commit
 }
 
 fn findPartialMatch(
@@ -366,7 +366,9 @@ fn fetch(
     }
 
     const root = dep.git.root orelse utils.default_root;
+    std.log.debug("base_path: {s}, root: {s}", .{ base_path, root });
     path.* = try utils.joinPathConvertSep(arena, &.{ base_path, root });
+    std.log.debug("path: {s}", .{path.*});
 
     if (!done) {
         var base_dir = try std.fs.cwd().openDir(base_path, .{});
