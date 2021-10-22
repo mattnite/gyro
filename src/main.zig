@@ -46,7 +46,7 @@ pub fn main() !void {
     defer _ = c.git_libgit2_shutdown();
 
     try loadSystemCerts(allocator);
-    if (std.process.hasEnvVarConstant("GYRO_INSECURE"))
+    if (!(builtin.target.os.tag == .linux) or std.process.hasEnvVarConstant("GYRO_INSECURE"))
         git_mbedtls__insecure();
 
     git_mbedtls__set_debug();

@@ -1,0 +1,13 @@
+deps:
+  version:
+    src:
+      git:
+        url: "https://github.com/mattnite/version.git"
+        ref: main
+  jedisct1/zigly: ^0.0.0
+  bork:
+    src:
+      github:
+        user: kristoff-it
+        repo: bork
+        ref: master
