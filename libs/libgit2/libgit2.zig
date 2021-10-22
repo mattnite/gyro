@@ -13,7 +13,7 @@ fn pathJoinRoot(comptime components: []const []const u8) []const u8 {
 }
 
 const srcs = blk: {
-    @setEvalBranchQuota(4000);
+    @setEvalBranchQuota(5000);
     var ret = &.{
         pathJoinRoot(&.{ "c", "deps", "http-parser", "http_parser.c" }),
         pathJoinRoot(&.{ "c", "src", "allocators", "failalloc.c" }),
