@@ -253,6 +253,7 @@ fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_vo
     const dot_git = try std.fs.path.join(allocator, &.{ base_path, ".git" });
     defer allocator.free(dot_git);
 
+    std.log.debug("about to remove: {s}", .{dot_git});
     try std.fs.cwd().deleteTree(dot_git);
 }
 
@@ -320,6 +321,7 @@ fn clone(
     const dot_git = try std.fs.path.join(allocator, &.{ path, ".git" });
     defer allocator.free(dot_git);
 
+    std.log.debug("about to remove: {s}", .{dot_git});
     try std.fs.cwd().deleteTree(dot_git);
 }
 
