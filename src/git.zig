@@ -230,7 +230,7 @@ fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_vo
         .base_path = base_path,
     };
 
-    //std.log.info("cloning submodule: {s}", .{c.git_submodule_url(sm)});
+    std.log.info("cloning submodule: {s}", .{c.git_submodule_url(sm)});
     var options: c.git_submodule_update_options = undefined;
     _ = c.git_submodule_update_options_init(&options, c.GIT_SUBMODULE_UPDATE_OPTIONS_VERSION);
 
