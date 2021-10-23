@@ -267,6 +267,9 @@ fn clone(
     const path_z = try allocator.dupeZ(u8, path);
     defer allocator.free(path_z);
 
+    const commit_z = try allocator.dupeZ(u8, commit);
+    defer allocator.free(commit_z);
+
     var repo: ?*c.git_repository = null;
     var options: c.git_clone_options = undefined;
     _ = c.git_clone_options_init(&options, c.GIT_CLONE_OPTIONS_VERSION);
@@ -278,8 +281,27 @@ fn clone(
     }
     defer c.git_repository_free(repo);
 
-    _ = commit;
-    // TODO: checkout commit
+    var oid: c.git_oid = undefined;
+    err = c.git_oid_fromstr(&oid, commit_z);
+    if (err != 0) {
+        std.log.err("{s}", .{c.git_error_last().*.message});
+        return error.GitOidFromString;
+    }
+
+    var obj: ?*c.git_object = undefined;
+    err = c.git_object_lookup(&obj, repo, &oid, c.GIT_OBJECT_COMMIT);
+    if (err != 0) {
+        std.log.err("{s}", .{c.git_error_last().*.message});
+        return error.GitObjectLookup;
+    }
+
+    var checkout_opts: c.git_checkout_options = undefined;
+    _ = c.git_checkout_options_init(&checkout_opts, c.GIT_CHECKOUT_OPTIONS_VERSION);
+    err = c.git_checkout_tree(repo, obj, &checkout_opts);
+    if (err != 0) {
+        std.log.err("{s}", .{c.git_error_last().*.message});
+        return error.GitCheckoutTree;
+    }
 
     var state = CloneState{
         .allocator = allocator,
@@ -356,7 +378,6 @@ fn fetch(
     });
     defer allocator.free(base_path);
 
-    std.log.debug("base_path: {s}", .{base_path});
     if (!done and !try entry.isDone()) {
         try clone(
             allocator,
