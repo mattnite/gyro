@@ -222,7 +222,12 @@ fn submoduleCb(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_void) 
 fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_void) !void {
     const parent_state = @ptrCast(*CloneState, @alignCast(@alignOf(*CloneState), payload));
     const allocator = parent_state.allocator;
-    const base_path = try std.fs.path.join(allocator, &.{ parent_state.base_path, std.mem.spanZ(sm_name) });
+
+    // git always uses posix path separators
+    const sub_path = try std.mem.replaceOwned(u8, allocator, std.mem.spanZ(sm_name), "/", std.fs.path.sep_str);
+    defer allocator.free(sub_path);
+
+    const base_path = try std.fs.path.join(allocator, &.{ parent_state.base_path, sub_path });
     defer allocator.free(base_path);
 
     var state = CloneState{
