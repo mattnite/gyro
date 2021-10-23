@@ -9,4 +9,4 @@ deps:
     src:
       git:
         url: "https://github.com/prime31/zig-upaya.git"
-        ref: 0e58ee0b3e0351183a3c7839e59867df59a7a6fd
+        ref: master
