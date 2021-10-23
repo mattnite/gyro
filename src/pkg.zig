@@ -73,7 +73,7 @@ pub fn serializeResolutions(
             });
 }
 
-fn findResolution(dep: Dependency.Source, resolutions: []const ResolutionEntry) ?usize {
+pub fn findResolution(dep: Dependency.Source, resolutions: []const ResolutionEntry) ?usize {
     return for (resolutions) |entry, j| {
         if (std.mem.eql(u8, dep.pkg.repository, entry.repository) and
             std.mem.eql(u8, dep.pkg.user, entry.user) and

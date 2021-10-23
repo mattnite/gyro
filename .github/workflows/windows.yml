@@ -43,3 +43,7 @@ jobs:
     - name: Fetch a test gyro.zzz file
       run: ../zig-out/bin/gyro fetch
       working-directory: tests
+
+    - name: Update test
+      run: ../zig-out/bin/gyro update upaya
+      working-directory: tests

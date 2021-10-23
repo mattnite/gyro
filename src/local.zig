@@ -45,6 +45,15 @@ pub fn serializeResolutions(
     _ = writer;
 }
 
+pub fn findResolution(
+    dep: Dependency.Source,
+    resolutions: []const ResolutionEntry,
+) ?usize {
+    _ = dep;
+    _ = resolutions;
+    return null;
+}
+
 pub fn dedupeResolveAndFetch(
     dep_table: []const Dependency.Source,
     resolutions: []const ResolutionEntry,

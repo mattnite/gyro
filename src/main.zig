@@ -264,7 +264,6 @@ pub const commands = struct {
             var cmd = completion.Command.init("update", "Update project dependencies to latest", update);
 
             cmd.addFlag('h', "help", "Display help");
-            cmd.addOption('i', "in", "package", completion.Param.Package, "Update a scoped dependency");
             cmd.addPositional("package", ?completion.Param.Package, .many, "The package(s) to update");
 
             cmd.done();
@@ -273,7 +272,7 @@ pub const commands = struct {
 
         pub const Args = info.ClapComptime();
         pub fn run(allocator: *std.mem.Allocator, args: *Args, _: *clap.args.OsIterator) !void {
-            try cmds.update(allocator, args.option("--in"), args.positionals());
+            try cmds.update(allocator, args.positionals());
         }
     };
 

@@ -76,7 +76,7 @@ pub fn serializeResolutions(
     }
 }
 
-fn findResolution(
+pub fn findResolution(
     dep: Dependency.Source,
     resolutions: []const ResolutionEntry,
 ) ?usize {

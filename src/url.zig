@@ -52,7 +52,7 @@ pub fn serializeResolutions(
             });
 }
 
-fn findResolution(dep: Dependency.Source, resolutions: []const ResolutionEntry) ?usize {
+pub fn findResolution(dep: Dependency.Source, resolutions: []const ResolutionEntry) ?usize {
     const root = dep.url.root orelse utils.default_root;
     return for (resolutions) |entry, i| {
         if (std.mem.eql(u8, dep.url.str, entry.str) and
