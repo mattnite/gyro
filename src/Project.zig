@@ -91,7 +91,7 @@ fn create(
         if (utils.zFindChild(root, deps_field)) |deps| {
             var it = utils.ZChildIterator.init(deps);
             while (it.next()) |dep_node| {
-                var dep = try Dependency.fromZNode(allocator, dep_node);
+                var dep = try Dependency.fromZNode(&ret.arena, dep_node);
                 for (ret.deps.items) |other| {
                     if (std.mem.eql(u8, dep.alias, other.alias)) {
                         std.log.err("'{s}' alias in 'deps' is declared multiple times", .{dep.alias});
@@ -136,6 +136,14 @@ fn deinit(self: *Self) void {
 pub fn destroy(self: *Self) void {
     self.deinit();
     self.allocator.destroy(self);
+}
+
+pub fn transferToArena(self: *Self, arena: *ArenaAllocator) void {
+    while (self.arena.state.buffer_list.popFirst()) |node|
+        arena.state.buffer_list.prepend(node);
+
+    arena.state.end_index += self.arena.state.end_index;
+    self.arena.state.end_index = 0;
 }
 
 pub fn fromUnownedText(allocator: *Allocator, base_dir: []const u8, text: []const u8) !*Self {

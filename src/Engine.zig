@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const Dependency = @import("Dependency.zig");
 const Project = @import("Project.zig");
 const utils = @import("utils.zig");
@@ -14,10 +15,18 @@ const assert = std.debug.assert;
 pub const DepTable = std.ArrayListUnmanaged(Dependency.Source);
 pub const Sources = .{
     @import("pkg.zig"),
-    @import("github.zig"),
     @import("local.zig"),
     @import("url.zig"),
+    @import("git.zig"),
 };
+
+comptime {
+    inline for (Sources) |source| {
+        const type_info = @typeInfo(@TypeOf(source.dedupeResolveAndFetch));
+        if (type_info.Fn.return_type != void)
+            @compileError("dedupeResolveAndFetch has to return void, not !void");
+    }
+}
 
 pub const Edge = struct {
     const ParentIndex = union(enum) {
@@ -239,7 +248,12 @@ pub const FetchQueue = blk: {
                     @field(self.tables, source.name).deinit(allocator);
             }
 
-            pub fn append(self: *@This(), allocator: *Allocator, src_type: Dependency.SourceType, edge: Edge) !void {
+            pub fn append(
+                self: *@This(),
+                allocator: *Allocator,
+                src_type: Dependency.SourceType,
+                edge: Edge,
+            ) !void {
                 inline for (Sources) |source| {
                     if (src_type == @field(Dependency.SourceType, source.name)) {
                         try @field(self.tables, source.name).append(allocator, edge);
@@ -263,8 +277,12 @@ pub const FetchQueue = blk: {
         }
 
         pub fn deinit(self: *Self, allocator: *Allocator) void {
-            inline for (Sources) |source|
+            inline for (Sources) |source| {
+                for (@field(self.tables, source.name).items(.arena)) |arena|
+                    arena.deinit();
+
                 @field(self.tables, source.name).deinit(allocator);
+            }
         }
 
         pub fn append(
@@ -303,8 +321,9 @@ pub const FetchQueue = blk: {
                 }
 
                 for (@field(self.tables, source.name).items(.arena)) |*thread_arena| {
-                    while (thread_arena.state.buffer_list.popFirst()) |node|
+                    while (thread_arena.state.buffer_list.popFirst()) |node| {
                         arena.state.buffer_list.prepend(node);
+                    }
 
                     arena.state.end_index += thread_arena.state.end_index;
                 }
@@ -351,9 +370,11 @@ pub const FetchQueue = blk: {
         }
 
         pub fn cleanupDeps(self: *Self, allocator: *Allocator) void {
-            inline for (Sources) |source|
-                for (@field(self.tables, source.name).items(.deps)) |*deps|
-                    deps.deinit(allocator);
+            _ = self;
+            _ = allocator;
+            //inline for (Sources) |source|
+            //    for (@field(self.tables, source.name).items(.deps)) |*deps|
+            //        deps.deinit(allocator);
         }
     };
 };
@@ -378,6 +399,9 @@ pub fn init(
 
     var fetch_queue = FetchQueue.init();
     errdefer fetch_queue.deinit(allocator);
+
+    var arena = ArenaAllocator.init(allocator);
+    errdefer arena.deinit();
 
     for (project.deps.items) |dep| {
         try dep_table.append(allocator, dep.src);
@@ -406,7 +430,7 @@ pub fn init(
 
     return Engine{
         .allocator = allocator,
-        .arena = ArenaAllocator.init(allocator),
+        .arena = arena,
         .project = project,
         .dep_table = dep_table,
         .edges = std.ArrayListUnmanaged(Edge){},
@@ -437,12 +461,12 @@ pub fn fetch(self: *Engine) !void {
             // inline for workaround because the compiler wasn't generating the right code for this
             for (self.fetch_queue.tables.pkg.items(.result)) |_, i|
                 try Sources[0].updateResolution(self.allocator, &self.resolutions.tables.pkg, self.dep_table.items, &self.fetch_queue.tables.pkg, i);
-            for (self.fetch_queue.tables.github.items(.result)) |_, i|
-                try Sources[1].updateResolution(self.allocator, &self.resolutions.tables.github, self.dep_table.items, &self.fetch_queue.tables.github, i);
             for (self.fetch_queue.tables.local.items(.result)) |_, i|
-                try Sources[2].updateResolution(self.allocator, &self.resolutions.tables.local, self.dep_table.items, &self.fetch_queue.tables.local, i);
+                try Sources[1].updateResolution(self.allocator, &self.resolutions.tables.local, self.dep_table.items, &self.fetch_queue.tables.local, i);
             for (self.fetch_queue.tables.url.items(.result)) |_, i|
-                try Sources[3].updateResolution(self.allocator, &self.resolutions.tables.url, self.dep_table.items, &self.fetch_queue.tables.url, i);
+                try Sources[2].updateResolution(self.allocator, &self.resolutions.tables.url, self.dep_table.items, &self.fetch_queue.tables.url, i);
+            for (self.fetch_queue.tables.git.items(.result)) |_, i|
+                try Sources[3].updateResolution(self.allocator, &self.resolutions.tables.git, self.dep_table.items, &self.fetch_queue.tables.git, i);
 
             inline for (Sources) |source| {
                 for (@field(self.fetch_queue.tables, source.name).items(.path)) |opt_path, i| {
@@ -503,11 +527,11 @@ pub fn writeDepBeginRoot(self: *Engine, writer: anytype, indent: usize, edge: Ed
     try writer.writeByteNTimes(' ', 4 * (indent + 1));
     try writer.print(".path = FileSource{{\n", .{});
 
-    const path = if (@import("builtin").target.os.tag == .windows)
+    const path = if (builtin.target.os.tag == .windows)
         try std.mem.replaceOwned(u8, self.allocator, self.paths.get(edge.to).?, "\\", "\\\\")
     else
         self.paths.get(edge.to).?;
-    defer if (@import("builtin").target.os.tag == .windows) self.allocator.free(path);
+    defer if (builtin.target.os.tag == .windows) self.allocator.free(path);
 
     try writer.writeByteNTimes(' ', 4 * (indent + 2));
     try writer.print(".path = \"{s}\",\n", .{path});
@@ -534,11 +558,11 @@ pub fn writeDepBegin(self: Engine, writer: anytype, indent: usize, edge: Edge) !
     try writer.writeByteNTimes(' ', 4 * (indent + 1));
     try writer.print(".path = FileSource{{\n", .{});
 
-    const path = if (@import("builtin").target.os.tag == .windows)
+    const path = if (builtin.target.os.tag == .windows)
         try std.mem.replaceOwned(u8, self.allocator, self.paths.get(edge.to).?, "\\", "\\\\")
     else
         self.paths.get(edge.to).?;
-    defer if (@import("builtin").target.os.tag == .windows) self.allocator.free(path);
+    defer if (builtin.target.os.tag == .windows) self.allocator.free(path);
 
     try writer.writeByteNTimes(' ', 4 * (indent + 2));
     try writer.print(".path = \"{s}\",\n", .{path});

@@ -163,7 +163,7 @@ fn fetch(
         while (it.next()) |node|
             try deps.append(
                 allocator,
-                try Dependency.fromZNode(allocator, node),
+                try Dependency.fromZNode(arena, node),
             );
     }
 
@@ -185,6 +185,22 @@ fn fetch(
 }
 
 pub fn dedupeResolveAndFetch(
+    dep_table: []const Dependency.Source,
+    resolutions: []const ResolutionEntry,
+    fetch_queue: *FetchQueue,
+    i: usize,
+) void {
+    dedupeResolveAndFetchImpl(
+        dep_table,
+        resolutions,
+        fetch_queue,
+        i,
+    ) catch |err| {
+        fetch_queue.items(.result)[i] = .{ .err = err };
+    };
+}
+
+fn dedupeResolveAndFetchImpl(
     dep_table: []const Dependency.Source,
     resolutions: []const ResolutionEntry,
     fetch_queue: *FetchQueue,

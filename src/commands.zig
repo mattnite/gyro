@@ -21,6 +21,64 @@ fn assertFileExistsInCwd(subpath: []const u8) !void {
     };
 }
 
+// move to an explicit step later, for now make it automatic and slick
+fn migrateGithubLockfile(allocator: *Allocator, file: std.fs.File) !void {
+    var to_lines = std.ArrayList([]const u8).init(allocator);
+    defer to_lines.deinit();
+
+    var github_lines = std.ArrayList([]const u8).init(allocator);
+    defer github_lines.deinit();
+
+    const text = try file.readToEndAlloc(allocator, std.math.maxInt(usize));
+    defer allocator.free(text);
+
+    // sort between good entries and github entries
+    var it = std.mem.tokenize(u8, text, "\n");
+    while (it.next()) |line|
+        if (std.mem.startsWith(u8, line, "github"))
+            try github_lines.append(line)
+        else
+            try to_lines.append(line);
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    // convert each github entry to a git entry
+    for (github_lines.items) |line| {
+        var line_it = std.mem.tokenize(u8, line, " ");
+
+        // github label
+        _ = line_it.next() orelse unreachable;
+
+        const new_line = try std.fmt.allocPrint(
+            &arena.allocator,
+            "git https://github.com/{s}/{s}.git {s} {s} {s}",
+            .{
+                .user = line_it.next() orelse return error.NoUser,
+                .repo = line_it.next() orelse return error.NoRepo,
+                .ref = line_it.next() orelse return error.NoRef,
+                .root = line_it.next() orelse return error.NoRoot,
+                .commit = line_it.next() orelse return error.NoCommit,
+            },
+        );
+
+        try to_lines.append(new_line);
+    }
+
+    // clear file and write all entries to it
+    try file.setEndPos(0);
+    try file.seekTo(0);
+
+    const writer = file.writer();
+    for (to_lines.items) |line| {
+        try writer.writeAll(line);
+        try writer.writeByte('\n');
+    }
+
+    // seek to beginning so that any future reading is from the beginning of the file
+    try file.seekTo(0);
+}
+
 pub fn fetch(allocator: *Allocator) !void {
     const project = try Project.fromDirPath(allocator, ".");
     defer project.destroy();
@@ -31,6 +89,7 @@ pub fn fetch(allocator: *Allocator) !void {
     });
     defer lockfile.close();
 
+    try migrateGithubLockfile(allocator, lockfile);
     const deps_file = try std.fs.cwd().createFile("deps.zig", .{
         .truncate = true,
     });
@@ -40,12 +99,17 @@ pub fn fetch(allocator: *Allocator) !void {
     defer engine.deinit();
 
     try engine.fetch();
-
     try lockfile.setEndPos(0);
     try lockfile.seekTo(0);
     try engine.writeLockfile(lockfile.writer());
-
     try engine.writeDepsZig(deps_file.writer());
+
+    const project_file = try std.fs.cwd().openFile("gyro.zzz", .{
+        .write = true,
+    });
+    defer project_file.close();
+
+    try project.toFile(project_file);
 }
 
 pub fn update(
@@ -143,6 +207,7 @@ pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
     });
     defer lockfile.close();
 
+    try migrateGithubLockfile(allocator, lockfile);
     const deps_file = try std.fs.cwd().createFile("deps.zig", .{
         .truncate = true,
     });
@@ -208,6 +273,13 @@ pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
             else => return err,
         }
     };
+
+    const project_file = try std.fs.cwd().openFile("gyro.zzz", .{
+        .write = true,
+    });
+    defer project_file.close();
+
+    try project.toFile(project_file);
 }
 
 pub fn package(
@@ -864,6 +936,7 @@ pub fn redirect(
                 break :blk try arena.allocator.dupe(u8, result.root orelse "src/main.zig");
             },
             .github => |github| github.root,
+            .git => |git| git.root,
             .url => |url| url.root,
             .local => |local| local.root,
         };
