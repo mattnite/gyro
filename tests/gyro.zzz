@@ -5,11 +5,6 @@ deps:
         url: "https://github.com/mattnite/version.git"
         ref: main
   jedisct1/zigly: ^0.0.0
-  bork:
-    src:
-      git:
-        url: "https://github.com/kristoff-it/bork.git"
-        ref: master
   upaya:
     src:
       git:

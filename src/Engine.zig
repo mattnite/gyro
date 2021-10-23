@@ -699,7 +699,7 @@ pub fn writeDepsZig(self: *Engine, writer: anytype) !void {
                 switch (edge.from) {
                     .root => |root| if (root == .normal) {
                         try writer.print("            pkgs.{s},\n", .{
-                            edge.alias,
+                            try utils.escape(&self.arena.allocator, edge.alias),
                         });
                     },
                     else => {},
