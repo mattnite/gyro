@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const uri = @import("uri");
 const api = @import("api.zig");
 const cache = @import("cache.zig");
@@ -219,6 +220,12 @@ fn submoduleCb(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_void) 
     return if (submoduleCbImpl(sm, sm_name, payload)) 0 else |_| -1;
 }
 
+fn deleteDirWindows(allocator: *Allocator, sub_path: []const u8) !void {
+    comptime assert(builtin.target.os.tag == .windows);
+
+    // TODO: recursively delete directory
+}
+
 fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_void) !void {
     const parent_state = @ptrCast(*CloneState, @alignCast(@alignOf(*CloneState), payload));
     const allocator = parent_state.allocator;
@@ -258,8 +265,10 @@ fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_vo
     const dot_git = try std.fs.path.join(allocator, &.{ base_path, ".git" });
     defer allocator.free(dot_git);
 
-    std.log.debug("about to remove: {s}", .{dot_git});
-    try std.fs.cwd().deleteTree(dot_git);
+    if (builtin.target.os.tag == .windows)
+        try deleteDirWindows(allocator, dot_git)
+    else
+        try std.fs.cwd().deleteTree(dot_git);
 }
 
 fn clone(
@@ -326,8 +335,10 @@ fn clone(
     const dot_git = try std.fs.path.join(allocator, &.{ path, ".git" });
     defer allocator.free(dot_git);
 
-    std.log.debug("about to remove: {s}", .{dot_git});
-    try std.fs.cwd().deleteTree(dot_git);
+    if (builtin.target.os.tag == .windows)
+        try deleteDirWindows(allocator, dot_git)
+    else
+        try std.fs.cwd().deleteTree(dot_git);
 }
 
 fn findPartialMatch(
