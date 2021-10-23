@@ -80,6 +80,7 @@ const srcs = blk: {
         pathJoinRoot(&.{ "c", "src", "diff_tform.c" }),
         pathJoinRoot(&.{ "c", "src", "diff_xdiff.c" }),
         pathJoinRoot(&.{ "c", "src", "errors.c" }),
+        pathJoinRoot(&.{ "c", "src", "email.c" }),
         pathJoinRoot(&.{ "c", "src", "fetch.c" }),
         pathJoinRoot(&.{ "c", "src", "fetchhead.c" }),
         pathJoinRoot(&.{ "c", "src", "filebuf.c" }),
