@@ -449,6 +449,23 @@ pub fn deinit(self: *Engine) void {
     self.arena.deinit();
 }
 
+// look at root dependencies and clear the resolution associated with it.
+// note: will update the same alias in both dep and build_deps
+pub fn clearResolution(self: *Engine, alias: []const u8) !void {
+    inline for (Sources) |source| {
+        for (@field(self.fetch_queue.tables, source.name).items(.edge)) |edge| if (edge.from == .root) {
+            if (std.mem.eql(u8, alias, edge.alias)) {
+                const dep = self.dep_table.items[edge.to];
+                if (dep == @field(Dependency.Source, source.name)) {
+                    if (source.findResolution(dep, @field(self.resolutions.tables, source.name).items)) |res_idx| {
+                        _ = @field(self.resolutions.tables, source.name).orderedRemove(res_idx);
+                    }
+                }
+            }
+        };
+    }
+}
+
 pub fn fetch(self: *Engine) !void {
     defer self.fetch_queue.cleanupDeps(self.allocator);
     while (!self.fetch_queue.empty()) {

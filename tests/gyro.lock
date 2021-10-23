@@ -1,0 +1,2 @@
+pkg astrolabe.pm jedisct1 zigly 0.0.0
+git https://github.com/prime31/zig-upaya.git master src/main.zig 0e58ee0b3e0351183a3c7839e59867df59a7a6fd

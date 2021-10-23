@@ -114,15 +114,40 @@ pub fn fetch(allocator: *Allocator) !void {
 
 pub fn update(
     allocator: *Allocator,
-    in: ?[]const u8,
     targets: []const []const u8,
 ) !void {
-    if (in != null or targets.len > 0) {
-        return error.Todo;
+    if (targets.len == 0) {
+        try std.fs.cwd().deleteFile("gyro.lock");
+        try fetch(allocator);
+        return;
     }
 
-    try std.fs.cwd().deleteFile("gyro.lock");
-    try fetch(allocator);
+    const project = try Project.fromDirPath(allocator, ".");
+    defer project.destroy();
+
+    const lockfile = try std.fs.cwd().createFile("gyro.lock", .{
+        .read = true,
+        .truncate = false,
+    });
+    defer lockfile.close();
+
+    try migrateGithubLockfile(allocator, lockfile);
+    const deps_file = try std.fs.cwd().createFile("deps.zig", .{
+        .truncate = true,
+    });
+    defer deps_file.close();
+
+    var engine = try Engine.init(allocator, project, lockfile.reader());
+    defer engine.deinit();
+
+    for (targets) |target|
+        try engine.clearResolution(target);
+
+    try engine.fetch();
+    try lockfile.setEndPos(0);
+    try lockfile.seekTo(0);
+    try engine.writeLockfile(lockfile.writer());
+    try engine.writeDepsZig(deps_file.writer());
 }
 
 const EnvInfo = struct {
