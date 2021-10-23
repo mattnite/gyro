@@ -249,6 +249,11 @@ fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_vo
         std.log.err("{s}", .{c.git_error_last().*.message});
         return error.GitSubmoduleForeach;
     }
+
+    const dot_git = try std.fs.path.join(allocator, &.{ base_path, ".git" });
+    defer allocator.free(dot_git);
+
+    try std.fs.cwd().deleteTree(dot_git);
 }
 
 fn clone(
@@ -311,6 +316,11 @@ fn clone(
         std.log.err("{s}", .{c.git_error_last().*.message});
         return error.GitSubmoduleForeach;
     }
+
+    const dot_git = try std.fs.path.join(allocator, &.{ path, ".git" });
+    defer allocator.free(dot_git);
+
+    try std.fs.cwd().deleteTree(dot_git);
 }
 
 fn findPartialMatch(
