@@ -217,7 +217,10 @@ const CloneState = struct {
 };
 
 fn submoduleCb(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_void) callconv(.C) c_int {
-    return if (submoduleCbImpl(sm, sm_name, payload)) 0 else |_| -1;
+    return if (submoduleCbImpl(sm, sm_name, payload)) 0 else |err| blk: {
+        std.log.err("got err: {s}", .{@errorName(err)});
+        break :blk -1;
+    };
 }
 
 extern fn _chmod(filename: [*c]const u8, mode: c_int) c_int;
