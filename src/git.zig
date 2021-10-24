@@ -236,8 +236,8 @@ fn windowsMakeDirWritable(allocator: *Allocator, dir_path: []const u8) !void {
 
             std.log.debug("entry: {s}", .{path});
 
-            //const rc = _chmod(entry.path.ptr, 0o777);
-            //std.log.debug("rc: {}", .{rc});
+            const rc = _chmod(path.ptr, 0o777);
+            std.log.debug("rc: {}", .{rc});
         },
         else => {},
     };
