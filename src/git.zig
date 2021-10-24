@@ -220,10 +220,27 @@ fn submoduleCb(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_void) 
     return if (submoduleCbImpl(sm, sm_name, payload)) 0 else |_| -1;
 }
 
-fn deleteDirWindows(allocator: *Allocator, sub_path: []const u8) !void {
-    comptime assert(builtin.target.os.tag == .windows);
+extern fn _chmod(filename: [*c]const u8, mode: c_int) c_int;
+fn windowsMakeDirWritable(allocator: *Allocator, sub_path: []const u8) !void {
+    const path = try allocator.dupeZ(u8, sub_path);
+    defer allocator.free(path);
 
-    // TODO: recursively delete directory
+    const rc = _chmod(path.ptr, 0o777);
+    std.log.debug("rc: {}", .{rc});
+
+    //var dir = try std.fs.cwd().openDir(sub_path, .{ .iterate = true });
+    //defer dir.close();
+
+    //var walker = dir.walk(allocator);
+    //while (try walker.next()) |entry| switch (entry.kind) {
+    //    .File => {
+    //        _ = _chmod(null, 0o777);
+    //        //
+    //    },
+    //    else => {},
+    //};
+    _ = allocator;
+    _ = sub_path;
 }
 
 fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_void) !void {
@@ -266,9 +283,9 @@ fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_vo
     defer allocator.free(dot_git);
 
     if (builtin.target.os.tag == .windows)
-        try deleteDirWindows(allocator, dot_git)
-    else
-        try std.fs.cwd().deleteTree(dot_git);
+        try windowsMakeDirWritable(allocator, dot_git);
+
+    try std.fs.cwd().deleteTree(dot_git);
 }
 
 fn clone(
@@ -336,9 +353,9 @@ fn clone(
     defer allocator.free(dot_git);
 
     if (builtin.target.os.tag == .windows)
-        try deleteDirWindows(allocator, dot_git)
-    else
-        try std.fs.cwd().deleteTree(dot_git);
+        try windowsMakeDirWritable(allocator, dot_git);
+
+    try std.fs.cwd().deleteTree(dot_git);
 }
 
 fn findPartialMatch(
