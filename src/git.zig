@@ -222,23 +222,21 @@ fn submoduleCb(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_void) 
 
 extern fn _chmod(filename: [*c]const u8, mode: c_int) c_int;
 fn windowsMakeDirWritable(allocator: *Allocator, sub_path: []const u8) !void {
-    const path = try allocator.dupeZ(u8, sub_path);
-    defer allocator.free(path);
+    //const path = try allocator.dupeZ(u8, sub_path);
+    //defer allocator.free(path);
 
-    const rc = _chmod(path.ptr, 0o777);
-    std.log.debug("rc: {}", .{rc});
+    var dir = try std.fs.cwd().openDir(sub_path, .{ .iterate = true });
+    defer dir.close();
 
-    //var dir = try std.fs.cwd().openDir(sub_path, .{ .iterate = true });
-    //defer dir.close();
-
-    //var walker = dir.walk(allocator);
-    //while (try walker.next()) |entry| switch (entry.kind) {
-    //    .File => {
-    //        _ = _chmod(null, 0o777);
-    //        //
-    //    },
-    //    else => {},
-    //};
+    var walker = try dir.walk(allocator);
+    while (try walker.next()) |entry| switch (entry.kind) {
+        .File => {
+            std.log.debug("entry: {s}", .{entry.path});
+            //const rc = _chmod(entry.path.ptr, 0o777);
+            //std.log.debug("rc: {}", .{rc});
+        },
+        else => {},
+    };
     _ = allocator;
     _ = sub_path;
 }
