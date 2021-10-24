@@ -223,24 +223,24 @@ fn submoduleCb(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_void) 
     };
 }
 
-extern fn _chmod(filename: [*c]const u8, mode: c_int) c_int;
 fn windowsMakeDirWritable(allocator: *Allocator, dir_path: []const u8) !void {
-    //const path = try allocator.dupeZ(u8, sub_path);
-    //defer allocator.free(path);
+    const winfileapi = @cImport({
+        @cInclude("fileapi.h");
+    });
 
     var dir = try std.fs.cwd().openDir(dir_path, .{ .iterate = true });
     defer dir.close();
 
     var walker = try dir.walk(allocator);
     while (try walker.next()) |entry| switch (entry.kind) {
+        .Directory,
         .File => {
             const path = try std.fs.path.joinZ(allocator, &.{ dir_path, entry.path });
             defer allocator.free(path);
 
-            std.log.debug("entry: {s}", .{path});
-
-            const rc = _chmod(path.ptr, 0o777);
-            std.log.debug("rc: {}", .{rc});
+            const rc = winfileapi.SetFileAttributesA(path.ptr, winfileapi.FILE_ATTRIBUTE_NORMAL);
+            if (rc == 0)
+              return error.SetFileAttr;
         },
         else => {},
     };
@@ -284,9 +284,6 @@ fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_vo
 
     const dot_git = try std.fs.path.join(allocator, &.{ base_path, ".git" });
     defer allocator.free(dot_git);
-
-    if (builtin.target.os.tag == .windows)
-        try windowsMakeDirWritable(allocator, dot_git);
 
     try std.fs.cwd().deleteTree(dot_git);
 }
