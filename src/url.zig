@@ -87,6 +87,24 @@ fn findPartialMatch(dep_table: []const Dependency.Source, dep_idx: usize, edges:
     } else null;
 }
 
+fn fmtCachePath(allocator: *Allocator, url: []const u8) ![]const u8 {
+    const link = try uri.parse(url);
+    return std.mem.replaceOwned(
+        u8,
+        allocator,
+        url[link.scheme.?.len + 3 ..],
+        "/",
+        "-",
+    );
+}
+
+pub fn resolutionToCachePath(
+    allocator: *Allocator,
+    res: ResolutionEntry,
+) ![]const u8 {
+    return fmtCachePath(allocator, res.str);
+}
+
 fn fetch(
     arena: *std.heap.ArenaAllocator,
     dep: Dependency.Source,
@@ -94,8 +112,7 @@ fn fetch(
     path: *?[]const u8,
 ) !void {
     const allocator = arena.child_allocator;
-    const link = try uri.parse(dep.url.str);
-    const entry_name = try std.mem.replaceOwned(u8, allocator, dep.url.str[link.scheme.?.len + 3 ..], "/", "-");
+    const entry_name = try fmtCachePath(allocator, dep.url.str);
     defer allocator.free(entry_name);
 
     var entry = try cache.getEntry(entry_name);

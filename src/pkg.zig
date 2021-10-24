@@ -117,6 +117,34 @@ fn updateBasePaths(
     };
 }
 
+fn fmtCachePath(
+    allocator: *Allocator,
+    pkg_name: []const u8,
+    user: []const u8,
+    semver: version.Semver,
+    repository: []const u8,
+) ![]const u8 {
+    return std.fmt.allocPrint(allocator, "{s}-{s}-{}-{s}", .{
+        pkg_name,
+        user,
+        semver,
+        repository,
+    });
+}
+
+pub fn resolutionToCachePath(
+    allocator: *Allocator,
+    res: ResolutionEntry,
+) ![]const u8 {
+    return fmtCachePath(
+        allocator,
+        res.name,
+        res.user,
+        res.semver,
+        res.repository,
+    );
+}
+
 fn fetch(
     arena: *std.heap.ArenaAllocator,
     dep: Dependency.Source,
@@ -125,12 +153,13 @@ fn fetch(
     path: *?[]const u8,
 ) !void {
     const allocator = arena.child_allocator;
-    const entry_name = try std.fmt.allocPrint(allocator, "{s}-{s}-{}-{s}", .{
+    const entry_name = try fmtCachePath(
+        allocator,
         dep.pkg.name,
         dep.pkg.user,
         semver,
         dep.pkg.repository,
-    });
+    );
     defer allocator.free(entry_name);
 
     var entry = try cache.getEntry(entry_name);
