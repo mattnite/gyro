@@ -221,24 +221,26 @@ fn submoduleCb(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_void) 
 }
 
 extern fn _chmod(filename: [*c]const u8, mode: c_int) c_int;
-fn windowsMakeDirWritable(allocator: *Allocator, sub_path: []const u8) !void {
+fn windowsMakeDirWritable(allocator: *Allocator, dir_path: []const u8) !void {
     //const path = try allocator.dupeZ(u8, sub_path);
     //defer allocator.free(path);
 
-    var dir = try std.fs.cwd().openDir(sub_path, .{ .iterate = true });
+    var dir = try std.fs.cwd().openDir(dir_path, .{ .iterate = true });
     defer dir.close();
 
     var walker = try dir.walk(allocator);
     while (try walker.next()) |entry| switch (entry.kind) {
         .File => {
-            std.log.debug("entry: {s}", .{entry.path});
+            const path = try std.fs.path.joinZ(allocator, &.{ dir_path, entry.path });
+            defer allocator.free(path);
+
+            std.log.debug("entry: {s}", .{path});
+
             //const rc = _chmod(entry.path.ptr, 0o777);
             //std.log.debug("rc: {}", .{rc});
         },
         else => {},
     };
-    _ = allocator;
-    _ = sub_path;
 }
 
 fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_void) !void {
