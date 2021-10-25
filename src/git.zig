@@ -363,6 +363,36 @@ fn findPartialMatch(
     } else null;
 }
 
+fn fmtCachePath(
+    allocator: *Allocator,
+    url: []const u8,
+    commit: []const u8,
+) ![]const u8 {
+    var components = std.ArrayList([]const u8).init(allocator);
+    defer components.deinit();
+
+    const link = try uri.parse(url);
+    const scheme = link.scheme orelse return error.NoUriScheme;
+    const end = url.len - if (std.mem.endsWith(u8, url, ".git"))
+        ".git".len
+    else
+        0;
+
+    var it = std.mem.tokenize(u8, url[scheme.len + 1 .. end], "/");
+    while (it.next()) |comp|
+        try components.insert(0, comp);
+
+    try components.append(commit[0..8]);
+    return std.mem.join(allocator, "-", components.items);
+}
+
+pub fn resolutionToCachePath(
+    allocator: *Allocator,
+    res: ResolutionEntry,
+) ![]const u8 {
+    return fmtCachePath(allocator, res.url, res.commit);
+}
+
 fn fetch(
     arena: *std.heap.ArenaAllocator,
     dep: Dependency.Source,
@@ -372,23 +402,7 @@ fn fetch(
     path: *?[]const u8,
 ) !void {
     const allocator = arena.child_allocator;
-
-    var components = std.ArrayList([]const u8).init(allocator);
-    defer components.deinit();
-
-    const link = try uri.parse(dep.git.url);
-    const scheme = link.scheme orelse return error.NoUriScheme;
-    const end = dep.git.url.len - if (std.mem.endsWith(u8, dep.git.url, ".git"))
-        ".git".len
-    else
-        0;
-
-    var it = std.mem.tokenize(u8, dep.git.url[scheme.len + 1 .. end], "/");
-    while (it.next()) |comp|
-        try components.insert(0, comp);
-
-    try components.append(commit[0..8]);
-    const entry_name = try std.mem.join(allocator, "-", components.items);
+    const entry_name = try fmtCachePath(allocator, dep.git.url, commit);
     defer allocator.free(entry_name);
 
     var entry = try cache.getEntry(entry_name);

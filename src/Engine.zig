@@ -525,6 +525,34 @@ pub fn fetch(self: *Engine) !void {
     }
 
     // TODO: check for circular dependencies
+
+    // TODO: deleteTree doesn't work on windows with hidden or read-only files
+    if (builtin.target.os.tag != .windows) {
+        // clean up cache
+        var paths = std.StringHashMap(void).init(self.allocator);
+        defer paths.deinit();
+
+        inline for (Sources) |source| {
+            if (@hasDecl(source, "resolutionToCachePath")) {
+                for (@field(self.resolutions.tables, source.name).items) |entry| {
+                    if (entry.dep_idx != null) {
+                        try paths.putNoClobber(try source.resolutionToCachePath(&self.arena.allocator, entry), {});
+                    }
+                }
+            }
+        }
+
+        var cache_dir = try std.fs.cwd().openDir(".gyro", .{ .iterate = true });
+        defer cache_dir.close();
+
+        var it = cache_dir.iterate();
+        while (try it.next()) |entry| switch (entry.kind) {
+            .Directory => if (!paths.contains(entry.name)) {
+                try cache_dir.deleteTree(entry.name);
+            },
+            else => {},
+        };
+    }
 }
 
 pub fn writeLockfile(self: Engine, writer: anytype) !void {
