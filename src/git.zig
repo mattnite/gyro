@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const uri = @import("uri");
 const api = @import("api.zig");
 const cache = @import("cache.zig");
@@ -216,13 +217,21 @@ const CloneState = struct {
 };
 
 fn submoduleCb(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_void) callconv(.C) c_int {
-    return if (submoduleCbImpl(sm, sm_name, payload)) 0 else |_| -1;
+    return if (submoduleCbImpl(sm, sm_name, payload)) 0 else |err| blk: {
+        std.log.err("got err: {s}", .{@errorName(err)});
+        break :blk -1;
+    };
 }
 
 fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_void) !void {
     const parent_state = @ptrCast(*CloneState, @alignCast(@alignOf(*CloneState), payload));
     const allocator = parent_state.allocator;
-    const base_path = try std.fs.path.join(allocator, &.{ parent_state.base_path, std.mem.spanZ(sm_name) });
+
+    // git always uses posix path separators
+    const sub_path = try std.mem.replaceOwned(u8, allocator, std.mem.spanZ(sm_name), "/", std.fs.path.sep_str);
+    defer allocator.free(sub_path);
+
+    const base_path = try std.fs.path.join(allocator, &.{ parent_state.base_path, sub_path });
     defer allocator.free(base_path);
 
     var state = CloneState{
@@ -248,6 +257,14 @@ fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_vo
     if (err != 0) {
         std.log.err("{s}", .{c.git_error_last().*.message});
         return error.GitSubmoduleForeach;
+    }
+
+    // TODO: deleteTree doesn't work on windows with hidden or read-only files
+    if (builtin.target.os.tag != .windows) {
+        const dot_git = try std.fs.path.join(allocator, &.{ base_path, ".git" });
+        defer allocator.free(dot_git);
+
+        try std.fs.cwd().deleteTree(dot_git);
     }
 }
 
@@ -310,6 +327,14 @@ fn clone(
     if (err != 0) {
         std.log.err("{s}", .{c.git_error_last().*.message});
         return error.GitSubmoduleForeach;
+    }
+
+    // TODO: deleteTree doesn't work on windows with hidden or read-only files
+    if (builtin.target.os.tag != .windows) {
+        const dot_git = try std.fs.path.join(allocator, &.{ path, ".git" });
+        defer allocator.free(dot_git);
+
+        try std.fs.cwd().deleteTree(dot_git);
     }
 }
 
