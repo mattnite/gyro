@@ -223,29 +223,6 @@ fn submoduleCb(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_void) 
     };
 }
 
-fn windowsMakeDirWritable(allocator: *Allocator, dir_path: []const u8) !void {
-    const winfileapi = @cImport({
-        @cInclude("fileapi.h");
-    });
-
-    var dir = try std.fs.cwd().openDir(dir_path, .{ .iterate = true });
-    defer dir.close();
-
-    var walker = try dir.walk(allocator);
-    while (try walker.next()) |entry| switch (entry.kind) {
-        .Directory,
-        .File => {
-            const path = try std.fs.path.joinZ(allocator, &.{ dir_path, entry.path });
-            defer allocator.free(path);
-
-            const rc = winfileapi.SetFileAttributesA(path.ptr, winfileapi.FILE_ATTRIBUTE_NORMAL);
-            if (rc == 0)
-              return error.SetFileAttr;
-        },
-        else => {},
-    };
-}
-
 fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_void) !void {
     const parent_state = @ptrCast(*CloneState, @alignCast(@alignOf(*CloneState), payload));
     const allocator = parent_state.allocator;
@@ -282,10 +259,13 @@ fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_vo
         return error.GitSubmoduleForeach;
     }
 
-    const dot_git = try std.fs.path.join(allocator, &.{ base_path, ".git" });
-    defer allocator.free(dot_git);
+    // TODO: deleteTree doesn't work on windows with hidden or read-only files
+    if (builtin.target.os.tag != .windows) {
+        const dot_git = try std.fs.path.join(allocator, &.{ base_path, ".git" });
+        defer allocator.free(dot_git);
 
-    try std.fs.cwd().deleteTree(dot_git);
+        try std.fs.cwd().deleteTree(dot_git);
+    }
 }
 
 fn clone(
@@ -349,13 +329,13 @@ fn clone(
         return error.GitSubmoduleForeach;
     }
 
-    const dot_git = try std.fs.path.join(allocator, &.{ path, ".git" });
-    defer allocator.free(dot_git);
+    // TODO: deleteTree doesn't work on windows with hidden or read-only files
+    if (builtin.target.os.tag != .windows) {
+        const dot_git = try std.fs.path.join(allocator, &.{ path, ".git" });
+        defer allocator.free(dot_git);
 
-    if (builtin.target.os.tag == .windows)
-        try windowsMakeDirWritable(allocator, dot_git);
-
-    try std.fs.cwd().deleteTree(dot_git);
+        try std.fs.cwd().deleteTree(dot_git);
+    }
 }
 
 fn findPartialMatch(
