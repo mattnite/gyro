@@ -118,7 +118,10 @@ pub fn init(location: *Self, allocator: *std.mem.Allocator) !void {
 
     // TODO: signal handler for terminal size change
     const stdout = std.io.getStdOut().writer();
-    try stdout.writeAll("\x1b[?25l");
+    //try stdout.writeAll("\x1b[?25l");
+
+    // save cursor position
+    try stdout.writeAll("\x1b[s");
 
     location.* = Self{
         .allocator = allocator,
@@ -139,8 +142,8 @@ pub fn init(location: *Self, allocator: *std.mem.Allocator) !void {
 }
 
 pub fn deinit(self: *Self) void {
-    const stdout = std.io.getStdOut().writer();
-    stdout.writeAll("\x1b[?25h") catch {};
+    //const stdout = std.io.getStdOut().writer();
+    //stdout.writeAll("\x1b[?25h") catch {};
 
     self.running.store(false, .SeqCst);
     self.render_thread.join();
@@ -320,8 +323,15 @@ fn render(self: *Self, stdout: anytype) !void {
         self.depth = self.entries.items.len;
     }
 
-    try writer.writeAll("\x1b[1000D");
-    try writer.print("\x1b[{}A", .{self.depth});
+    // old reset
+    //try writer.writeByte('\x0d');
+    //try writer.print("\x1b[{}A", .{self.depth});
+
+    // up n lines at beginning
+    //try writer.print("\x1b[{}F", .{self.depth});
+
+    // restor position
+    try writer.writeAll("\x1b[u");
 
     for (self.entries.items) |entry| {
         if (short_mode) {
@@ -334,13 +344,13 @@ fn render(self: *Self, stdout: anytype) !void {
                 try writer.writeAll("\x1b[0m");
             }
 
-            try writer.writeAll("\x1b[1B\x1b[1000D");
+            try writer.writeAll("\x1b[1B\x0d");
 
             continue;
         }
 
-        const percent = entry.progress.current * 100 /
-            entry.progress.total;
+        const percent = std.math.min(entry.progress.current * 100 /
+            entry.progress.total, 100);
 
         if (entry.err)
             try writer.writeAll("\x1b[31m");
@@ -363,10 +373,15 @@ fn render(self: *Self, stdout: anytype) !void {
         try drawBar(writer, bar_width, percent);
         try writer.print(" {: >3}%", .{percent});
         if (entry.err) {
-            try writer.writeAll(" ERROR\x1b[0m");
+            try writer.writeAll(" ERROR \x1b[0m");
+        } else {
+            try writer.writeByteNTimes(' ', 7);
         }
 
-        try writer.writeAll("\x1b[1B\x1b[1000D");
+        // old next line
+        //try writer.writeAll("\x1b[1B\x0d");
+
+        try writer.writeAll("\x1b[1E");
     }
 
     try stdout.writeAll(self.fifo.readableSlice(0));

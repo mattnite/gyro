@@ -458,7 +458,13 @@ fn fetch(
     defer allocator.free(base_path);
 
     if (!done and !try entry.isDone()) {
-        // TODO: if base_path exists then deleteTree it
+        if (builtin.target.os.tag != .windows) {
+            if (std.fs.cwd().access(base_path, .{})) {
+                try std.fs.cwd().deleteTree(base_path);
+            } else |_| {}
+            // TODO: if base_path exists then deleteTree it
+        }
+
         try clone(
             arena,
             dep.git.url,
