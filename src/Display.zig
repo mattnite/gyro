@@ -282,12 +282,12 @@ fn drawBar(writer: anytype, width: usize, percent: usize) !void {
 }
 
 fn render(self: *Self, stdout: anytype) !void {
+    var cols: usize = 80;
     var winsize: c.winsize = undefined;
     const rc = c.ioctl(0, c.TIOCGWINSZ, &winsize);
-    if (rc != 0)
-        return error.Ioctl;
-
-    const cols: usize = winsize.ws_col;
+    if (rc == 0) {
+        cols = winsize.ws_col;
+    }
 
     const writer = self.fifo.writer();
     defer {
