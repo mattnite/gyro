@@ -117,6 +117,8 @@ pub fn init(location: *Self, allocator: *std.mem.Allocator) !void {
     scratchpad.* = UpdateState.init(allocator);
 
     // TODO: signal handler for terminal size change
+    const stdout = std.io.getStdOut().writer();
+    try stdout.writeAll("\x1b[?25l");
 
     location.* = Self{
         .allocator = allocator,
@@ -137,6 +139,9 @@ pub fn init(location: *Self, allocator: *std.mem.Allocator) !void {
 }
 
 pub fn deinit(self: *Self) void {
+    const stdout = std.io.getStdOut().writer();
+    stdout.writeAll("\x1b[?25h") catch {};
+
     self.running.store(false, .SeqCst);
     self.render_thread.join();
     self.entries.deinit();
@@ -240,7 +245,6 @@ fn updateState(self: *Self) !void {
 
 fn renderTask(self: *Self) !void {
     const stdout = std.io.getStdOut().writer();
-    try stdout.writeAll("\x1b[?25l");
     var done = false;
     while (!done) : (std.time.sleep(std.time.ns_per_s * 0.1)) {
         if (!self.running.load(.SeqCst))
@@ -265,8 +269,6 @@ fn renderTask(self: *Self) !void {
 
         self.scratchpad.clear();
     }
-
-    try stdout.writeAll("\x1b[?25h");
 }
 
 fn drawBar(writer: anytype, width: usize, percent: usize) !void {
