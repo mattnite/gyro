@@ -117,11 +117,6 @@ pub fn init(location: *Self, allocator: *std.mem.Allocator) !void {
     scratchpad.* = UpdateState.init(allocator);
 
     // TODO: signal handler for terminal size change
-    const stdout = std.io.getStdOut().writer();
-    //try stdout.writeAll("\x1b[?25l");
-
-    // save cursor position
-    try stdout.writeAll("\x1b[s");
 
     location.* = Self{
         .allocator = allocator,
@@ -142,9 +137,6 @@ pub fn init(location: *Self, allocator: *std.mem.Allocator) !void {
 }
 
 pub fn deinit(self: *Self) void {
-    //const stdout = std.io.getStdOut().writer();
-    //stdout.writeAll("\x1b[?25h") catch {};
-
     self.running.store(false, .SeqCst);
     self.render_thread.join();
     self.entries.deinit();
@@ -152,11 +144,12 @@ pub fn deinit(self: *Self) void {
     self.scratchpad.deinit();
     self.allocator.destroy(self.collector);
     self.allocator.destroy(self.scratchpad);
-    self.arena.deinit();
     self.fifo.deinit();
+    self.arena.deinit();
 }
 
 fn entryFromGit(
+    self: *Self,
     tag: []const u8,
     url: []const u8,
     commit: []const u8,
@@ -167,8 +160,8 @@ fn entryFromGit(
 
     return Entry{
         .tag = tag,
-        .label = url[begin .. url.len - end_offset],
-        .version = commit[0..std.math.min(commit.len, 8)],
+        .label = try self.arena.allocator.dupe(u8, url[begin .. url.len - end_offset]),
+        .version = try self.arena.allocator.dupe(u8, commit[0..std.math.min(commit.len, 8)]),
         .progress = .{
             .current = 0,
             .total = 1,
@@ -180,8 +173,8 @@ fn entryFromGit(
 pub fn createEntry(self: *Self, source: Source) !usize {
     const allocator = &self.arena.allocator;
     const new_entry = switch (source) {
-        .git => |git| try entryFromGit("git", git.url, git.commit),
-        .sub => |sub| try entryFromGit("sub", sub.url, sub.commit),
+        .git => |git| try self.entryFromGit("git", git.url, git.commit),
+        .sub => |sub| try self.entryFromGit("sub", sub.url, sub.commit),
         .pkg => |pkg| Entry{
             .tag = "pkg",
             .label = try std.fmt.allocPrint(allocator, "{s}/{s}/{s}", .{
@@ -198,7 +191,7 @@ pub fn createEntry(self: *Self, source: Source) !usize {
         },
         .url => |url| Entry{
             .tag = "url",
-            .label = url,
+            .label = try self.allocator.dupe(u8, url),
             .version = "",
             .progress = .{
                 .current = 0,
@@ -323,15 +316,8 @@ fn render(self: *Self, stdout: anytype) !void {
         self.depth = self.entries.items.len;
     }
 
-    // old reset
-    //try writer.writeByte('\x0d');
-    //try writer.print("\x1b[{}A", .{self.depth});
-
     // up n lines at beginning
-    //try writer.print("\x1b[{}F", .{self.depth});
-
-    // restor position
-    try writer.writeAll("\x1b[u");
+    try writer.print("\x1b[{}F", .{self.depth});
 
     for (self.entries.items) |entry| {
         if (short_mode) {
@@ -377,9 +363,6 @@ fn render(self: *Self, stdout: anytype) !void {
         } else {
             try writer.writeByteNTimes(' ', 7);
         }
-
-        // old next line
-        //try writer.writeAll("\x1b[1B\x0d");
 
         try writer.writeAll("\x1b[1E");
     }
