@@ -7,6 +7,7 @@ const api = @import("api.zig");
 const cache = @import("cache.zig");
 const utils = @import("utils.zig");
 const local = @import("local.zig");
+const main = @import("root");
 
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
@@ -105,6 +106,15 @@ pub fn resolutionToCachePath(
     return fmtCachePath(allocator, res.str);
 }
 
+fn progressCb(current: usize, total: usize, handle: usize) void {
+    main.display.updateEntry(handle, .{
+        .progress = .{
+            .current = current,
+            .total = total,
+        },
+    }) catch {};
+}
+
 fn fetch(
     arena: *std.heap.ArenaAllocator,
     dep: Dependency.Source,
@@ -123,7 +133,10 @@ fn fetch(
         defer content_dir.close();
 
         // TODO: allow user to strip directories from a tarball
-        try api.getTarGz(allocator, dep.url.str, content_dir);
+        const handle = try main.display.createEntry(.{ .url = dep.url.str });
+        errdefer main.display.updateEntry(handle, .{ .err = {} }) catch {};
+
+        try api.getTarGz(allocator, dep.url.str, content_dir, progressCb, handle);
         try entry.done();
     }
 

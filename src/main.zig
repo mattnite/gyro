@@ -5,14 +5,12 @@ const zfetch = @import("zfetch");
 const Dependency = @import("Dependency.zig");
 const cmds = @import("commands.zig");
 const loadSystemCerts = @import("certs.zig").loadSystemCerts;
-//const threading = @import("./mbedtls_threading.zig");
+const Display = @import("Display.zig");
 
 const c = @cImport({
     @cInclude("git2.h");
     @cInclude("mbedtls/debug.h");
 });
-
-pub const log_level: std.log.Level = if (builtin.mode == .Debug) .debug else .info;
 
 export fn gai_strerrorA(err: c_int) [*c]u8 {
     _ = err;
@@ -21,19 +19,17 @@ export fn gai_strerrorA(err: c_int) [*c]u8 {
 extern fn git_mbedtls__insecure() void;
 extern fn git_mbedtls__set_debug() void;
 
-pub fn main() !void {
-    //var gpa = std.heap.GeneralPurposeAllocator(.{
-    //    //.stack_trace_frames = 10,
-    //}){};
-    //defer _ = gpa.deinit();
+pub const log_level: std.log.Level = if (builtin.mode == .Debug) .debug else .info;
+pub var display: Display = undefined;
 
-    //const allocator = &gpa.allocator;
+pub fn main() !void {
     const allocator = std.heap.c_allocator;
+    try Display.init(&display, allocator);
+    defer display.deinit();
+
     try zfetch.init();
     defer zfetch.deinit();
 
-    //threading.setAlt();
-    //defer threading.freeAlt();
     if (builtin.mode == .Debug)
         c.mbedtls_debug_set_threshold(1);
 
