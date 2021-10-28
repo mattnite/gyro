@@ -110,14 +110,10 @@ mode: union(enum) {
 pub fn init(location: *Self, allocator: *std.mem.Allocator) !void {
     var winsize: c.winsize = undefined;
     const rc = c.ioctl(0, c.TIOCGWINSZ, &winsize);
-    if (rc != 0 or c.isatty(std.io.getStdOut().handle) != 1)
+    if (rc != 0 or c.isatty(std.io.getStdOut().handle) != 1) {
         location.* = Self{ .mode = .{ .direct_log = {} } };
-
-    const stderr = std.io.getStdErr().writer();
-    try stderr.print("rc: {}, isatty: {}", .{
-        rc,
-        c.isatty(std.io.getStdOut().handle),
-    });
+        return;
+    }
 
     const collector = try allocator.create(UpdateState);
     errdefer allocator.destroy(collector);
