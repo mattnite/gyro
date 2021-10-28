@@ -22,6 +22,15 @@ extern fn git_mbedtls__set_debug() void;
 pub const log_level: std.log.Level = if (builtin.mode == .Debug) .debug else .info;
 pub var display: Display = undefined;
 
+pub fn log(
+    comptime level: std.log.Level,
+    comptime scope: @TypeOf(.EnumLiteral),
+    comptime format: []const u8,
+    args: anytype,
+) void {
+    display.log(level, scope, format, args);
+}
+
 pub fn main() !void {
     const allocator = std.heap.c_allocator;
     try Display.init(&display, allocator);
