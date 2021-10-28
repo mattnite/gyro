@@ -218,10 +218,21 @@ pub fn createEntry(self: *Self, source: Source) !usize {
     switch (self.mode) {
         .direct_log => {
             switch (source) {
-                .git => |git| std.log.info("cloning {s} {s}", .{ git.url, git.commit }),
-                .sub => |sub| std.log.info("cloning submodule {s}", .{sub.url}),
-                .pkg => |pkg| std.log.info("fetching package {s}/{s}/{s}", .{ pkg.repository, pkg.user, pkg.name }),
-                .url => |url| std.log.info("fetching tarball {s}", .{url}),
+                .git => |git| std.log.info("cloning {s} {s}", .{
+                    git.url,
+                    git.commit[0..std.math.min(git.commit.len, 8)],
+                }),
+                .sub => |sub| std.log.info("cloning submodule {s}", .{
+                    sub.url,
+                }),
+                .pkg => |pkg| std.log.info("fetching package {s}/{s}/{s}", .{
+                    pkg.repository,
+                    pkg.user,
+                    pkg.name,
+                }),
+                .url => |url| std.log.info("fetching tarball {s}", .{
+                    url,
+                }),
             }
 
             return 0;
@@ -358,15 +369,6 @@ fn render(self: *Self, stdout: anytype) !void {
     switch (self.mode) {
         .direct_log => unreachable,
         .ansi => |*ansi| {
-            var cols: usize = 80;
-            var winsize: c.winsize = undefined;
-
-            // TODO: if this fails, use log mode
-            const rc = c.ioctl(0, c.TIOCGWINSZ, &winsize);
-            if (rc == 0) {
-                cols = winsize.ws_col;
-            }
-
             const writer = ansi.fifo.writer();
             defer {
                 ansi.fifo.count = 0;
@@ -374,11 +376,11 @@ fn render(self: *Self, stdout: anytype) !void {
             }
 
             const spacing = 20;
-            const short_mode = cols < 50;
+            const short_mode = ansi.size.cols < 50;
 
             // calculations
             const version_width = 8;
-            const variable = cols -| 26;
+            const variable = ansi.size.cols -| 26;
             const label_width = if (variable < spacing)
                 variable
             else
@@ -402,7 +404,7 @@ fn render(self: *Self, stdout: anytype) !void {
                     if (entry.err)
                         try writer.writeAll("\x1b[31m");
 
-                    try writer.writeAll(entry.label[0..std.math.min(entry.label.len, cols)]);
+                    try writer.writeAll(entry.label[0..std.math.min(entry.label.len, ansi.size.cols)]);
 
                     if (entry.err) {
                         try writer.writeAll("\x1b[0m");
