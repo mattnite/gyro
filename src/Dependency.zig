@@ -78,33 +78,37 @@ pub const Source = union(enum) {
 /// A package from some other index:
 /// ```
 /// name:
-///   src:
-///     pkg:
-///       user: <user>
-///       name: <name> # optional
-///       version: <version string>
-///       repository: <repository> # optional
+///   pkg:
+///     user: <user>
+///     name: <name> # optional
+///     version: <version string>
+///     repository: <repository> # optional
 /// ```
 ///
 /// A github repo:
 /// ```
 /// name:
-///   src:
-///     github:
-///       user: <user>
-///       repo: <repo>
-///       ref: <ref>
-///   root: <root file>
+///   github:
+///     user: <user>
+///     repo: <repo>
+///     ref: <ref>
+///     root: <root file>
+/// ```
+///
+/// A git repo:
+/// ```
+/// name:
+///   git:
+///     url: <url>
+///     ref: <ref>
+///     root: <root file>
 /// ```
 ///
 /// A raw url:
 /// ```
 /// name:
-///   src:
-///     url: <url>
+///   url: <url>
 ///   root: <root file>
-///   integrity:
-///     <type>: <integrity str>
 /// ```
 pub fn fromZNode(arena: *std.heap.ArenaAllocator, node: *zzz.ZNode) !Self {
     const allocator = arena.child_allocator;
@@ -130,8 +134,30 @@ pub fn fromZNode(arena: *std.heap.ArenaAllocator, node: *zzz.ZNode) !Self {
         };
     }
 
-    // search for src node
     const alias = try utils.zGetString(node);
+    var root: ?[]const u8 = null;
+    {
+        var depth: isize = 0;
+        var it = node.child.?;
+        while (it.nextUntil(node.child.?, &depth)) |child| : (it = child) {
+            switch (it.value) {
+                .String => |str| if (mem.eql(u8, str, "root")) {
+                    if (root != null) {
+                        std.log.err("multiple roots defined", .{});
+                        return error.Explained;
+                        // TODO: handle child.value not being string
+                    } else {
+                        root = try utils.zGetString(it.child.?);
+                    }
+                },
+                else => continue,
+            }
+        }
+    }
+
+    std.log.err("root path: {s}", .{root});
+
+    // search for src node
     const src_node = blk: {
         var it = utils.ZChildIterator.init(node);
 
@@ -140,12 +166,13 @@ pub fn fromZNode(arena: *std.heap.ArenaAllocator, node: *zzz.ZNode) !Self {
                 .String => |str| if (mem.eql(u8, str, "src")) break :blk child,
                 else => continue,
             }
-        } else return error.SrcTagNotFound;
+        } else break :blk node;
     };
 
     const src: Source = blk: {
         const child = src_node.child orelse return error.SrcNeedsChild;
         const src_str = try utils.zGetString(child);
+        std.log.err("src_str: {s}", .{src_str});
         const src_type = inline for (std.meta.fields(SourceType)) |field| {
             if (mem.eql(u8, src_str, field.name)) break @field(SourceType, field.name);
         } else return error.InvalidSrcTag;
@@ -169,27 +196,27 @@ pub fn fromZNode(arena: *std.heap.ArenaAllocator, node: *zzz.ZNode) !Self {
                     .git = .{
                         .url = url,
                         .ref = (try utils.zFindString(child, "ref")) orelse return error.GithubMissingRef,
-                        .root = try utils.zFindString(node, "root"),
+                        .root = root,
                     },
                 };
             },
             .url => .{
                 .url = .{
                     .str = try utils.zGetString(child.child orelse return error.UrlMissingStr),
-                    .root = try utils.zFindString(node, "root"),
+                    .root = root,
                 },
             },
             .local => .{
                 .local = .{
                     .path = try utils.zGetString(child.child orelse return error.UrlMissingStr),
-                    .root = try utils.zFindString(node, "root"),
+                    .root = root,
                 },
             },
             .git => .{
                 .git = .{
                     .url = (try utils.zFindString(child, "url")) orelse return error.GitMissingUrl,
                     .ref = (try utils.zFindString(child, "ref")) orelse return error.GitMissingRef,
-                    .root = try utils.zFindString(node, "root"),
+                    .root = root,
                 },
             },
         };
@@ -281,7 +308,7 @@ test "default repo pkg" {
     }, try fromString(&arena, "matt/something: ^0.1.0"));
 }
 
-test "aliased, default repo pkg" {
+test "legacy aliased, default repo pkg" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
@@ -309,19 +336,34 @@ test "aliased, default repo pkg" {
     try expectDepEqual(expected, actual);
 }
 
-test "error if pkg has any other keys" {
-    // TODO
-    //testing.expectError(error.SuperfluousNode, fromString(
-    //    \\something:
-    //    \\  src:
-    //    \\    pkg:
-    //    \\      name: blarg
-    //    \\      version: ^0.1.0
-    //    \\  foo: something
-    //));
+test "aliased, default repo pkg" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const actual = try fromString(&arena,
+        \\something:
+        \\  pkg:
+        \\    user: matt
+        \\    name: blarg
+        \\    version: ^0.1.0
+    );
+
+    const expected = Self{
+        .alias = "something",
+        .src = .{
+            .pkg = .{
+                .user = "matt",
+                .name = "blarg",
+                .version = try version.Range.parse(testing.allocator, "^0.1.0"),
+                .repository = utils.default_repo,
+            },
+        },
+    };
+
+    try expectDepEqual(expected, actual);
 }
 
-test "non-default repo pkg" {
+test "legacy non-default repo pkg" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
@@ -349,7 +391,34 @@ test "non-default repo pkg" {
     try expectDepEqual(expected, actual);
 }
 
-test "aliased, non-default repo pkg" {
+test "non-default repo pkg" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const actual = try fromString(&arena,
+        \\something:
+        \\  pkg:
+        \\    user: matt
+        \\    version: ^0.1.0
+        \\    repository: example.com
+    );
+
+    const expected = Self{
+        .alias = "something",
+        .src = .{
+            .pkg = .{
+                .user = "matt",
+                .name = "something",
+                .version = try version.Range.parse(testing.allocator, "^0.1.0"),
+                .repository = "example.com",
+            },
+        },
+    };
+
+    try expectDepEqual(expected, actual);
+}
+
+test "legacy aliased, non-default repo pkg" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
@@ -378,7 +447,35 @@ test "aliased, non-default repo pkg" {
     try expectDepEqual(expected, actual);
 }
 
-test "github default root" {
+test "aliased, non-default repo pkg" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const actual = try fromString(&arena,
+        \\something:
+        \\  pkg:
+        \\    user: matt
+        \\    name: real_name
+        \\    version: ^0.1.0
+        \\    repository: example.com
+    );
+
+    const expected = Self{
+        .alias = "something",
+        .src = .{
+            .pkg = .{
+                .user = "matt",
+                .name = "real_name",
+                .version = try version.Range.parse(testing.allocator, "^0.1.0"),
+                .repository = "example.com",
+            },
+        },
+    };
+
+    try expectDepEqual(expected, actual);
+}
+
+test "legacy github default root" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
@@ -398,6 +495,143 @@ test "github default root" {
                 .url = "https://github.com/test/something.git",
                 .ref = "main",
                 .root = null,
+            },
+        },
+    };
+
+    try expectDepEqual(expected, actual);
+}
+
+test "github default root" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const actual = try fromString(&arena,
+        \\foo:
+        \\  github:
+        \\    user: test
+        \\    repo: something
+        \\    ref: main
+    );
+
+    const expected = Self{
+        .alias = "foo",
+        .src = .{
+            .git = .{
+                .url = "https://github.com/test/something.git",
+                .ref = "main",
+                .root = null,
+            },
+        },
+    };
+
+    try expectDepEqual(expected, actual);
+}
+
+test "legacy github explicit root" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const actual = try fromString(&arena,
+        \\foo:
+        \\  src:
+        \\    github:
+        \\      user: test
+        \\      repo: something
+        \\      ref: main
+        \\  root: main.zig
+    );
+
+    const expected = Self{
+        .alias = "foo",
+        .src = .{
+            .git = .{
+                .url = "https://github.com/test/something.git",
+                .ref = "main",
+                .root = "main.zig",
+            },
+        },
+    };
+
+    try expectDepEqual(expected, actual);
+}
+
+test "legacy github explicit root, incorrect indent" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const actual = try fromString(&arena,
+        \\foo:
+        \\  src:
+        \\    github:
+        \\      user: test
+        \\      repo: something
+        \\      ref: main
+        \\    root: main.zig
+    );
+
+    const expected = Self{
+        .alias = "foo",
+        .src = .{
+            .git = .{
+                .url = "https://github.com/test/something.git",
+                .ref = "main",
+                .root = "main.zig",
+            },
+        },
+    };
+
+    try expectDepEqual(expected, actual);
+}
+
+test "legacy github explicit root, mixed with newer root indent" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const actual = try fromString(&arena,
+        \\foo:
+        \\  src:
+        \\    github:
+        \\      user: test
+        \\      repo: something
+        \\      ref: main
+        \\      root: main.zig
+    );
+
+    const expected = Self{
+        .alias = "foo",
+        .src = .{
+            .git = .{
+                .url = "https://github.com/test/something.git",
+                .ref = "main",
+                .root = "main.zig",
+            },
+        },
+    };
+
+    try expectDepEqual(expected, actual);
+}
+
+test "github explicit root, incorrect indent" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const actual = try fromString(&arena,
+        \\foo:
+        \\  github:
+        \\    user: test
+        \\    repo: something
+        \\    ref: main
+        \\  root: main.zig
+    );
+
+    const expected = Self{
+        .alias = "foo",
+        .src = .{
+            .git = .{
+                .url = "https://github.com/test/something.git",
+                .ref = "main",
+                .root = "main.zig",
             },
         },
     };
@@ -411,12 +645,11 @@ test "github explicit root" {
 
     const actual = try fromString(&arena,
         \\foo:
-        \\  src:
-        \\    github:
-        \\      user: test
-        \\      repo: something
-        \\      ref: main
-        \\  root: main.zig
+        \\  github:
+        \\    user: test
+        \\    repo: something
+        \\    ref: main
+        \\    root: main.zig
     );
 
     const expected = Self{
@@ -433,7 +666,7 @@ test "github explicit root" {
     try expectDepEqual(expected, actual);
 }
 
-test "raw default root" {
+test "legacy raw default root" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
@@ -456,7 +689,29 @@ test "raw default root" {
     try expectDepEqual(expected, actual);
 }
 
-test "raw explicit root" {
+test "raw default root" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const actual = try fromString(&arena,
+        \\foo:
+        \\  url: "https://astrolabe.pm"
+    );
+
+    const expected = Self{
+        .alias = "foo",
+        .src = .{
+            .url = .{
+                .str = "https://astrolabe.pm",
+                .root = null,
+            },
+        },
+    };
+
+    try expectDepEqual(expected, actual);
+}
+
+test "legacy raw explicit root" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
@@ -480,7 +735,54 @@ test "raw explicit root" {
     try expectDepEqual(expected, actual);
 }
 
-test "local with default root" {
+test "legacy raw explicit root, incorrect indent" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const actual = try fromString(&arena,
+        \\foo:
+        \\  src:
+        \\    url: "https://astrolabe.pm"
+        \\    root: main.zig
+    );
+
+    const expected = Self{
+        .alias = "foo",
+        .src = .{
+            .url = .{
+                .str = "https://astrolabe.pm",
+                .root = "main.zig",
+            },
+        },
+    };
+
+    try expectDepEqual(expected, actual);
+}
+
+test "raw explicit root" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const actual = try fromString(&arena,
+        \\foo:
+        \\  url: "https://astrolabe.pm"
+        \\  root: main.zig
+    );
+
+    const expected = Self{
+        .alias = "foo",
+        .src = .{
+            .url = .{
+                .str = "https://astrolabe.pm",
+                .root = "main.zig",
+            },
+        },
+    };
+
+    try expectDepEqual(expected, actual);
+}
+
+test "legacy local with default root" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
@@ -503,7 +805,29 @@ test "local with default root" {
     try expectDepEqual(expected, actual);
 }
 
-test "local with explicit root" {
+test "local with default root" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const actual = try fromString(&arena,
+        \\foo:
+        \\  local: "mypkgs/cool-project"
+    );
+
+    const expected = Self{
+        .alias = "foo",
+        .src = .{
+            .local = .{
+                .path = "mypkgs/cool-project",
+                .root = null,
+            },
+        },
+    };
+
+    try expectDepEqual(expected, actual);
+}
+
+test "legacy local with explicit root" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
@@ -511,6 +835,53 @@ test "local with explicit root" {
         \\foo:
         \\  src:
         \\    local: "mypkgs/cool-project"
+        \\  root: main.zig
+    );
+
+    const expected = Self{
+        .alias = "foo",
+        .src = .{
+            .local = .{
+                .path = "mypkgs/cool-project",
+                .root = "main.zig",
+            },
+        },
+    };
+
+    try expectDepEqual(expected, actual);
+}
+
+test "legacy local with explicit root, incorrect indent" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const actual = try fromString(&arena,
+        \\foo:
+        \\  src:
+        \\    local: "mypkgs/cool-project"
+        \\    root: main.zig
+    );
+
+    const expected = Self{
+        .alias = "foo",
+        .src = .{
+            .local = .{
+                .path = "mypkgs/cool-project",
+                .root = "main.zig",
+            },
+        },
+    };
+
+    try expectDepEqual(expected, actual);
+}
+
+test "local with explicit root" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+
+    const actual = try fromString(&arena,
+        \\foo:
+        \\  local: "mypkgs/cool-project"
         \\  root: main.zig
     );
 
@@ -560,8 +931,7 @@ pub fn addToZNode(
             const ver_str = try std.fmt.allocPrint(&arena.allocator, "{}", .{pkg.version});
             _ = try tree.addNode(alias, .{ .String = ver_str });
         } else {
-            var src = try tree.addNode(alias, .{ .String = "src" });
-            var node = try tree.addNode(src, .{ .String = "pkg" });
+            var node = try tree.addNode(alias, .{ .String = "pkg" });
 
             try utils.zPutKeyString(tree, node, "user", pkg.user);
             if (explicit or !std.mem.eql(u8, pkg.name, self.alias)) {
@@ -575,41 +945,33 @@ pub fn addToZNode(
             }
         },
         .github => |gh| {
-            if (explicit or gh.root != null) {
-                try utils.zPutKeyString(tree, alias, "root", gh.root orelse utils.default_root);
-            }
-
-            var src = try tree.addNode(alias, .{ .String = "src" });
-            var github = try tree.addNode(src, .{ .String = "github" });
+            var github = try tree.addNode(alias, .{ .String = "github" });
             try utils.zPutKeyString(tree, github, "user", gh.user);
             try utils.zPutKeyString(tree, github, "repo", gh.repo);
             try utils.zPutKeyString(tree, github, "ref", gh.ref);
+            if (explicit or gh.root != null) {
+                try utils.zPutKeyString(tree, github, "root", gh.root orelse utils.default_root);
+            }
         },
         .git => |g| {
-            if (explicit or g.root != null) {
-                try utils.zPutKeyString(tree, alias, "root", g.root orelse utils.default_root);
-            }
-
-            var src = try tree.addNode(alias, .{ .String = "src" });
-            var git = try tree.addNode(src, .{ .String = "git" });
+            var git = try tree.addNode(alias, .{ .String = "git" });
             try utils.zPutKeyString(tree, git, "url", g.url);
             try utils.zPutKeyString(tree, git, "ref", g.ref);
+            if (explicit or g.root != null) {
+                try utils.zPutKeyString(tree, git, "root", g.root orelse utils.default_root);
+            }
         },
         .url => |url| {
+            try utils.zPutKeyString(tree, alias, "url", url.str);
             if (explicit or url.root != null) {
                 try utils.zPutKeyString(tree, alias, "root", url.root orelse utils.default_root);
             }
-
-            var src = try tree.addNode(alias, .{ .String = "src" });
-            try utils.zPutKeyString(tree, src, "url", url.str);
         },
         .local => |local| {
+            try utils.zPutKeyString(tree, alias, "local", local.path);
             if (explicit or local.root != null) {
                 try utils.zPutKeyString(tree, alias, "root", local.root orelse utils.default_root);
             }
-
-            var src = try tree.addNode(alias, .{ .String = "src" });
-            try utils.zPutKeyString(tree, src, "local", local.path);
         },
     }
 }
@@ -660,10 +1022,9 @@ fn serializeTest(from: []const u8, to: []const u8, explicit: bool) !void {
 test "serialize pkg non-explicit" {
     const from =
         \\something:
-        \\  src:
-        \\    pkg:
-        \\      user: test
-        \\      version: ^0.0.0
+        \\  pkg:
+        \\    user: test
+        \\    version: ^0.0.0
         \\
     ;
 
@@ -675,21 +1036,19 @@ test "serialize pkg non-explicit" {
 test "serialize pkg explicit" {
     const from =
         \\something:
-        \\  src:
-        \\    pkg:
-        \\      user: test
-        \\      version: ^0.0.0
+        \\  pkg:
+        \\    user: test
+        \\    version: ^0.0.0
         \\
     ;
 
     const to =
         \\something:
-        \\  src:
-        \\    pkg:
-        \\      user: test
-        \\      name: something
-        \\      version: ^0.0.0
-        \\      repository: astrolabe.pm
+        \\  pkg:
+        \\    user: test
+        \\    name: something
+        \\    version: ^0.0.0
+        \\    repository: astrolabe.pm
         \\
     ;
 
@@ -699,22 +1058,20 @@ test "serialize pkg explicit" {
 test "serialize github non-explicit" {
     const from =
         \\something:
-        \\  root: main.zig
-        \\  src:
-        \\    github:
-        \\      user: test
-        \\      repo: my_repo
-        \\      ref: master
+        \\  github:
+        \\    user: test
+        \\    repo: my_repo
+        \\    ref: master
+        \\    root: main.zig
         \\
     ;
 
     const to =
         \\something:
-        \\  root: main.zig
-        \\  src:
-        \\    git:
-        \\      url: "https://github.com/test/my_repo.git"
-        \\      ref: master
+        \\  git:
+        \\    url: "https://github.com/test/my_repo.git"
+        \\    ref: master
+        \\    root: main.zig
         \\
     ;
 
@@ -724,20 +1081,18 @@ test "serialize github non-explicit" {
 test "serialize github non-explicit, default root" {
     const from =
         \\something:
-        \\  src:
-        \\    github:
-        \\      user: test
-        \\      repo: my_repo
-        \\      ref: master
+        \\  github:
+        \\    user: test
+        \\    repo: my_repo
+        \\    ref: master
         \\
     ;
 
     const to =
         \\something:
-        \\  src:
-        \\    git:
-        \\      url: "https://github.com/test/my_repo.git"
-        \\      ref: master
+        \\  git:
+        \\    url: "https://github.com/test/my_repo.git"
+        \\    ref: master
         \\
     ;
 
@@ -747,22 +1102,21 @@ test "serialize github non-explicit, default root" {
 test "serialize github explicit, default root" {
     const from =
         \\something:
-        \\  root: src/main.zig
-        \\  src:
-        \\    github:
-        \\      user: test
-        \\      repo: my_repo
-        \\      ref: master
+        \\  github:
+        \\    user: test
+        \\    repo: my_repo
+        \\    ref: master
+        \\    root: src/main.zig
         \\
     ;
 
     const to =
         \\something:
-        \\  root: src/main.zig
-        \\  src:
-        \\    git:
-        \\      url: "https://github.com/test/my_repo.git"
-        \\      ref: master
+        \\  git:
+        \\    url: "https://github.com/test/my_repo.git"
+        \\    ref: master
+        \\    root: src/main.zig
+        \\
     ;
 
     try serializeTest(from, to, true);
@@ -771,21 +1125,19 @@ test "serialize github explicit, default root" {
 test "serialize github explicit" {
     const from =
         \\something:
-        \\  src:
-        \\    github:
-        \\      user: test
-        \\      repo: my_repo
-        \\      ref: master
+        \\  github:
+        \\    user: test
+        \\    repo: my_repo
+        \\    ref: master
         \\
     ;
 
     const to =
         \\something:
-        \\  root: src/main.zig
-        \\  src:
-        \\    git:
-        \\      url: "https://github.com/test/my_repo.git"
-        \\      ref: master
+        \\  git:
+        \\    url: "https://github.com/test/my_repo.git"
+        \\    ref: master
+        \\    root: src/main.zig
         \\
     ;
 
@@ -795,9 +1147,8 @@ test "serialize github explicit" {
 test "serialize url non-explicit" {
     const str =
         \\something:
+        \\  url: "https://github.com"
         \\  root: main.zig
-        \\  src:
-        \\    url: "https://github.com"
         \\
     ;
 
@@ -807,16 +1158,14 @@ test "serialize url non-explicit" {
 test "serialize url explicit" {
     const from =
         \\something:
-        \\  src:
-        \\    url: "https://github.com"
+        \\  url: "https://github.com"
         \\
     ;
 
     const to =
         \\something:
+        \\  url: "https://github.com"
         \\  root: src/main.zig
-        \\  src:
-        \\    url: "https://github.com"
         \\
     ;
 
