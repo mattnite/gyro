@@ -1,11 +1,7 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const version = @import("version");
 const uri = @import("uri");
-
-const c = @cImport({
-    @cInclude("sys/ioctl.h");
-    @cInclude("unistd.h");
-});
 
 const assert = std.debug.assert;
 
@@ -108,11 +104,43 @@ mode: union(enum) {
 },
 
 pub fn init(location: *Self, allocator: *std.mem.Allocator) !void {
-    var winsize: c.winsize = undefined;
-    const rc = c.ioctl(0, c.TIOCGWINSZ, &winsize);
-    if (rc != 0 or c.isatty(std.io.getStdOut().handle) != 1) {
-        location.* = Self{ .mode = .{ .direct_log = {} } };
-        return;
+    var size = Size{
+        .rows = 24,
+        .cols = 80,
+    };
+
+    switch (builtin.target.os.tag) {
+        .windows => {
+            const c = @cImport({
+                @cInclude("windows.h");
+            });
+
+            var csbi: c.CONSOLE_SCREEN_BUFFER_INFO = undefined;
+
+            if (0 == c.GetConsoleScreenBufferInfo(c.GetStdHandle(c.STD_OUTPUT_HANDLE), &csbi)) {
+                location.* = Self{ .mode = .{ .direct_log = {} } };
+                return;
+            }
+
+            size.rows = @intCast(usize, csbi.srWindow.Bottom - csbi.srWindow.Top + 1);
+            size.cols = @intCast(usize, csbi.srWindow.Right - csbi.srWindow.Left + 1);
+        },
+        else => {
+            const c = @cImport({
+                @cInclude("sys/ioctl.h");
+                @cInclude("unistd.h");
+            });
+
+            var winsize: c.winsize = undefined;
+            const rc = c.ioctl(0, c.TIOCGWINSZ, &winsize);
+            if (rc != 0 or c.isatty(std.io.getStdOut().handle) != 1) {
+                location.* = Self{ .mode = .{ .direct_log = {} } };
+                return;
+            }
+
+            size.rows = winsize.ws_row;
+            size.cols = winsize.ws_col;
+        },
     }
 
     const collector = try allocator.create(UpdateState);
@@ -135,10 +163,7 @@ pub fn init(location: *Self, allocator: *std.mem.Allocator) !void {
                 .render_thread = try std.Thread.spawn(.{}, renderTask, .{location}),
                 .entries = std.ArrayList(Entry).init(allocator),
                 .logs = std.ArrayList([]const u8).init(allocator),
-                .size = Size{
-                    .rows = winsize.ws_row,
-                    .cols = winsize.ws_col,
-                },
+                .size = size,
                 .depth = 0,
                 .collector = collector,
                 .scratchpad = scratchpad,
