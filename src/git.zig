@@ -264,7 +264,6 @@ fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_vo
     });
     errdefer main.display.updateEntry(handle, .{ .err = {} }) catch {};
 
-    //std.log.info("cloning submodule: {s}", .{c.git_submodule_url(sm)});
     var options: c.git_submodule_update_options = undefined;
     _ = c.git_submodule_update_options_init(&options, c.GIT_SUBMODULE_UPDATE_OPTIONS_VERSION);
     options.fetch_opts.callbacks.transfer_progress = indexerCb;

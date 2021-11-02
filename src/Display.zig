@@ -181,6 +181,13 @@ pub fn deinit(self: *Self) void {
             ansi.render_thread.join();
 
             const stderr = std.io.getStdErr().writer();
+            if (ansi.logs.items.len > 0) {
+                stderr.writeByteNTimes('-', ansi.size.cols) catch {};
+                stderr.writeByte('\n') catch {};
+                stderr.writeAll("logs captured during fetch:\n") catch {};
+            }
+
+            stderr.print("there are {} logs\n", .{ansi.logs.items.len}) catch {};
             for (ansi.logs.items) |msg|
                 stderr.writeAll(msg) catch continue;
 
