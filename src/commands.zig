@@ -557,12 +557,16 @@ pub fn add(
                 const name = try utils.normalizeName(info.repo);
                 try verifyUniqueAlias(name, dep_list.items);
 
+                const url = try std.fmt.allocPrint(&arena.allocator, "https://github.com/{s}/{s}.git", .{
+                    info.user,
+                    info.repo,
+                });
+
                 break :blk Dependency{
                     .alias = name,
                     .src = .{
-                        .github = .{
-                            .user = info.user,
-                            .repo = info.repo,
+                        .git = .{
+                            .url = url,
                             .ref = default_branch,
                             .root = root_file,
                         },
