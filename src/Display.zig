@@ -48,32 +48,37 @@ const Entry = struct {
 const UpdateState = struct {
     current_len: usize,
     entries: std.ArrayList(Entry),
-    updates: std.AutoHashMap(usize, EntryUpdate),
+    progress: std.AutoHashMap(usize, Progress),
+    errors: std.AutoHashMap(usize, void),
     new_size: ?Size,
 
     fn init(allocator: *std.mem.Allocator) UpdateState {
         return UpdateState{
             .current_len = 0,
             .entries = std.ArrayList(Entry).init(allocator),
-            .updates = std.AutoHashMap(usize, EntryUpdate).init(allocator),
+            .progress = std.AutoHashMap(usize, Progress).init(allocator),
+            .errors = std.AutoHashMap(usize, void).init(allocator),
             .new_size = null,
         };
     }
 
     fn deinit(self: *UpdateState) void {
         self.entries.deinit();
-        self.updates.deinit();
+        self.progress.deinit();
+        self.errors.deinit();
     }
 
     fn hasChanges(self: UpdateState) bool {
         return self.new_size != null or
             self.entries.items.len > 0 or
-            self.updates.count() > 0;
+            self.progress.count() > 0 or
+            self.errors.count() > 0;
     }
 
     fn clear(self: *UpdateState) void {
         self.entries.clearRetainingCapacity();
-        self.updates.clearRetainingCapacity();
+        self.progress.clearRetainingCapacity();
+        self.errors.clearRetainingCapacity();
         self.new_size = null;
     }
 };
@@ -117,7 +122,9 @@ pub fn init(location: *Self, allocator: *std.mem.Allocator) !void {
 
             var csbi: c.CONSOLE_SCREEN_BUFFER_INFO = undefined;
 
-            if (0 == c.GetConsoleScreenBufferInfo(c.GetStdHandle(c.STD_OUTPUT_HANDLE), &csbi)) {
+            if (0 == c.GetConsoleScreenBufferInfo(c.GetStdHandle(c.STD_OUTPUT_HANDLE), &csbi) or
+                std.process.hasEnvVarConstant("GYRO_DIRECT_LOG"))
+            {
                 location.* = Self{ .mode = .{ .direct_log = {} } };
                 return;
             }
@@ -133,7 +140,9 @@ pub fn init(location: *Self, allocator: *std.mem.Allocator) !void {
 
             var winsize: c.winsize = undefined;
             const rc = c.ioctl(0, c.TIOCGWINSZ, &winsize);
-            if (rc != 0 or c.isatty(std.io.getStdOut().handle) != 1) {
+            if (rc != 0 or c.isatty(std.io.getStdOut().handle) != 1 or
+                std.process.hasEnvVarConstant("GYRO_DIRECT_LOG"))
+            {
                 location.* = Self{ .mode = .{ .direct_log = {} } };
                 return;
             }
@@ -187,7 +196,6 @@ pub fn deinit(self: *Self) void {
                 stderr.writeAll("logs captured during fetch:\n") catch {};
             }
 
-            stderr.print("there are {} logs\n", .{ansi.logs.items.len}) catch {};
             for (ansi.logs.items) |msg|
                 stderr.writeAll(msg) catch continue;
 
@@ -317,7 +325,10 @@ pub fn updateEntry(self: *Self, handle: usize, update: EntryUpdate) !void {
             var lock = ansi.mtx.acquire();
             defer lock.release();
 
-            try ansi.collector.updates.put(handle, update);
+            switch (update) {
+                .progress => |p| try ansi.collector.progress.put(handle, p),
+                .err => try ansi.collector.errors.put(handle, {}),
+            }
         },
     }
 }
@@ -342,13 +353,20 @@ fn updateState(self: *Self) !void {
             if (ansi.scratchpad.new_size) |new_size|
                 ansi.size = new_size;
 
-            var it = ansi.scratchpad.updates.iterator();
-            while (it.next()) |entry| {
-                const idx = entry.key_ptr.*;
-                assert(idx <= ansi.entries.items.len);
-                switch (entry.value_ptr.*) {
-                    .progress => |progress| ansi.entries.items[idx].progress = progress,
-                    .err => ansi.entries.items[idx].err = true,
+            {
+                var it = ansi.scratchpad.progress.iterator();
+                while (it.next()) |entry| {
+                    const idx = entry.key_ptr.*;
+                    assert(idx <= ansi.entries.items.len);
+                    ansi.entries.items[idx].progress = entry.value_ptr.*;
+                }
+            }
+
+            {
+                var it = ansi.scratchpad.errors.iterator();
+                while (it.next()) |entry| {
+                    const idx = entry.key_ptr.*;
+                    ansi.entries.items[idx].err = true;
                 }
             }
         },

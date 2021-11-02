@@ -32,34 +32,39 @@ pub fn log(
 }
 
 pub fn main() !void {
-    const allocator = std.heap.c_allocator;
-    try Display.init(&display, allocator);
-    defer display.deinit();
+    var exit_val: u8 = 0;
+    {
+        const allocator = std.heap.c_allocator;
+        try Display.init(&display, allocator);
+        defer display.deinit();
 
-    try zfetch.init();
-    defer zfetch.deinit();
+        try zfetch.init();
+        defer zfetch.deinit();
 
-    if (builtin.mode == .Debug)
-        c.mbedtls_debug_set_threshold(1);
+        if (builtin.mode == .Debug)
+            c.mbedtls_debug_set_threshold(1);
 
-    const rc = c.git_libgit2_init();
-    if (rc < 0) {
-        const last_error = c.git_error_last();
-        std.log.err("{s}", .{last_error.*.message});
-        return error.Libgit2Init;
-    }
-    defer _ = c.git_libgit2_shutdown();
-
-    try loadSystemCerts(allocator);
-    if (!(builtin.target.os.tag == .linux) or std.process.hasEnvVarConstant("GYRO_INSECURE"))
-        git_mbedtls__insecure();
-
-    runCommands(allocator) catch |err| {
-        switch (err) {
-            error.Explained => std.process.exit(1),
-            else => return err,
+        const rc = c.git_libgit2_init();
+        if (rc < 0) {
+            const last_error = c.git_error_last();
+            std.log.err("{s}", .{last_error.*.message});
+            return error.Libgit2Init;
         }
-    };
+        defer _ = c.git_libgit2_shutdown();
+
+        try loadSystemCerts(allocator);
+        if (!(builtin.target.os.tag == .linux) or std.process.hasEnvVarConstant("GYRO_INSECURE"))
+            git_mbedtls__insecure();
+
+        runCommands(allocator) catch |err| {
+            switch (err) {
+                error.Explained => exit_val = 1,
+                else => return err,
+            }
+        };
+    }
+
+    std.process.exit(exit_val);
 }
 
 // prints gyro command usage to stderr

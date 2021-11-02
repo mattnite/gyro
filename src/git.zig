@@ -356,6 +356,7 @@ fn clone(
     err = c.git_checkout_tree(repo, obj, &checkout_opts);
     if (err != 0) {
         std.log.err("{s}", .{c.git_error_last().*.message});
+
         return error.GitCheckoutTree;
     }
 
