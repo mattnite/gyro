@@ -137,25 +137,23 @@ pub fn fromZNode(arena: *std.heap.ArenaAllocator, node: *zzz.ZNode) !Self {
     const alias = try utils.zGetString(node);
     var root: ?[]const u8 = null;
     {
+        var it = node;
         var depth: isize = 0;
-        var it = node.child.?;
-        while (it.nextUntil(node.child.?, &depth)) |child| : (it = child) {
-            switch (it.value) {
+        while (it.nextUntil(node, &depth)) |child| : (it = child) {
+            switch (child.value) {
                 .String => |str| if (mem.eql(u8, str, "root")) {
                     if (root != null) {
                         std.log.err("multiple roots defined", .{});
                         return error.Explained;
                         // TODO: handle child.value not being string
                     } else {
-                        root = try utils.zGetString(it.child.?);
+                        root = try utils.zGetString(child.child.?);
                     }
                 },
                 else => continue,
             }
         }
     }
-
-    std.log.err("root path: {s}", .{root});
 
     // search for src node
     const src_node = blk: {
@@ -172,7 +170,6 @@ pub fn fromZNode(arena: *std.heap.ArenaAllocator, node: *zzz.ZNode) !Self {
     const src: Source = blk: {
         const child = src_node.child orelse return error.SrcNeedsChild;
         const src_str = try utils.zGetString(child);
-        std.log.err("src_str: {s}", .{src_str});
         const src_type = inline for (std.meta.fields(SourceType)) |field| {
             if (mem.eql(u8, src_str, field.name)) break @field(SourceType, field.name);
         } else return error.InvalidSrcTag;
