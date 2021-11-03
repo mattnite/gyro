@@ -88,14 +88,15 @@ jobs:
       with:
         version: master
 
-    - run: sudo apt install zip
     - run: mkdir ${{ env.TARGET }}
 
     - name: windows-${{ matrix.arch }}
       run: zig build  -Dtarget=${{ matrix.arch }}-windows -Drelease-safe --prefix ${{ env.TARGET }}
 
-    - name: Create zip
-      run: zip -r ${{ env.TARGET }}.zip ${{ env.TARGET }} 
+    - uses: papeloto/action-zip@v1
+      with:
+        files: ${{ env.TARGET }}
+        dest: ${{ env.TARGET }}.zip
 
     - name: Upload Release Asset
       id: upload-release-asset 
