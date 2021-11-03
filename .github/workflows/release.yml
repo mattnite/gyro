@@ -31,7 +31,7 @@ jobs:
     needs: create_release
     strategy:
       matrix:
-        arch: [x86_64, aarch64, riscv64, i386]
+        arch: [x86_64, aarch64, i386]
     env:
       TARGET: gyro-${{ needs.create_release.outputs.tag }}-linux-${{ matrix.arch }}
     steps:
@@ -49,7 +49,7 @@ jobs:
     - run: mkdir ${{ env.TARGET }}
 
     - name: linux-${{ matrix.arch }}
-      run: zig build  -Dtarget=${{ matrix.arch }}-linux -Drelease-safe --prefix ${{ env.TARGET }}
+      run: zig build  -Dtarget=${{ matrix.arch }}-linux-musl -Drelease-safe --prefix ${{ env.TARGET }}
 
     - name: Create Tarball
       run: tar -czvf ${{ env.TARGET }}.tar.gz ${{ env.TARGET }}
@@ -66,7 +66,10 @@ jobs:
         asset_content_type: application/tarball
 
   windows:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
     needs: create_release
     strategy:
       matrix:
@@ -89,7 +92,7 @@ jobs:
     - run: mkdir ${{ env.TARGET }}
 
     - name: windows-${{ matrix.arch }}
-      run: zig build  -Dtarget=${{ matrix.arch }}-windows-gnu -Drelease-safe --prefix ${{ env.TARGET }}
+      run: zig build  -Dtarget=${{ matrix.arch }}-windows -Drelease-safe --prefix ${{ env.TARGET }}
 
     - name: Create zip
       run: zip -r ${{ env.TARGET }}.zip ${{ env.TARGET }} 
