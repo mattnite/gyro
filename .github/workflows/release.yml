@@ -113,7 +113,7 @@ jobs:
     needs: create_release
     strategy:
       matrix:
-        arch: [x86_64]
+        arch: [x86_64, aarch64]
     env:
       TARGET: gyro-${{ needs.create_release.outputs.tag }}-macos-${{ matrix.arch }}
     steps:
