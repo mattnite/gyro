@@ -23,10 +23,10 @@ Table of contents
   * [Publishing a package to astrolabe.pm](#publishing-a-package-to-astrolabepm)
   * [Adding dependencies](#adding-dependencies)
     * [From package index](#from-package-index)
+    * [From a git repo](#from-a-git-repo)
     * [From Github](#from-github)
     * [From url](#from-url)
     * [Build dependencies](#build-dependencies)
-    * [Scoped dependencies](#scoped-dependencies)
   * [Removing dependencies](#removing-dependencies)
   * [Local development](#local-development)
   * [Update dependencies -- for package consumers](#update-dependencies----for-package-consumers)
@@ -181,7 +181,24 @@ action](#publishing-from-an-action).
 gyro add <user>/<pkg>
 ```
 
+#### From a git repo
+
+Right now if the repo isn't from Github then you can add an entry to your `deps`
+like so:
+
+```
+deps:
+  pkgname:
+    git:
+      url: "https://some.repo/user/repo.git"
+      ref: main
+      root: my/root.zig
+```
+
 #### From Github
+
+If you add a package from Github, gyro will get the default branch, and try to
+figure out the root path for you:
 
 ```
 gyro add --src github <user>/<repo>
@@ -191,35 +208,16 @@ gyro add --src github <user>/<repo>
 Note that at this time it is not possible to add a dependency from a url using
 the command line. However, it is possible to give a url to a .tar.gz file by
 adding it to your `gyro.zzz` file.
+
 ```yaml
 deps:
   pkgname:
-    src:
-      url: "https://path/to/my/library.tar.gz"
+    url: "https://path/to/my/library.tar.gz"
     root: libname/rootfile.zig
 ```
+
 In this example, when `library.tar.gz` is extracted the top level directory is
-`libname`. In practice one can construct a gyro.zzz file which will get a source
-tarball from many hosting sites other than github, by carefully constructing the
-url and path to the library root.
-```yaml
-deps:
-// Gitlab example
-  foo:
-    src:
-      // Gitlab tarballs follow the format "project-branch.tar.gz" or
-      // "project-tag.tar.gz".
-      url: "https://gitlab.com/username/foo/-/archive/main/foo-main.tar.gz"
-    // The tarball will extract to the top level directory "project-branch/"
-    root: foo-main/main.zig
-// Codeberg (Gitea)
-  bar:
-    src:
-      // Gitea omits the project name from it's tarballs, using just the branch
-      // or tag name.
-      url: "https://codeberg.org/username/bar/archive/main.tar.gz"
-    root: bar/main.zig
-```
+`libname`. 
 
 #### Build dependencies
 
@@ -253,32 +251,12 @@ pub fn build(b: *Builder) void {
 }
 ```
 
-#### Scoped dependencies
-
-Dependencies added to a project are dependencies of all exported packages. In
-some cases you might want to add a dependency to only one package, and this can
-be done with the `--to` argument:
-
-```
-gyro add alexnask/iguanaTLS --to some_package
-```
-
-Build dependecies cannot be scoped to an exported package because build
-dependencies only affect the current project.
-
 ### Removing dependencies
 
 Removing a dependency only requires the alias (string used to import):
 
 ```
-gyro remove iguanaTLS
-```
-
-Removing [scoped dependencies](#scoped-dependencies) requires the `--from`
-argument:
-
-```
-gyro remove iguanaTLS --from some_package
+gyro rm iguanaTLS
 ```
 
 ### Local development
@@ -384,23 +362,6 @@ the cli, [publishing packages on
 astrolabe.pm](#publishing-a-package-to-astrolabepm), as well as local
 development.
 
-Similar to how the Zig compiler is meant to be dependency 0, gyro is intended to
-work as dependency 1. This means that there are no runtime dependencies, (Eg.
-git), and no dynamic libraries. Instead of statically linking to every VCS
-library in existence, the more strategic route was to instead use tarballs
-(tar.gz) for everything. The cost of this approach is that not every repository
-is accessible, however:
-
-- Most projects release source in a tarball (think C libraries here)
-- Github's api allows for downloading a tarball for a repo given a commit, tag,
-  or branch
-- Gyro's packaging system uses tarballs
-- Stdlib has gzip decompression
-- Easy to keep Gyro as a pure Zig codebase (no cross compilation pains)
-
-It lifts a considerable amount of work off the project in order to focus on the
-two main objectives while covering most codebases.
-
 The official Zig package manager is going to be decentralized, meaning that
 there will be no official package index. Gyro has a centralized feel in that the
 best UX is to use Astrolabe, but you can use it without interacting with the
@@ -438,10 +399,6 @@ pkgs:
       build.zig
       src/*.zig
 
-    # scoped dependencies, look the same as root deps
-    deps:
-      ...
-
   # exporting a second package
   pkg_b:
     version: 0.0.0
@@ -461,26 +418,29 @@ deps:
   # importing blarg from a different package index, have to use a different
   # import string, I'll use 'flarp'
   flarp:
-    src:
-      pkg:
-        name: blarg
-        user: arst
-        version: ^0.3.0
-        repository: something.gg
+    pkg:
+      name: blarg
+      user: arst
+      version: ^0.3.0
+      repository: something.gg
 
-  # a github package, imported with string 'mecha'
+  # a git package, imported with string 'mecha'
   mecha:
-    root: mecha.zig
-    src:
-      github:
-        user: Hejsil
-        repo: mecha
-        ref: zig-master
+    git:
+      url: "https://github.com/Hejsil/mecha.git"
+      ref: zig-master
+      root: mecha.zig
 
   # a raw url, imported with string 'raw' (remember its gotta be a tar.gz)
   raw:
+    url: "https://example.com/foo.tar.gz"
     root: bar.zig
-    src: url: "https://example.com/foo.tar.gz"
+
+  # a local path, usually used for local development using the redirect
+  # subcommand, but could be used for vendoring or monorepos
+  blarg:
+    local: deps/blarg
+    root: src/main.zig
 ```
 
 ### gyro.lock
@@ -499,7 +459,7 @@ dependencies, this should be added to `.gitignore`.
 ### .gyro/
 
 This directory holds the source code of all your dependencies. Path names are
-human readable and look something like `<package>-<user>-<hash>` so in many
+human readable and look something like `<package>-<user>-<version>` so in many
 cases it is possible to navigate to dependencies and make small edits if you run
 into bugs. For a more robust way to edit dependencies see [local
 development](#local-development)
