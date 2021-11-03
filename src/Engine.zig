@@ -476,14 +476,41 @@ pub fn fetch(self: *Engine) !void {
             try self.fetch_queue.parallelFetch(self.dep_table, self.resolutions);
 
             // inline for workaround because the compiler wasn't generating the right code for this
+            var explained = false;
             for (self.fetch_queue.tables.pkg.items(.result)) |_, i|
-                try Sources[0].updateResolution(self.allocator, &self.resolutions.tables.pkg, self.dep_table.items, &self.fetch_queue.tables.pkg, i);
+                Sources[0].updateResolution(self.allocator, &self.resolutions.tables.pkg, self.dep_table.items, &self.fetch_queue.tables.pkg, i) catch |err| {
+                    if (err == error.Explained)
+                        explained = true
+                    else
+                        return err;
+                };
+
             for (self.fetch_queue.tables.local.items(.result)) |_, i|
-                try Sources[1].updateResolution(self.allocator, &self.resolutions.tables.local, self.dep_table.items, &self.fetch_queue.tables.local, i);
+                Sources[1].updateResolution(self.allocator, &self.resolutions.tables.local, self.dep_table.items, &self.fetch_queue.tables.local, i) catch |err| {
+                    if (err == error.Explained)
+                        explained = true
+                    else
+                        return err;
+                };
+
             for (self.fetch_queue.tables.url.items(.result)) |_, i|
-                try Sources[2].updateResolution(self.allocator, &self.resolutions.tables.url, self.dep_table.items, &self.fetch_queue.tables.url, i);
+                Sources[2].updateResolution(self.allocator, &self.resolutions.tables.url, self.dep_table.items, &self.fetch_queue.tables.url, i) catch |err| {
+                    if (err == error.Explained)
+                        explained = true
+                    else
+                        return err;
+                };
+
             for (self.fetch_queue.tables.git.items(.result)) |_, i|
-                try Sources[3].updateResolution(self.allocator, &self.resolutions.tables.git, self.dep_table.items, &self.fetch_queue.tables.git, i);
+                Sources[3].updateResolution(self.allocator, &self.resolutions.tables.git, self.dep_table.items, &self.fetch_queue.tables.git, i) catch |err| {
+                    if (err == error.Explained)
+                        explained = true
+                    else
+                        return err;
+                };
+
+            if (explained)
+                return error.Explained;
 
             inline for (Sources) |source| {
                 for (@field(self.fetch_queue.tables, source.name).items(.path)) |opt_path, i| {

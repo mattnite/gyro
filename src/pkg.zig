@@ -6,6 +6,7 @@ const Dependency = @import("Dependency.zig");
 const api = @import("api.zig");
 const cache = @import("cache.zig");
 const utils = @import("utils.zig");
+const main = @import("root");
 
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
@@ -145,6 +146,15 @@ pub fn resolutionToCachePath(
     );
 }
 
+fn progressCb(current: usize, total: usize, handle: usize) void {
+    main.display.updateEntry(handle, .{
+        .progress = .{
+            .current = current,
+            .total = total,
+        },
+    }) catch {};
+}
+
 fn fetch(
     arena: *std.heap.ArenaAllocator,
     dep: Dependency.Source,
@@ -166,6 +176,16 @@ fn fetch(
     defer entry.deinit();
 
     if (!try entry.isDone()) {
+        const handle = try main.display.createEntry(.{
+            .pkg = .{
+                .repository = dep.pkg.repository,
+                .user = dep.pkg.user,
+                .name = dep.pkg.name,
+                .semver = semver,
+            },
+        });
+        errdefer main.display.updateEntry(handle, .{ .err = {} }) catch {};
+
         try api.getPkg(
             allocator,
             dep.pkg.repository,
@@ -173,6 +193,8 @@ fn fetch(
             dep.pkg.name,
             semver,
             entry.dir,
+            progressCb,
+            handle,
         );
 
         try entry.done();

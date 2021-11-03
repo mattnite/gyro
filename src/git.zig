@@ -8,6 +8,7 @@ const Dependency = @import("Dependency.zig");
 const Project = @import("Project.zig");
 const utils = @import("utils.zig");
 const local = @import("local.zig");
+const main = @import("root");
 
 const c = @cImport({
     @cInclude("git2.h");
@@ -212,7 +213,7 @@ fn getHeadCommit(
 }
 
 const CloneState = struct {
-    allocator: *Allocator,
+    arena: *std.heap.ArenaAllocator,
     base_path: []const u8,
 };
 
@@ -223,9 +224,24 @@ fn submoduleCb(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_void) 
     };
 }
 
+fn indexerCb(stats_c: [*c]const c.git_indexer_progress, payload: ?*c_void) callconv(.C) c_int {
+    const stats = @ptrCast(*const c.git_indexer_progress, stats_c);
+    const handle = @ptrCast(*usize, @alignCast(@alignOf(*usize), payload)).*;
+
+    main.display.updateEntry(handle, .{
+        .progress = .{
+            .current = stats.received_objects + stats.indexed_objects,
+            .total = stats.total_objects * 2,
+        },
+    }) catch {};
+
+    return 0;
+}
+
 fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_void) !void {
     const parent_state = @ptrCast(*CloneState, @alignCast(@alignOf(*CloneState), payload));
-    const allocator = parent_state.allocator;
+    const arena = parent_state.arena;
+    const allocator = arena.child_allocator;
 
     // git always uses posix path separators
     const sub_path = try std.mem.replaceOwned(u8, allocator, std.mem.spanZ(sm_name), "/", std.fs.path.sep_str);
@@ -234,14 +250,24 @@ fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_vo
     const base_path = try std.fs.path.join(allocator, &.{ parent_state.base_path, sub_path });
     defer allocator.free(base_path);
 
-    var state = CloneState{
-        .allocator = allocator,
-        .base_path = base_path,
-    };
+    const oid = try arena.allocator.alloc(u8, c.GIT_OID_HEXSZ);
+    _ = c.git_oid_fmt(
+        oid.ptr,
+        c.git_submodule_head_id(sm),
+    );
 
-    std.log.info("cloning submodule: {s}", .{c.git_submodule_url(sm)});
+    var handle = try main.display.createEntry(.{
+        .sub = .{
+            .url = try arena.allocator.dupe(u8, std.mem.spanZ(c.git_submodule_url(sm))),
+            .commit = oid,
+        },
+    });
+    errdefer main.display.updateEntry(handle, .{ .err = {} }) catch {};
+
     var options: c.git_submodule_update_options = undefined;
     _ = c.git_submodule_update_options_init(&options, c.GIT_SUBMODULE_UPDATE_OPTIONS_VERSION);
+    options.fetch_opts.callbacks.transfer_progress = indexerCb;
+    options.fetch_opts.callbacks.payload = &handle;
 
     var err = c.git_submodule_update(sm, 1, &options);
     if (err != 0)
@@ -252,6 +278,11 @@ fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_vo
     if (err != 0)
         return error.GitSubmoduleOpen;
     defer c.git_repository_free(repo);
+
+    var state = CloneState{
+        .arena = arena,
+        .base_path = base_path,
+    };
 
     err = c.git_submodule_foreach(repo, submoduleCb, &state);
     if (err != 0) {
@@ -269,12 +300,12 @@ fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_vo
 }
 
 fn clone(
-    allocator: *Allocator,
+    arena: *std.heap.ArenaAllocator,
     url: []const u8,
     commit: []const u8,
     path: []const u8,
 ) !void {
-    std.log.info("cloning {s}: {s}", .{ url, commit });
+    const allocator = arena.child_allocator;
 
     const url_z = try allocator.dupeZ(u8, url);
     defer allocator.free(url_z);
@@ -285,9 +316,19 @@ fn clone(
     const commit_z = try allocator.dupeZ(u8, commit);
     defer allocator.free(commit_z);
 
+    var handle = try main.display.createEntry(.{
+        .git = .{
+            .url = url,
+            .commit = commit,
+        },
+    });
+    errdefer main.display.updateEntry(handle, .{ .err = {} }) catch {};
+
     var repo: ?*c.git_repository = null;
     var options: c.git_clone_options = undefined;
     _ = c.git_clone_options_init(&options, c.GIT_CLONE_OPTIONS_VERSION);
+    options.fetch_opts.callbacks.transfer_progress = indexerCb;
+    options.fetch_opts.callbacks.payload = &handle;
 
     var err = c.git_clone(&repo, url_z, path_z, &options);
     if (err != 0) {
@@ -315,17 +356,18 @@ fn clone(
     err = c.git_checkout_tree(repo, obj, &checkout_opts);
     if (err != 0) {
         std.log.err("{s}", .{c.git_error_last().*.message});
+
         return error.GitCheckoutTree;
     }
 
     var state = CloneState{
-        .allocator = allocator,
+        .arena = arena,
         .base_path = path,
     };
 
     err = c.git_submodule_foreach(repo, submoduleCb, &state);
     if (err != 0) {
-        std.log.err("{s}", .{c.git_error_last().*.message});
+        std.log.err("\n{s}", .{c.git_error_last().*.message});
         return error.GitSubmoduleForeach;
     }
 
@@ -416,8 +458,15 @@ fn fetch(
     defer allocator.free(base_path);
 
     if (!done and !try entry.isDone()) {
+        if (builtin.target.os.tag != .windows) {
+            if (std.fs.cwd().access(base_path, .{})) {
+                try std.fs.cwd().deleteTree(base_path);
+            } else |_| {}
+            // TODO: if base_path exists then deleteTree it
+        }
+
         try clone(
-            allocator,
+            arena,
             dep.git.url,
             commit,
             base_path,

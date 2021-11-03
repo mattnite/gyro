@@ -115,6 +115,8 @@ pub fn getPkg(
     package: []const u8,
     semver: version.Semver,
     dir: std.fs.Dir,
+    cb: ?HttpCallback,
+    payload: ?usize,
 ) !void {
     const url = try std.fmt.allocPrint(
         allocator,
@@ -128,25 +130,58 @@ pub fn getPkg(
     );
     defer allocator.free(url);
 
-    try getTarGz(allocator, url, dir);
+    try getTarGz(allocator, url, dir, cb, payload);
 }
+
+const HttpCallback = fn (count: usize, total: usize, payload: usize) void;
+
+const HttpCallbackStream = struct {
+    req_reader: zfetch.Request.Reader,
+    cb: ?HttpCallback,
+    payload: ?usize,
+
+    pub const Reader = std.io.Reader(*Self, ReaderError, Self.read);
+    const ReaderError = zfetch.Request.Reader.Error;
+
+    const Self = @This();
+
+    fn read(self: *Self, buf: []u8) ReaderError!usize {
+        const ret = try self.req_reader.read(buf);
+        if (self.cb) |cb| cb(
+            self.req_reader.context.parser.read_needed,
+            self.req_reader.context.parser.read_current,
+            self.payload orelse 0,
+        );
+        return ret;
+    }
+
+    fn reader(self: *Self) Reader {
+        return Reader{ .context = self };
+    }
+};
 
 fn getTarGzImpl(
     allocator: *Allocator,
     url: []const u8,
     dir: std.fs.Dir,
     skip_depth: usize,
+    cb: ?HttpCallback,
+    payload: ?usize,
 ) !void {
     var headers = zfetch.Headers.init(allocator);
     defer headers.deinit();
-
-    std.log.info("fetching tarball: {s}", .{url});
 
     try headers.set("Accept", "*/*");
     var req = try request(allocator, .GET, url, &headers, null);
     defer req.deinit();
 
-    var gzip = try std.compress.gzip.gzipStream(allocator, req.reader());
+    var callback_stream = HttpCallbackStream{
+        .req_reader = req.reader(),
+        .cb = cb,
+        .payload = payload,
+    };
+
+    var gzip = try std.compress.gzip.gzipStream(allocator, callback_stream.reader());
     defer gzip.deinit();
 
     try tar.instantiate(allocator, dir, gzip.reader(), skip_depth);
@@ -156,8 +191,10 @@ pub fn getTarGz(
     allocator: *Allocator,
     url: []const u8,
     dir: std.fs.Dir,
+    cb: ?HttpCallback,
+    payload: ?usize,
 ) !void {
-    try getTarGzImpl(allocator, url, dir, 0);
+    try getTarGzImpl(allocator, url, dir, 0, cb, payload);
 }
 
 pub fn getGithubTarGz(
@@ -249,7 +286,7 @@ pub fn getGithubGyroFile(
     var headers = zfetch.Headers.init(allocator);
     defer headers.deinit();
 
-    std.log.info("fetching tarball: {s}", .{url});
+    //std.log.info("fetching tarball: {s}", .{url});
     try headers.set("Accept", "*/*");
     var req = try request(allocator, .GET, url, &headers, null);
     defer req.deinit();
