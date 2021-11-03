@@ -362,23 +362,6 @@ the cli, [publishing packages on
 astrolabe.pm](#publishing-a-package-to-astrolabepm), as well as local
 development.
 
-Similar to how the Zig compiler is meant to be dependency 0, gyro is intended to
-work as dependency 1. This means that there are no runtime dependencies, (Eg.
-git), and no dynamic libraries. Instead of statically linking to every VCS
-library in existence, the more strategic route was to instead use tarballs
-(tar.gz) for everything. The cost of this approach is that not every repository
-is accessible, however:
-
-- Most projects release source in a tarball (think C libraries here)
-- Github's api allows for downloading a tarball for a repo given a commit, tag,
-  or branch
-- Gyro's packaging system uses tarballs
-- Stdlib has gzip decompression
-- Easy to keep Gyro as a pure Zig codebase (no cross compilation pains)
-
-It lifts a considerable amount of work off the project in order to focus on the
-two main objectives while covering most codebases.
-
 The official Zig package manager is going to be decentralized, meaning that
 there will be no official package index. Gyro has a centralized feel in that the
 best UX is to use Astrolabe, but you can use it without interacting with the
