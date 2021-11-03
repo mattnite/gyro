@@ -32,7 +32,7 @@ jobs:
         version: master
 
     - name: Build 32-bit
-      run: zig build test -Dtarget=i386-windows-gnu --prefix tmp
+      run: zig build test -Dtarget=i386-windows --prefix tmp
 
     - name: Build 64-bit
       run: zig build
