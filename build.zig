@@ -95,6 +95,11 @@ pub fn build(b: *Builder) !void {
     try libssh2.link(b, gyro);
     mbedtls.link(gyro);
 
+    // release-* builds for windows end up missing a _tls_index symbol, turning
+    // off lto fixes this *shrug*
+    if (target.isWindows())
+        gyro.want_lto = false;
+
     const tests = b.addTest("src/main.zig");
     tests.setBuildMode(mode);
     tests.setTarget(target);
