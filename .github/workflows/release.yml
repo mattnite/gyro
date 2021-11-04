@@ -77,6 +77,11 @@ jobs:
     env:
       TARGET: gyro-${{ needs.create_release.outputs.tag }}-windows-${{ matrix.arch }}
     steps:
+    - name: Set git to use LF
+      run: |
+        git config --global core.autocrlf false
+        git config --global core.eol lf
+
     - name: Checkout
       uses: actions/checkout@v2
       with:
