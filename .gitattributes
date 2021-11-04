@@ -1,1 +1,1 @@
-*.zig text eol=lf
+* text eol=lf autocrlf=false
