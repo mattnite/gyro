@@ -224,8 +224,8 @@ pub fn log(
             const prefix2 = if (scope == .default) ": " else "(" ++ @tagName(scope) ++ "): ";
             const message = std.fmt.allocPrint(ansi.allocator, level_txt ++ prefix2 ++ format ++ "\n", args) catch return;
 
-            const lock = ansi.logs_mtx.acquire();
-            defer lock.release();
+            ansi.logs_mtx.lock();
+            defer ansi.logs_mtx.unlock();
 
             ansi.logs.append(message) catch {};
         },
@@ -308,8 +308,8 @@ pub fn createEntry(self: *Self, source: Source) !usize {
                 },
             };
 
-            var lock = ansi.mtx.acquire();
-            defer lock.release();
+            ansi.mtx.lock();
+            defer ansi.mtx.unlock();
 
             try ansi.collector.entries.append(new_entry);
             return ansi.collector.current_len +
@@ -322,8 +322,8 @@ pub fn updateEntry(self: *Self, handle: usize, update: EntryUpdate) !void {
     switch (self.mode) {
         .direct_log => {},
         .ansi => |*ansi| {
-            var lock = ansi.mtx.acquire();
-            defer lock.release();
+            ansi.mtx.lock();
+            defer ansi.mtx.unlock();
 
             switch (update) {
                 .progress => |p| try ansi.collector.progress.put(handle, p),
@@ -337,8 +337,8 @@ pub fn updateSize(self: *Self, new_size: Size) void {
     switch (self.mod) {
         .direct_log => {},
         .ansi => |ansi| {
-            var lock = ansi.mtx.acquire();
-            defer lock.release();
+            ansi.mtx.lock();
+            defer ansi.mtx.unlock();
 
             ansi.collector.new_size = new_size;
         },
@@ -381,8 +381,8 @@ fn renderTask(self: *Self) !void {
             done = true;
 
         {
-            var lock = self.mode.ansi.mtx.acquire();
-            defer lock.release();
+            self.mode.ansi.mtx.lock();
+            defer self.mode.ansi.mtx.unlock();
 
             self.mode.ansi.scratchpad.current_len = self.mode.ansi.collector.current_len +
                 self.mode.ansi.collector.entries.items.len;
