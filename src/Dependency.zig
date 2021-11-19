@@ -241,7 +241,7 @@ pub fn fromZNode(arena: *ThreadSafeArenaAllocator, node: *zzz.ZNode) !Self {
 }
 
 /// for testing
-fn fromString(arena: *std.heap.ThreadSafeArenaAllocator, str: []const u8) !Self {
+fn fromString(arena: *ThreadSafeArenaAllocator, str: []const u8) !Self {
     var tree = zzz.ZTree(1, 1000){};
     const root = try tree.appendText(str);
     return Self.fromZNode(arena, root.*.child.?);
@@ -290,7 +290,7 @@ fn expectDepEqual(expected: Self, actual: Self) !void {
 }
 
 test "default repo pkg" {
-    var arena = std.heap.ThreadSafeArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     try expectDepEqual(Self{
@@ -307,7 +307,7 @@ test "default repo pkg" {
 }
 
 test "legacy aliased, default repo pkg" {
-    var arena = std.heap.ThreadSafeArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     const actual = try fromString(&arena,
@@ -335,7 +335,7 @@ test "legacy aliased, default repo pkg" {
 }
 
 test "aliased, default repo pkg" {
-    var arena = std.heap.ThreadSafeArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     const actual = try fromString(&arena,
@@ -362,7 +362,7 @@ test "aliased, default repo pkg" {
 }
 
 test "legacy non-default repo pkg" {
-    var arena = std.heap.ThreadSafeArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     const actual = try fromString(&arena,
@@ -390,7 +390,7 @@ test "legacy non-default repo pkg" {
 }
 
 test "non-default repo pkg" {
-    var arena = std.heap.ThreadSafeArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     const actual = try fromString(&arena,
@@ -417,7 +417,7 @@ test "non-default repo pkg" {
 }
 
 test "legacy aliased, non-default repo pkg" {
-    var arena = std.heap.ThreadSafeArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     const actual = try fromString(&arena,
@@ -446,7 +446,7 @@ test "legacy aliased, non-default repo pkg" {
 }
 
 test "aliased, non-default repo pkg" {
-    var arena = std.heap.ThreadSafeArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     const actual = try fromString(&arena,
@@ -474,7 +474,7 @@ test "aliased, non-default repo pkg" {
 }
 
 test "legacy github default root" {
-    var arena = std.heap.ThreadSafeArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     const actual = try fromString(&arena,
@@ -501,7 +501,7 @@ test "legacy github default root" {
 }
 
 test "github default root" {
-    var arena = std.heap.ThreadSafeArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     const actual = try fromString(&arena,
@@ -527,7 +527,7 @@ test "github default root" {
 }
 
 test "legacy github explicit root" {
-    var arena = std.heap.ThreadSafeArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     const actual = try fromString(&arena,
@@ -555,7 +555,7 @@ test "legacy github explicit root" {
 }
 
 test "legacy github explicit root, incorrect indent" {
-    var arena = std.heap.ThreadSafeArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     const actual = try fromString(&arena,
@@ -583,7 +583,7 @@ test "legacy github explicit root, incorrect indent" {
 }
 
 test "legacy github explicit root, mixed with newer root indent" {
-    var arena = std.heap.ThreadSafeArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     const actual = try fromString(&arena,
@@ -611,7 +611,7 @@ test "legacy github explicit root, mixed with newer root indent" {
 }
 
 test "github explicit root, incorrect indent" {
-    var arena = std.heap.ThreadSafeArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     const actual = try fromString(&arena,
@@ -638,7 +638,7 @@ test "github explicit root, incorrect indent" {
 }
 
 test "github explicit root" {
-    var arena = std.heap.ThreadSafeArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     const actual = try fromString(&arena,
@@ -665,7 +665,7 @@ test "github explicit root" {
 }
 
 test "legacy raw default root" {
-    var arena = std.heap.ThreadSafeArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     const actual = try fromString(&arena,
@@ -688,7 +688,7 @@ test "legacy raw default root" {
 }
 
 test "raw default root" {
-    var arena = std.heap.ThreadSafeArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     const actual = try fromString(&arena,
@@ -710,7 +710,7 @@ test "raw default root" {
 }
 
 test "legacy raw explicit root" {
-    var arena = std.heap.ThreadSafeArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     const actual = try fromString(&arena,
@@ -734,7 +734,7 @@ test "legacy raw explicit root" {
 }
 
 test "legacy raw explicit root, incorrect indent" {
-    var arena = std.heap.ThreadSafeArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     const actual = try fromString(&arena,
@@ -758,7 +758,7 @@ test "legacy raw explicit root, incorrect indent" {
 }
 
 test "raw explicit root" {
-    var arena = std.heap.ThreadSafeArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     const actual = try fromString(&arena,
@@ -781,7 +781,7 @@ test "raw explicit root" {
 }
 
 test "legacy local with default root" {
-    var arena = std.heap.ThreadSafeArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     const actual = try fromString(&arena,
@@ -804,7 +804,7 @@ test "legacy local with default root" {
 }
 
 test "local with default root" {
-    var arena = std.heap.ThreadSafeArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     const actual = try fromString(&arena,
@@ -826,7 +826,7 @@ test "local with default root" {
 }
 
 test "legacy local with explicit root" {
-    var arena = std.heap.ThreadSafeArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     const actual = try fromString(&arena,
@@ -850,7 +850,7 @@ test "legacy local with explicit root" {
 }
 
 test "legacy local with explicit root, incorrect indent" {
-    var arena = std.heap.ThreadSafeArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     const actual = try fromString(&arena,
@@ -874,7 +874,7 @@ test "legacy local with explicit root, incorrect indent" {
 }
 
 test "local with explicit root" {
-    var arena = std.heap.ThreadSafeArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     const actual = try fromString(&arena,
