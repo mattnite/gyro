@@ -7,6 +7,7 @@ const api = @import("api.zig");
 const cache = @import("cache.zig");
 const utils = @import("utils.zig");
 const main = @import("root");
+const ThreadSafeArenaAllocator = @import("ThreadSafeArenaAllocator.zig");
 
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
@@ -103,7 +104,7 @@ fn findMatch(dep_table: []const Dependency.Source, dep_idx: usize, edges: []cons
 }
 
 fn updateBasePaths(
-    arena: *std.heap.ArenaAllocator,
+    arena: *ThreadSafeArenaAllocator,
     base_path: []const u8,
     deps: *std.ArrayListUnmanaged(Dependency),
 ) !void {
@@ -156,7 +157,7 @@ fn progressCb(current: usize, total: usize, handle: usize) void {
 }
 
 fn fetch(
-    arena: *std.heap.ArenaAllocator,
+    arena: *ThreadSafeArenaAllocator,
     dep: Dependency.Source,
     semver: Resolution,
     deps: *std.ArrayListUnmanaged(Dependency),
@@ -200,8 +201,8 @@ fn fetch(
         try entry.done();
     }
 
-    const base_path = try std.fs.path.join(arena.child_allocator, &.{ ".gyro", entry_name, "pkg" });
-    defer arena.child_allocator.free(base_path);
+    const base_path = try std.fs.path.join(allocator, &.{ ".gyro", entry_name, "pkg" });
+    defer allocator.free(base_path);
 
     const manifest = try entry.dir.openFile("manifest.zzz", .{});
     defer manifest.close();
@@ -209,6 +210,7 @@ fn fetch(
     const text = try manifest.reader().readAllAlloc(&arena.allocator, std.math.maxInt(usize));
     var ztree = zzz.ZTree(1, 1000){};
     var root = try ztree.appendText(text);
+
     if (utils.zFindChild(root, "deps")) |deps_node| {
         var it = utils.ZChildIterator.init(deps_node);
         while (it.next()) |node|
@@ -236,12 +238,14 @@ fn fetch(
 }
 
 pub fn dedupeResolveAndFetch(
+    arena: *ThreadSafeArenaAllocator,
     dep_table: []const Dependency.Source,
     resolutions: []const ResolutionEntry,
     fetch_queue: *FetchQueue,
     i: usize,
 ) void {
     dedupeResolveAndFetchImpl(
+        arena,
         dep_table,
         resolutions,
         fetch_queue,
@@ -252,12 +256,12 @@ pub fn dedupeResolveAndFetch(
 }
 
 fn dedupeResolveAndFetchImpl(
+    arena: *ThreadSafeArenaAllocator,
     dep_table: []const Dependency.Source,
     resolutions: []const ResolutionEntry,
     fetch_queue: *FetchQueue,
     i: usize,
 ) FetchError!void {
-    const arena = &fetch_queue.items(.arena)[i];
     const dep_idx = fetch_queue.items(.edge)[i].to;
     if (findResolution(dep_table[dep_idx], resolutions)) |res_idx| {
         if (resolutions[res_idx].dep_idx) |idx| {
@@ -431,7 +435,7 @@ test "serializeResolutions" {
 }
 
 test "dedupeResolveAndFetch: existing resolution" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     const dep = Dependency.Source{
@@ -481,7 +485,7 @@ test "dedupeResolveAndFetch: existing resolution" {
 }
 
 test "dedupeResolveAndFetch: resolution without index" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     const dep = Dependency.Source{
@@ -549,7 +553,7 @@ test "dedupeResolveAndFetch: resolution without index" {
 }
 
 test "dedupeResolveAndFetch: new entry" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     const deps = &.{
@@ -626,7 +630,7 @@ test "dedupeResolveAndFetch: new entry" {
 }
 
 test "dedupeResolveAndFetch: collision in batch" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    var arena = ThreadSafeArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
     const deps = &.{

@@ -3,6 +3,7 @@ const Engine = @import("Engine.zig");
 const Dependency = @import("Dependency.zig");
 const Project = @import("Project.zig");
 const utils = @import("utils.zig");
+const ThreadSafeArenaAllocator = @import("ThreadSafeArenaAllocator.zig");
 
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
@@ -55,12 +56,14 @@ pub fn findResolution(
 }
 
 pub fn dedupeResolveAndFetch(
+    arena: *ThreadSafeArenaAllocator,
     dep_table: []const Dependency.Source,
     resolutions: []const ResolutionEntry,
     fetch_queue: *FetchQueue,
     i: usize,
 ) void {
     dedupeResolveAndFetchImpl(
+        arena,
         dep_table,
         resolutions,
         fetch_queue,
@@ -71,6 +74,7 @@ pub fn dedupeResolveAndFetch(
 }
 
 fn dedupeResolveAndFetchImpl(
+    arena: *ThreadSafeArenaAllocator,
     dep_table: []const Dependency.Source,
     resolutions: []const ResolutionEntry,
     fetch_queue: *FetchQueue,
@@ -78,9 +82,7 @@ fn dedupeResolveAndFetchImpl(
 ) FetchError!void {
     _ = resolutions;
 
-    const arena = &fetch_queue.items(.arena)[i];
     const dep = &dep_table[fetch_queue.items(.edge)[i].to].local;
-
     var base_dir = try std.fs.cwd().openDir(dep.path, .{});
     defer base_dir.close();
 
@@ -92,11 +94,8 @@ fn dedupeResolveAndFetchImpl(
     defer project_file.close();
 
     const text = try project_file.reader().readAllAlloc(&arena.allocator, std.math.maxInt(usize));
-    const project = try Project.fromUnownedText(arena.child_allocator, dep.path, text);
-    defer {
-        project.transferToArena(arena);
-        project.destroy();
-    }
+    const project = try Project.fromUnownedText(arena, dep.path, text);
+    defer project.destroy();
 
     // TODO: resolve path when default root
     const root = dep.root orelse utils.default_root;

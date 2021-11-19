@@ -9,6 +9,7 @@ const Project = @import("Project.zig");
 const Dependency = @import("Dependency.zig");
 const Engine = @import("Engine.zig");
 const utils = @import("utils.zig");
+const ThreadSafeArenaAllocator = @import("ThreadSafeArenaAllocator.zig");
 
 const Allocator = std.mem.Allocator;
 
@@ -40,7 +41,7 @@ fn migrateGithubLockfile(allocator: *Allocator, file: std.fs.File) !void {
         else
             try to_lines.append(line);
 
-    var arena = std.heap.ArenaAllocator.init(allocator);
+    var arena = ThreadSafeArenaAllocator.init(allocator);
     defer arena.deinit();
 
     // convert each github entry to a git entry
@@ -80,7 +81,10 @@ fn migrateGithubLockfile(allocator: *Allocator, file: std.fs.File) !void {
 }
 
 pub fn fetch(allocator: *Allocator) !void {
-    const project = try Project.fromDirPath(allocator, ".");
+    var arena = ThreadSafeArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const project = try Project.fromDirPath(&arena, ".");
     defer project.destroy();
 
     const lockfile = try std.fs.cwd().createFile("gyro.lock", .{
@@ -122,7 +126,10 @@ pub fn update(
         return;
     }
 
-    const project = try Project.fromDirPath(allocator, ".");
+    var arena = ThreadSafeArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const project = try Project.fromDirPath(&arena, ".");
     defer project.destroy();
 
     const lockfile = try std.fs.cwd().createFile("gyro.lock", .{
@@ -215,14 +222,17 @@ pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
     );
     defer std.fs.cwd().deleteFile("build_runner.zig") catch {};
 
+    var arena = ThreadSafeArenaAllocator.init(allocator);
+    defer arena.deinit();
+
     const project = blk: {
         const project_file = std.fs.cwd().openFile("gyro.zzz", .{}) catch |err| switch (err) {
-            error.FileNotFound => break :blk try Project.fromUnownedText(allocator, ".", ""),
+            error.FileNotFound => break :blk try Project.fromUnownedText(&arena, ".", ""),
             else => |e| return e,
         };
         defer project_file.close();
 
-        break :blk try Project.fromFile(allocator, ".", project_file);
+        break :blk try Project.fromFile(&arena, ".", project_file);
     };
     defer project.destroy();
 
@@ -250,8 +260,6 @@ pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
     try engine.writeDepsZig(deps_file.writer());
 
     // TODO: configurable local cache
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
 
     const pkgs = try engine.genBuildDeps(&arena);
     defer pkgs.deinit();
@@ -312,7 +320,10 @@ pub fn package(
     output_dir: ?[]const u8,
     names: []const []const u8,
 ) !void {
-    const project = try Project.fromDirPath(allocator, ".");
+    var arena = ThreadSafeArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const project = try Project.fromDirPath(&arena, ".");
     defer project.destroy();
 
     if (project.packages.count() == 0) {
@@ -475,7 +486,7 @@ pub fn add(
     }
 
     const repository = utils.default_repo;
-    var arena = std.heap.ArenaAllocator.init(allocator);
+    var arena = ThreadSafeArenaAllocator.init(allocator);
     defer arena.deinit();
 
     const file = try std.fs.cwd().createFile("gyro.zzz", .{
@@ -485,7 +496,7 @@ pub fn add(
     });
     defer file.close();
 
-    var project = try Project.fromFile(allocator, ".", file);
+    var project = try Project.fromFile(&arena, ".", file);
     defer project.destroy();
 
     const dep_list = if (build_deps)
@@ -539,7 +550,7 @@ pub fn add(
                 );
 
                 const root_file = if (root_path) |rp| rp else if (text_opt) |t| get_root: {
-                    const subproject = try Project.fromUnownedText(&arena.allocator, ".", t);
+                    const subproject = try Project.fromUnownedText(&arena, ".", t);
                     defer subproject.destroy();
 
                     var ret: []const u8 = utils.default_root;
@@ -597,7 +608,7 @@ pub fn add(
                 };
             },
             .local => blk: {
-                const subproject = try Project.fromDirPath(allocator, target);
+                const subproject = try Project.fromDirPath(&arena, target);
                 defer subproject.destroy();
 
                 const detected_root = if (subproject.packages.count() == 1)
@@ -656,7 +667,7 @@ pub fn rm(
     build_deps: bool,
     targets: []const []const u8,
 ) !void {
-    var arena = std.heap.ArenaAllocator.init(allocator);
+    var arena = ThreadSafeArenaAllocator.init(allocator);
     defer arena.deinit();
 
     const file = try std.fs.cwd().createFile("gyro.zzz", .{
@@ -666,7 +677,7 @@ pub fn rm(
     });
     defer file.close();
 
-    var project = try Project.fromFile(allocator, ".", file);
+    var project = try Project.fromFile(&arena, ".", file);
     defer project.destroy();
 
     const dep_list = if (build_deps)
@@ -713,6 +724,9 @@ pub fn publish(allocator: *Allocator, pkg: ?[]const u8) !void {
     const client_id = "ea14bba19a49f4cba053";
     const scope = "read:user user:email";
 
+    var arena = ThreadSafeArenaAllocator.init(allocator);
+    defer arena.deinit();
+
     const file = std.fs.cwd().openFile("gyro.zzz", .{ .read = true }) catch |err| {
         if (err == error.FileNotFound) {
             std.log.err("missing gyro.zzz file", .{});
@@ -721,7 +735,7 @@ pub fn publish(allocator: *Allocator, pkg: ?[]const u8) !void {
     };
     defer file.close();
 
-    var project = try Project.fromFile(allocator, ".", file);
+    var project = try Project.fromFile(&arena, ".", file);
     defer project.destroy();
 
     if (project.packages.count() == 0) {
@@ -851,6 +865,9 @@ fn moveDeps(redirected_deps: []const Dependency, project_deps: []Dependency) !vo
 
 /// make sure there are no entries in the redirect file
 fn validateNoRedirects(allocator: *Allocator) !void {
+    var arena = ThreadSafeArenaAllocator.init(allocator);
+    defer arena.deinit();
+
     var gyro_dir = try std.fs.cwd().makeOpenPath(".gyro", .{});
     defer gyro_dir.close();
 
@@ -860,7 +877,7 @@ fn validateNoRedirects(allocator: *Allocator) !void {
     });
     defer redirect_file.close();
 
-    var redirects = try Project.fromFile(allocator, ".", redirect_file);
+    var redirects = try Project.fromFile(&arena, ".", redirect_file);
     defer redirects.destroy();
 
     if (redirects.deps.items.len > 0 or redirects.build_deps.items.len > 0) {
@@ -885,7 +902,7 @@ pub fn redirect(
         return error.Explained;
     }
 
-    var arena = std.heap.ArenaAllocator.init(allocator);
+    var arena = ThreadSafeArenaAllocator.init(allocator);
     defer arena.deinit();
 
     const project_file = try std.fs.cwd().openFile("gyro.zzz", .{
@@ -903,10 +920,10 @@ pub fn redirect(
     });
     defer redirect_file.close();
 
-    var project = try Project.fromFile(allocator, ".", project_file);
+    var project = try Project.fromFile(&arena, ".", project_file);
     defer project.destroy();
 
-    var redirects = try Project.fromFile(allocator, ".", redirect_file);
+    var redirects = try Project.fromFile(&arena, ".", redirect_file);
     defer redirects.destroy();
 
     if (check) {
@@ -952,7 +969,7 @@ pub fn redirect(
         try redirect_deps.append(dep.*);
         const root = switch (dep.src) {
             .pkg => |pkg| blk: {
-                var local_project = try Project.fromDirPath(allocator, path);
+                var local_project = try Project.fromDirPath(&arena, path);
                 defer local_project.destroy();
 
                 const result = local_project.packages.get(pkg.name) orelse {

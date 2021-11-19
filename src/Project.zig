@@ -4,14 +4,14 @@ const version = @import("version");
 const Package = @import("Package.zig");
 const Dependency = @import("Dependency.zig");
 const utils = @import("utils.zig");
+const ThreadSafeArenaAllocator = @import("ThreadSafeArenaAllocator.zig");
 
 const Allocator = std.mem.Allocator;
-const ArenaAllocator = std.heap.ArenaAllocator;
 
 const Self = @This();
 
 allocator: *Allocator,
-arena: ArenaAllocator,
+arena: *ThreadSafeArenaAllocator,
 base_dir: []const u8,
 text: []const u8,
 owns_text: bool,
@@ -28,17 +28,18 @@ pub const Iterator = struct {
 };
 
 fn create(
-    allocator: *Allocator,
+    arena: *ThreadSafeArenaAllocator,
     base_dir: []const u8,
     text: []const u8,
     owns_text: bool,
 ) !*Self {
+    const allocator = arena.child_allocator;
     const ret = try allocator.create(Self);
     errdefer allocator.destroy(ret);
 
     ret.* = Self{
-        .allocator = allocator,
-        .arena = ArenaAllocator.init(allocator),
+        .allocator = arena.child_allocator,
+        .arena = arena,
         .base_dir = base_dir,
         .text = text,
         .owns_text = owns_text,
@@ -91,7 +92,7 @@ fn create(
         if (utils.zFindChild(root, deps_field)) |deps| {
             var it = utils.ZChildIterator.init(deps);
             while (it.next()) |dep_node| {
-                var dep = try Dependency.fromZNode(&ret.arena, dep_node);
+                var dep = try Dependency.fromZNode(ret.arena, dep_node);
                 for (ret.deps.items) |other| {
                     if (std.mem.eql(u8, dep.alias, other.alias)) {
                         std.log.err("'{s}' alias in 'deps' is declared multiple times", .{dep.alias});
@@ -129,8 +130,6 @@ fn deinit(self: *Self) void {
     self.packages.deinit();
     if (self.owns_text)
         self.allocator.free(self.text);
-
-    self.arena.deinit();
 }
 
 pub fn destroy(self: *Self) void {
@@ -138,29 +137,21 @@ pub fn destroy(self: *Self) void {
     self.allocator.destroy(self);
 }
 
-pub fn transferToArena(self: *Self, arena: *ArenaAllocator) void {
-    while (self.arena.state.buffer_list.popFirst()) |node|
-        arena.state.buffer_list.prepend(node);
-
-    arena.state.end_index += self.arena.state.end_index;
-    self.arena.state.end_index = 0;
+pub fn fromUnownedText(arena: *ThreadSafeArenaAllocator, base_dir: []const u8, text: []const u8) !*Self {
+    return try Self.create(arena, base_dir, text, false);
 }
 
-pub fn fromUnownedText(allocator: *Allocator, base_dir: []const u8, text: []const u8) !*Self {
-    return try Self.create(allocator, base_dir, text, false);
-}
-
-pub fn fromFile(allocator: *Allocator, base_dir: []const u8, file: std.fs.File) !*Self {
+pub fn fromFile(arena: *ThreadSafeArenaAllocator, base_dir: []const u8, file: std.fs.File) !*Self {
     return Self.create(
-        allocator,
+        arena,
         base_dir,
-        try file.reader().readAllAlloc(allocator, std.math.maxInt(usize)),
+        try file.reader().readAllAlloc(arena.child_allocator, std.math.maxInt(usize)),
         true,
     );
 }
 
 pub fn fromDirPath(
-    allocator: *Allocator,
+    arena: *ThreadSafeArenaAllocator,
     base_dir: []const u8,
 ) !*Self {
     var dir = try std.fs.cwd().openDir(base_dir, .{});
@@ -169,14 +160,14 @@ pub fn fromDirPath(
     const file = try dir.openFile("gyro.zzz", .{});
     defer file.close();
 
-    return Self.fromFile(allocator, base_dir, file);
+    return Self.fromFile(arena, base_dir, file);
 }
 
 pub fn write(self: Self, writer: anytype) !void {
     var tree = zzz.ZTree(1, 1000){};
     var root = try tree.addNode(null, .Null);
 
-    var arena = ArenaAllocator.init(self.allocator);
+    var arena = ThreadSafeArenaAllocator.init(self.allocator);
     defer arena.deinit();
 
     if (self.packages.count() > 0) {

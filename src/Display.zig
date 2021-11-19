@@ -190,7 +190,7 @@ pub fn deinit(self: *Self) void {
             ansi.render_thread.join();
 
             const stderr = std.io.getStdErr().writer();
-            if (ansi.logs.items.len > 0) {
+            if (ansi.logs.items.len > 1) {
                 stderr.writeByteNTimes('-', ansi.size.cols) catch {};
                 stderr.writeByte('\n') catch {};
                 stderr.writeAll("logs captured during fetch:\n") catch {};

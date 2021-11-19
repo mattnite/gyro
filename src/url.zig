@@ -8,6 +8,7 @@ const cache = @import("cache.zig");
 const utils = @import("utils.zig");
 const local = @import("local.zig");
 const main = @import("root");
+const ThreadSafeArenaAllocator = @import("ThreadSafeArenaAllocator.zig");
 
 const Allocator = std.mem.Allocator;
 const assert = std.debug.assert;
@@ -116,7 +117,7 @@ fn progressCb(current: usize, total: usize, handle: usize) void {
 }
 
 fn fetch(
-    arena: *std.heap.ArenaAllocator,
+    arena: *ThreadSafeArenaAllocator,
     dep: Dependency.Source,
     deps: *std.ArrayListUnmanaged(Dependency),
     path: *?[]const u8,
@@ -160,22 +161,21 @@ fn fetch(
     defer project_file.close();
 
     const text = try project_file.reader().readAllAlloc(&arena.allocator, std.math.maxInt(usize));
-    const project = try Project.fromUnownedText(allocator, base_path, text);
-    defer {
-        project.transferToArena(arena);
-        project.destroy();
-    }
+    const project = try Project.fromUnownedText(arena, base_path, text);
+    defer project.destroy();
 
     try deps.appendSlice(allocator, project.deps.items);
 }
 
 pub fn dedupeResolveAndFetch(
+    arena: *ThreadSafeArenaAllocator,
     dep_table: []const Dependency.Source,
     resolutions: []const ResolutionEntry,
     fetch_queue: *FetchQueue,
     i: usize,
 ) void {
     dedupeResolveAndFetchImpl(
+        arena,
         dep_table,
         resolutions,
         fetch_queue,
@@ -186,14 +186,12 @@ pub fn dedupeResolveAndFetch(
 }
 
 fn dedupeResolveAndFetchImpl(
+    arena: *ThreadSafeArenaAllocator,
     dep_table: []const Dependency.Source,
     resolutions: []const ResolutionEntry,
     fetch_queue: *FetchQueue,
     i: usize,
 ) FetchError!void {
-    const arena = &fetch_queue.items(.arena)[i];
-    _ = arena;
-
     const dep_idx = fetch_queue.items(.edge)[i].to;
     // check lockfile for entry
     if (findResolution(dep_table[dep_idx], resolutions)) |res_idx| {
