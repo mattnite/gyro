@@ -9,6 +9,7 @@ const Project = @import("Project.zig");
 const utils = @import("utils.zig");
 const local = @import("local.zig");
 const main = @import("root");
+const ThreadSafeArenaAllocator = @import("ThreadSafeArenaAllocator.zig");
 
 const c = @cImport({
     @cInclude("git2.h");
@@ -213,7 +214,7 @@ fn getHeadCommit(
 }
 
 const CloneState = struct {
-    arena: *std.heap.ArenaAllocator,
+    arena: *ThreadSafeArenaAllocator,
     base_path: []const u8,
 };
 
@@ -300,7 +301,7 @@ fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_vo
 }
 
 fn clone(
-    arena: *std.heap.ArenaAllocator,
+    arena: *ThreadSafeArenaAllocator,
     url: []const u8,
     commit: []const u8,
     path: []const u8,
@@ -436,7 +437,7 @@ pub fn resolutionToCachePath(
 }
 
 fn fetch(
-    arena: *std.heap.ArenaAllocator,
+    arena: *ThreadSafeArenaAllocator,
     dep: Dependency.Source,
     done: bool,
     commit: Resolution,
@@ -493,23 +494,22 @@ fn fetch(
             &arena.allocator,
             std.math.maxInt(usize),
         );
-        const project = try Project.fromUnownedText(allocator, base_path, text);
-        defer {
-            project.transferToArena(arena);
-            project.destroy();
-        }
+        const project = try Project.fromUnownedText(arena, base_path, text);
+        defer project.destroy();
 
         try deps.appendSlice(allocator, project.deps.items);
     }
 }
 
 pub fn dedupeResolveAndFetch(
+    arena: *ThreadSafeArenaAllocator,
     dep_table: []const Dependency.Source,
     resolutions: []const ResolutionEntry,
     fetch_queue: *FetchQueue,
     i: usize,
 ) void {
     dedupeResolveAndFetchImpl(
+        arena,
         dep_table,
         resolutions,
         fetch_queue,
@@ -520,12 +520,12 @@ pub fn dedupeResolveAndFetch(
 }
 
 fn dedupeResolveAndFetchImpl(
+    arena: *ThreadSafeArenaAllocator,
     dep_table: []const Dependency.Source,
     resolutions: []const ResolutionEntry,
     fetch_queue: *FetchQueue,
     i: usize,
 ) FetchError!void {
-    const arena = &fetch_queue.items(.arena)[i];
     const dep_idx = fetch_queue.items(.edge)[i].to;
 
     var commit: []const u8 = undefined;

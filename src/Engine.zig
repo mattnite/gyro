@@ -3,10 +3,10 @@ const builtin = @import("builtin");
 const Dependency = @import("Dependency.zig");
 const Project = @import("Project.zig");
 const utils = @import("utils.zig");
+const ThreadSafeArenaAllocator = @import("ThreadSafeArenaAllocator.zig");
 
 const Engine = @This();
 const Allocator = std.mem.Allocator;
-const ArenaAllocator = std.heap.ArenaAllocator;
 const StructField = std.builtin.TypeInfo.StructField;
 const UnionField = std.builtin.TypeInfo.UnionField;
 const testing = std.testing;
@@ -177,7 +177,6 @@ pub fn MultiQueueImpl(comptime Resolution: type, comptime Error: type) type {
             new_entry: Resolution,
             err: Error,
         } = undefined,
-        arena: ArenaAllocator,
         path: ?[]const u8 = null,
         deps: std.ArrayListUnmanaged(Dependency),
     });
@@ -278,9 +277,6 @@ pub const FetchQueue = blk: {
 
         pub fn deinit(self: *Self, allocator: *Allocator) void {
             inline for (Sources) |source| {
-                for (@field(self.tables, source.name).items(.arena)) |arena|
-                    arena.deinit();
-
                 @field(self.tables, source.name).deinit(allocator);
             }
         }
@@ -294,7 +290,6 @@ pub const FetchQueue = blk: {
             inline for (Sources) |source| {
                 if (src_type == @field(Dependency.SourceType, source.name)) {
                     try @field(self.tables, source.name).append(allocator, .{
-                        .arena = ArenaAllocator.init(allocator),
                         .edge = edge,
                         .deps = std.ArrayListUnmanaged(Dependency){},
                     });
@@ -313,25 +308,12 @@ pub const FetchQueue = blk: {
             } else true;
         }
 
-        pub fn clearAndLoad(self: *Self, arena: *ArenaAllocator, next: Next) !void {
+        pub fn clearAndLoad(self: *Self, allocator: *Allocator, next: Next) !void {
             // clear current table
             inline for (Sources) |source| {
-                for (@field(self.tables, source.name).items(.deps)) |*dep| {
-                    dep.deinit(arena.child_allocator);
-                }
-
-                for (@field(self.tables, source.name).items(.arena)) |*thread_arena| {
-                    while (thread_arena.state.buffer_list.popFirst()) |node| {
-                        arena.state.buffer_list.prepend(node);
-                    }
-
-                    arena.state.end_index += thread_arena.state.end_index;
-                }
-
                 @field(self.tables, source.name).shrinkRetainingCapacity(0);
                 for (@field(next.tables, source.name).items) |edge| {
-                    try @field(self.tables, source.name).append(arena.child_allocator, .{
-                        .arena = ArenaAllocator.init(arena.child_allocator),
+                    try @field(self.tables, source.name).append(allocator, .{
                         .edge = edge,
                         .deps = std.ArrayListUnmanaged(Dependency){},
                     });
@@ -341,6 +323,7 @@ pub const FetchQueue = blk: {
 
         pub fn parallelFetch(
             self: *Self,
+            arena: *ThreadSafeArenaAllocator,
             dep_table: DepTable,
             resolutions: Resolutions,
         ) !void {
@@ -355,6 +338,7 @@ pub const FetchQueue = blk: {
                         .{},
                         source.dedupeResolveAndFetch,
                         .{
+                            arena,
                             dep_table.items,
                             @field(resolutions.tables, source.name).items,
                             &@field(self.tables, source.name),
@@ -380,7 +364,7 @@ pub const FetchQueue = blk: {
 };
 
 allocator: *Allocator,
-arena: ArenaAllocator,
+arena: ThreadSafeArenaAllocator,
 project: *Project,
 dep_table: DepTable,
 edges: std.ArrayListUnmanaged(Edge),
@@ -399,9 +383,6 @@ pub fn init(
 
     var fetch_queue = FetchQueue.init();
     errdefer fetch_queue.deinit(allocator);
-
-    var arena = ArenaAllocator.init(allocator);
-    errdefer arena.deinit();
 
     for (project.deps.items) |dep| {
         try dep_table.append(allocator, dep.src);
@@ -430,7 +411,7 @@ pub fn init(
 
     return Engine{
         .allocator = allocator,
-        .arena = arena,
+        .arena = ThreadSafeArenaAllocator.init(allocator),
         .project = project,
         .dep_table = dep_table,
         .edges = std.ArrayListUnmanaged(Edge){},
@@ -473,7 +454,7 @@ pub fn fetch(self: *Engine) !void {
         defer next.deinit(self.allocator);
 
         {
-            try self.fetch_queue.parallelFetch(self.dep_table, self.resolutions);
+            try self.fetch_queue.parallelFetch(&self.arena, self.dep_table, self.resolutions);
 
             // inline for workaround because the compiler wasn't generating the right code for this
             var explained = false;
@@ -548,7 +529,7 @@ pub fn fetch(self: *Engine) !void {
             }
         }
 
-        try self.fetch_queue.clearAndLoad(&self.arena, next);
+        try self.fetch_queue.clearAndLoad(self.allocator, next);
     }
 
     // TODO: check for circular dependencies
@@ -795,7 +776,7 @@ fn recursivePrint(pkg: std.build.Pkg, depth: usize) void {
 }
 
 /// arena only stores the arraylists, not text, return slice is allocated in the arena
-pub fn genBuildDeps(self: Engine, arena: *ArenaAllocator) !std.ArrayList(std.build.Pkg) {
+pub fn genBuildDeps(self: Engine, arena: *ThreadSafeArenaAllocator) !std.ArrayList(std.build.Pkg) {
     const allocator = arena.child_allocator;
 
     var ret = std.ArrayList(std.build.Pkg).init(allocator);
@@ -887,7 +868,7 @@ test "fetch" {
     var fb = std.io.fixedBufferStream(&text);
     var engine = Engine{
         .allocator = testing.allocator,
-        .arena = ArenaAllocator.init(testing.allocator),
+        .arena = ThreadSafeArenaAllocator.init(testing.allocator),
         .dep_table = DepTable{},
         .edges = std.ArrayListUnmanaged(Edge){},
         .fetch_queue = FetchQueue.init(),
@@ -903,7 +884,7 @@ test "writeLockfile" {
     var fb = std.io.fixedBufferStream(&text);
     var engine = Engine{
         .allocator = testing.allocator,
-        .arena = ArenaAllocator.init(testing.allocator),
+        .arena = ThreadSafeArenaAllocator.init(testing.allocator),
         .dep_table = DepTable{},
         .edges = std.ArrayListUnmanaged(Edge){},
         .fetch_queue = FetchQueue.init(),

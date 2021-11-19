@@ -6,11 +6,12 @@ const zzz = @import("zzz");
 const Dependency = @import("Dependency.zig");
 const Project = @import("Project.zig");
 const utils = @import("utils.zig");
+const ThreadSafeArenaAllocator = @import("ThreadSafeArenaAllocator.zig");
 
 const Self = @This();
 const Allocator = std.mem.Allocator;
 
-arena: std.heap.ArenaAllocator,
+arena: ThreadSafeArenaAllocator,
 name: []const u8,
 version: version.Semver,
 project: *Project,
@@ -31,7 +32,7 @@ pub fn init(
     project: *Project,
 ) !Self {
     var ret = Self{
-        .arena = std.heap.ArenaAllocator.init(allocator),
+        .arena = ThreadSafeArenaAllocator.init(allocator),
         .name = name,
         .version = ver,
         .project = project,
@@ -184,7 +185,7 @@ pub fn bundle(self: *Self, root: std.fs.Dir, output_dir: std.fs.Dir) !void {
 
 pub fn addToZNode(
     self: Self,
-    arena: *std.heap.ArenaAllocator,
+    arena: *ThreadSafeArenaAllocator,
     tree: *zzz.ZTree(1, 1000),
     parent: *zzz.ZNode,
 ) !void {
@@ -194,10 +195,10 @@ pub fn addToZNode(
 
     inline for (std.meta.fields(Self)) |field| {
         if (@TypeOf(@field(self, field.name)) == ?[]const u8) {
-            if (@field(self, field.name)) |value| {
-                try utils.zPutKeyString(tree, node, field.name, value);
-            } else if (std.mem.eql(u8, field.name, "node")) {
-                try utils.zPutKeyString(tree, node, field.name, "src/main.zig");
+            if (!std.mem.eql(u8, field.name, "root")) {
+                if (@field(self, field.name)) |value| {
+                    try utils.zPutKeyString(tree, node, field.name, value);
+                }
             }
         }
     }
@@ -205,5 +206,11 @@ pub fn addToZNode(
     if (self.tags.items.len > 0) {
         var tags = try tree.addNode(node, .{ .String = "tags" });
         for (self.tags.items) |tag| _ = try tree.addNode(tags, .{ .String = tag });
+    }
+
+    try utils.zPutKeyString(tree, node, "root", if (self.root) |path| path else utils.default_root);
+    if (self.files.items.len > 0) {
+        var files = try tree.addNode(node, .{ .String = "files" });
+        for (self.files.items) |file| _ = try tree.addNode(files, .{ .String = file });
     }
 }

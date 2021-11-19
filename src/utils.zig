@@ -107,7 +107,7 @@ pub fn escape(allocator: *std.mem.Allocator, str: []const u8) ![]const u8 {
     } else try allocator.dupe(u8, str);
 }
 
-pub fn joinPathConvertSep(arena: *std.heap.ArenaAllocator, inputs: []const []const u8) ![]const u8 {
+pub fn joinPathConvertSep(arena: *@import("ThreadSafeArenaAllocator.zig"), inputs: []const []const u8) ![]const u8 {
     const allocator = arena.child_allocator;
     var components = try std.ArrayList([]const u8).initCapacity(allocator, inputs.len);
     defer {
