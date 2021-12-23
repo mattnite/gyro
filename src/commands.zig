@@ -23,7 +23,7 @@ fn assertFileExistsInCwd(subpath: []const u8) !void {
 }
 
 // move to an explicit step later, for now make it automatic and slick
-fn migrateGithubLockfile(allocator: *Allocator, file: std.fs.File) !void {
+fn migrateGithubLockfile(allocator: Allocator, file: std.fs.File) !void {
     var to_lines = std.ArrayList([]const u8).init(allocator);
     defer to_lines.deinit();
 
@@ -52,7 +52,7 @@ fn migrateGithubLockfile(allocator: *Allocator, file: std.fs.File) !void {
         _ = line_it.next() orelse unreachable;
 
         const new_line = try std.fmt.allocPrint(
-            &arena.allocator,
+            arena.allocator,
             "git https://github.com/{s}/{s}.git {s} {s} {s}",
             .{
                 .user = line_it.next() orelse return error.NoUser,
@@ -80,7 +80,7 @@ fn migrateGithubLockfile(allocator: *Allocator, file: std.fs.File) !void {
     try file.seekTo(0);
 }
 
-pub fn fetch(allocator: *Allocator) !void {
+pub fn fetch(allocator: Allocator) !void {
     var arena = ThreadSafeArenaAllocator.init(allocator);
     defer arena.deinit();
 
@@ -117,7 +117,7 @@ pub fn fetch(allocator: *Allocator) !void {
 }
 
 pub fn update(
-    allocator: *Allocator,
+    allocator: Allocator,
     targets: []const []const u8,
 ) !void {
     if (targets.len == 0) {
@@ -165,7 +165,7 @@ const EnvInfo = struct {
     version: []const u8,
 };
 
-pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
+pub fn build(allocator: Allocator, args: *clap.args.OsIterator) !void {
     try assertFileExistsInCwd("build.zig");
 
     var fifo = std.fifo.LinearFifo(u8, .{ .Dynamic = {} }).init(allocator);
@@ -265,7 +265,7 @@ pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
     defer pkgs.deinit();
 
     const b = try std.build.Builder.create(
-        &arena.allocator,
+        arena.allocator,
         env.zig_exe,
         ".",
         "zig-cache",
@@ -316,7 +316,7 @@ pub fn build(allocator: *Allocator, args: *clap.args.OsIterator) !void {
 }
 
 pub fn package(
-    allocator: *Allocator,
+    allocator: Allocator,
     output_dir: ?[]const u8,
     names: []const []const u8,
 ) !void {
@@ -379,7 +379,7 @@ fn maybePrintKey(
 }
 
 pub fn init(
-    allocator: *Allocator,
+    allocator: Allocator,
     link: ?[]const u8,
 ) !void {
     const file = std.fs.cwd().createFile("gyro.zzz", .{ .exclusive = true }) catch |err| {
@@ -473,7 +473,7 @@ fn verifyUniqueAlias(alias: []const u8, deps: []const Dependency) !void {
 }
 
 pub fn add(
-    allocator: *Allocator,
+    allocator: Allocator,
     src_tag: Dependency.SourceType,
     alias: ?[]const u8,
     build_deps: bool,
@@ -530,7 +530,7 @@ pub fn add(
         const info = try utils.parseUserRepo(target);
         const dep = switch (src_tag) {
             .github => blk: {
-                var value_tree = try api.getGithubRepo(&arena.allocator, info.user, info.repo);
+                var value_tree = try api.getGithubRepo(arena.allocator, info.user, info.repo);
                 if (value_tree.root != .Object) {
                     std.log.err("Invalid JSON response from Github", .{});
                     return error.Explained;
@@ -543,10 +543,10 @@ pub fn add(
                 } else "main";
 
                 const text_opt = try api.getGithubGyroFile(
-                    &arena.allocator,
+                    arena.allocator,
                     info.user,
                     info.repo,
-                    try api.getHeadCommit(&arena.allocator, info.user, info.repo, default_branch),
+                    try api.getHeadCommit(arena.allocator, info.user, info.repo, default_branch),
                 );
 
                 const root_file = if (root_path) |rp| rp else if (text_opt) |t| get_root: {
@@ -568,7 +568,7 @@ pub fn add(
                 const name = try utils.normalizeName(info.repo);
                 try verifyUniqueAlias(name, dep_list.items);
 
-                const url = try std.fmt.allocPrint(&arena.allocator, "https://github.com/{s}/{s}.git", .{
+                const url = try std.fmt.allocPrint(arena.allocator, "https://github.com/{s}/{s}.git", .{
                     info.user,
                     info.repo,
                 });
@@ -585,7 +585,7 @@ pub fn add(
                 };
             },
             .pkg => blk: {
-                const latest = try api.getLatest(&arena.allocator, repository, info.user, info.repo, null);
+                const latest = try api.getLatest(arena.allocator, repository, info.user, info.repo, null);
                 var buf = try arena.allocator.alloc(u8, 80);
                 var stream = std.io.fixedBufferStream(buf);
                 try stream.writer().print("^{}", .{latest});
@@ -663,7 +663,7 @@ pub fn add(
 }
 
 pub fn rm(
-    allocator: *Allocator,
+    allocator: Allocator,
     build_deps: bool,
     targets: []const []const u8,
 ) !void {
@@ -720,7 +720,7 @@ pub fn rm(
     try project.toFile(file);
 }
 
-pub fn publish(allocator: *Allocator, pkg: ?[]const u8) !void {
+pub fn publish(allocator: Allocator, pkg: ?[]const u8) !void {
     const client_id = "ea14bba19a49f4cba053";
     const scope = "read:user user:email";
 
@@ -864,7 +864,7 @@ fn moveDeps(redirected_deps: []const Dependency, project_deps: []Dependency) !vo
 }
 
 /// make sure there are no entries in the redirect file
-fn validateNoRedirects(allocator: *Allocator) !void {
+fn validateNoRedirects(allocator: Allocator) !void {
     var arena = ThreadSafeArenaAllocator.init(allocator);
     defer arena.deinit();
 
@@ -886,7 +886,7 @@ fn validateNoRedirects(allocator: *Allocator) !void {
 }
 
 pub fn redirect(
-    allocator: *Allocator,
+    allocator: Allocator,
     check: bool,
     clean: bool,
     build_dep: bool,

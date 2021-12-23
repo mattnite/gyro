@@ -5,7 +5,7 @@ extern fn git_mbedtls__set_cert_location(path: ?[*:0]const u8, file: ?[*:0]const
 extern fn git_mbedtls__set_cert_buf(buf: [*]const u8, len: usize) c_int;
 
 /// based off of golang's system cert finding code: https://golang.org/src/crypto/x509/
-pub fn loadSystemCerts(allocator: *std.mem.Allocator) !void {
+pub fn loadSystemCerts(allocator: std.mem.Allocator) !void {
     switch (builtin.target.os.tag) {
         .windows => {
             //const c = @cImport({

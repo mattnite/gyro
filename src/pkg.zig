@@ -47,7 +47,7 @@ const FetchQueue = Engine.MultiQueueImpl(Resolution, FetchError);
 const ResolutionTable = std.ArrayListUnmanaged(ResolutionEntry);
 
 pub fn deserializeLockfileEntry(
-    allocator: *Allocator,
+    allocator: Allocator,
     it: *std.mem.TokenIterator(u8),
     resolutions: *ResolutionTable,
 ) !void {
@@ -115,12 +115,12 @@ fn updateBasePaths(
         );
         defer arena.child_allocator.free(resolved);
 
-        dep.src.local.path = try std.fs.path.relative(&arena.allocator, ".", resolved);
+        dep.src.local.path = try std.fs.path.relative(arena.allocator, ".", resolved);
     };
 }
 
 fn fmtCachePath(
-    allocator: *Allocator,
+    allocator: Allocator,
     pkg_name: []const u8,
     user: []const u8,
     semver: version.Semver,
@@ -135,7 +135,7 @@ fn fmtCachePath(
 }
 
 pub fn resolutionToCachePath(
-    allocator: *Allocator,
+    allocator: Allocator,
     res: ResolutionEntry,
 ) ![]const u8 {
     return fmtCachePath(
@@ -207,7 +207,7 @@ fn fetch(
     const manifest = try entry.dir.openFile("manifest.zzz", .{});
     defer manifest.close();
 
-    const text = try manifest.reader().readAllAlloc(&arena.allocator, std.math.maxInt(usize));
+    const text = try manifest.reader().readAllAlloc(arena.allocator, std.math.maxInt(usize));
     var ztree = zzz.ZTree(1, 1000){};
     var root = try ztree.appendText(text);
 
@@ -290,7 +290,7 @@ fn dedupeResolveAndFetchImpl(
     } else {
         fetch_queue.items(.result)[i] = .{
             .new_entry = try api.getLatest(
-                &arena.allocator,
+                arena.allocator,
                 dep_table[dep_idx].pkg.repository,
                 dep_table[dep_idx].pkg.user,
                 dep_table[dep_idx].pkg.name,
@@ -317,7 +317,7 @@ fn dedupeResolveAndFetchImpl(
 }
 
 pub fn updateResolution(
-    allocator: *Allocator,
+    allocator: Allocator,
     resolutions: *ResolutionTable,
     dep_table: []const Dependency.Source,
     fetch_queue: *FetchQueue,

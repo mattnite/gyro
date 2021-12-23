@@ -52,7 +52,7 @@ const FetchQueue = Engine.MultiQueueImpl(Resolution, FetchError);
 const ResolutionTable = std.ArrayListUnmanaged(ResolutionEntry);
 
 pub fn deserializeLockfileEntry(
-    allocator: *Allocator,
+    allocator: Allocator,
     it: *std.mem.TokenIterator(u8),
     resolutions: *ResolutionTable,
 ) !void {
@@ -119,7 +119,7 @@ const RemoteHeadEntry = struct {
 };
 
 fn getHeadCommit(
-    allocator: *Allocator,
+    allocator: Allocator,
     url: []const u8,
     ref: []const u8,
 ) ![]const u8 {
@@ -132,7 +132,7 @@ fn getHeadCommit(
         } else return allocator.dupe(u8, ref);
     }
 
-    const url_z = try std.mem.dupeZ(allocator, u8, url);
+    const url_z = try allocator.dupeZ(u8, url);
     defer allocator.free(url_z);
 
     var remote: ?*c.git_remote = null;
@@ -187,7 +187,7 @@ fn getHeadCommit(
 
     var i: usize = 0;
     while (i < refs_len) : (i += 1) {
-        const len = std.mem.lenZ(refs_ptr[i].*.name);
+        const len = std.mem.len(refs_ptr[i].*.name);
         try refs.append(.{
             .oid = undefined,
             .name = try allocator.dupeZ(u8, refs_ptr[i].*.name[0..len]),
@@ -218,14 +218,14 @@ const CloneState = struct {
     base_path: []const u8,
 };
 
-fn submoduleCb(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_void) callconv(.C) c_int {
+fn submoduleCb(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*anyopaque) callconv(.C) c_int {
     return if (submoduleCbImpl(sm, sm_name, payload)) 0 else |err| blk: {
         std.log.err("got err: {s}", .{@errorName(err)});
         break :blk -1;
     };
 }
 
-fn indexerCb(stats_c: [*c]const c.git_indexer_progress, payload: ?*c_void) callconv(.C) c_int {
+fn indexerCb(stats_c: [*c]const c.git_indexer_progress, payload: ?*anyopaque) callconv(.C) c_int {
     const stats = @ptrCast(*const c.git_indexer_progress, stats_c);
     const handle = @ptrCast(*usize, @alignCast(@alignOf(*usize), payload)).*;
 
@@ -239,13 +239,13 @@ fn indexerCb(stats_c: [*c]const c.git_indexer_progress, payload: ?*c_void) callc
     return 0;
 }
 
-fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_void) !void {
+fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*anyopaque) !void {
     const parent_state = @ptrCast(*CloneState, @alignCast(@alignOf(*CloneState), payload));
     const arena = parent_state.arena;
     const allocator = arena.child_allocator;
 
     // git always uses posix path separators
-    const sub_path = try std.mem.replaceOwned(u8, allocator, std.mem.spanZ(sm_name), "/", std.fs.path.sep_str);
+    const sub_path = try std.mem.replaceOwned(u8, allocator, std.mem.span(sm_name), "/", std.fs.path.sep_str);
     defer allocator.free(sub_path);
 
     const base_path = try std.fs.path.join(allocator, &.{ parent_state.base_path, sub_path });
@@ -259,7 +259,7 @@ fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*c_vo
 
     var handle = try main.display.createEntry(.{
         .sub = .{
-            .url = try arena.allocator.dupe(u8, std.mem.spanZ(c.git_submodule_url(sm))),
+            .url = try arena.allocator.dupe(u8, std.mem.sliceTo(c.git_submodule_url(sm), 0)),
             .commit = oid,
         },
     });
@@ -382,7 +382,7 @@ fn clone(
 }
 
 fn findPartialMatch(
-    allocator: *Allocator,
+    allocator: Allocator,
     dep_table: []const Dependency.Source,
     commit: []const u8,
     dep_idx: usize,
@@ -407,7 +407,7 @@ fn findPartialMatch(
 }
 
 fn fmtCachePath(
-    allocator: *Allocator,
+    allocator: Allocator,
     url: []const u8,
     commit: []const u8,
 ) ![]const u8 {
@@ -430,7 +430,7 @@ fn fmtCachePath(
 }
 
 pub fn resolutionToCachePath(
-    allocator: *Allocator,
+    allocator: Allocator,
     res: ResolutionEntry,
 ) ![]const u8 {
     return fmtCachePath(allocator, res.url, res.commit);
@@ -491,7 +491,7 @@ fn fetch(
         defer project_file.close();
 
         const text = try project_file.reader().readAllAlloc(
-            &arena.allocator,
+            arena.allocator,
             std.math.maxInt(usize),
         );
         const project = try Project.fromUnownedText(arena, base_path, text);
@@ -563,7 +563,7 @@ fn dedupeResolveAndFetchImpl(
         return;
     } else {
         commit = try getHeadCommit(
-            &arena.allocator,
+            arena.allocator,
             dep_table[dep_idx].git.url,
             dep_table[dep_idx].git.ref,
         );
@@ -610,7 +610,7 @@ fn dedupeResolveAndFetchImpl(
 }
 
 pub fn updateResolution(
-    allocator: *Allocator,
+    allocator: Allocator,
     resolutions: *ResolutionTable,
     dep_table: []const Dependency.Source,
     fetch_queue: *FetchQueue,

@@ -15,7 +15,7 @@ const Self = @This();
 allocator: Allocator,
 mtx: std.Thread.Mutex,
 
-child_allocator: *Allocator,
+child_allocator: Allocator,
 state: State,
 
 /// Inner state of Self. Can be stored rather than the entire Self
@@ -24,7 +24,7 @@ pub const State = struct {
     buffer_list: std.SinglyLinkedList([]u8) = @as(std.SinglyLinkedList([]u8), .{}),
     end_index: usize = 0,
 
-    pub fn promote(self: State, child_allocator: *Allocator) Self {
+    pub fn promote(self: State, child_allocator: Allocator) Self {
         return .{
             .allocator = Allocator{
                 .allocFn = alloc,
@@ -39,7 +39,7 @@ pub const State = struct {
 
 const BufNode = std.SinglyLinkedList([]u8).Node;
 
-pub fn init(child_allocator: *Allocator) Self {
+pub fn init(child_allocator: Allocator) Self {
     return (State{}).promote(child_allocator);
 }
 
@@ -68,7 +68,7 @@ fn createNode(self: *Self, prev_len: usize, minimum_size: usize) !*BufNode {
     return buf_node;
 }
 
-fn alloc(allocator: *Allocator, n: usize, ptr_align: u29, len_align: u29, ra: usize) ![]u8 {
+fn alloc(allocator: Allocator, n: usize, ptr_align: u29, len_align: u29, ra: usize) ![]u8 {
     _ = len_align;
     _ = ra;
 
@@ -102,7 +102,7 @@ fn alloc(allocator: *Allocator, n: usize, ptr_align: u29, len_align: u29, ra: us
     }
 }
 
-fn resize(allocator: *Allocator, buf: []u8, buf_align: u29, new_len: usize, len_align: u29, ret_addr: usize) Allocator.Error!usize {
+fn resize(allocator: Allocator, buf: []u8, buf_align: u29, new_len: usize, len_align: u29, ret_addr: usize) Allocator.Error!usize {
     _ = buf_align;
     _ = len_align;
     _ = ret_addr;

@@ -27,7 +27,7 @@ const FetchQueue = Engine.MultiQueueImpl(Resolution, FetchError);
 const ResolutionTable = std.ArrayListUnmanaged(ResolutionEntry);
 
 pub fn deserializeLockfileEntry(
-    allocator: *Allocator,
+    allocator: Allocator,
     it: *std.mem.TokenIterator(u8),
     resolutions: *ResolutionTable,
 ) !void {
@@ -89,7 +89,7 @@ fn findPartialMatch(dep_table: []const Dependency.Source, dep_idx: usize, edges:
     } else null;
 }
 
-fn fmtCachePath(allocator: *Allocator, url: []const u8) ![]const u8 {
+fn fmtCachePath(allocator: Allocator, url: []const u8) ![]const u8 {
     const link = try uri.parse(url);
     return std.mem.replaceOwned(
         u8,
@@ -101,7 +101,7 @@ fn fmtCachePath(allocator: *Allocator, url: []const u8) ![]const u8 {
 }
 
 pub fn resolutionToCachePath(
-    allocator: *Allocator,
+    allocator: Allocator,
     res: ResolutionEntry,
 ) ![]const u8 {
     return fmtCachePath(allocator, res.str);
@@ -160,7 +160,7 @@ fn fetch(
     });
     defer project_file.close();
 
-    const text = try project_file.reader().readAllAlloc(&arena.allocator, std.math.maxInt(usize));
+    const text = try project_file.reader().readAllAlloc(arena.allocator, std.math.maxInt(usize));
     const project = try Project.fromUnownedText(arena, base_path, text);
     defer project.destroy();
 
@@ -239,7 +239,7 @@ fn dedupeResolveAndFetchImpl(
 }
 
 pub fn updateResolution(
-    allocator: *Allocator,
+    allocator: Allocator,
     resolutions: *ResolutionTable,
     dep_table: []const Dependency.Source,
     fetch_queue: *FetchQueue,

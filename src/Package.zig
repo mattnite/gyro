@@ -26,7 +26,7 @@ source_url: ?[]const u8,
 tags: std.ArrayList([]const u8),
 
 pub fn init(
-    allocator: *Allocator,
+    allocator: Allocator,
     name: []const u8,
     ver: version.Semver,
     project: *Project,
@@ -83,7 +83,7 @@ pub fn fillFromZNode(
 fn createManifest(self: *Self, tree: *zzz.ZTree(1, 1000)) !void {
     var root = try tree.addNode(null, .Null);
     try utils.zPutKeyString(tree, root, "name", self.name);
-    var ver_str = try std.fmt.allocPrint(&self.arena.allocator, "{}", .{self.version});
+    var ver_str = try std.fmt.allocPrint(self.arena.allocator, "{}", .{self.version});
     try utils.zPutKeyString(tree, root, "version", ver_str);
 
     inline for (std.meta.fields(Self)) |field| {
@@ -113,12 +113,12 @@ fn createManifest(self: *Self, tree: *zzz.ZTree(1, 1000)) !void {
     }
 }
 
-pub fn filename(self: Self, allocator: *Allocator) ![]const u8 {
+pub fn filename(self: Self, allocator: Allocator) ![]const u8 {
     return std.fmt.allocPrint(allocator, "{s}-{}.tar", .{ self.name, self.version });
 }
 
 pub fn bundle(self: *Self, root: std.fs.Dir, output_dir: std.fs.Dir) !void {
-    const fname = try self.filename(&self.arena.allocator);
+    const fname = try self.filename(self.arena.allocator);
     const file = try output_dir.createFile(fname, .{
         .truncate = true,
         .read = true,
@@ -190,7 +190,7 @@ pub fn addToZNode(
     parent: *zzz.ZNode,
 ) !void {
     var node = try tree.addNode(parent, .{ .String = self.name });
-    var ver_str = try std.fmt.allocPrint(&arena.allocator, "{}", .{self.version});
+    var ver_str = try std.fmt.allocPrint(arena.allocator, "{}", .{self.version});
     try utils.zPutKeyString(tree, node, "version", ver_str);
 
     inline for (std.meta.fields(Self)) |field| {
