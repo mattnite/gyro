@@ -251,7 +251,7 @@ fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*anyo
     const base_path = try std.fs.path.join(allocator, &.{ parent_state.base_path, sub_path });
     defer allocator.free(base_path);
 
-    const oid = try arena.allocator.alloc(u8, c.GIT_OID_HEXSZ);
+    const oid = try arena.allocator().alloc(u8, c.GIT_OID_HEXSZ);
     _ = c.git_oid_fmt(
         oid.ptr,
         c.git_submodule_head_id(sm),
@@ -259,7 +259,7 @@ fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*anyo
 
     var handle = try main.display.createEntry(.{
         .sub = .{
-            .url = try arena.allocator.dupe(u8, std.mem.sliceTo(c.git_submodule_url(sm), 0)),
+            .url = try arena.allocator().dupe(u8, std.mem.sliceTo(c.git_submodule_url(sm), 0)),
             .commit = oid,
         },
     });
@@ -491,7 +491,7 @@ fn fetch(
         defer project_file.close();
 
         const text = try project_file.reader().readAllAlloc(
-            arena.allocator,
+            arena.allocator(),
             std.math.maxInt(usize),
         );
         const project = try Project.fromUnownedText(arena, base_path, text);
@@ -563,7 +563,7 @@ fn dedupeResolveAndFetchImpl(
         return;
     } else {
         commit = try getHeadCommit(
-            arena.allocator,
+            arena.allocator(),
             dep_table[dep_idx].git.url,
             dep_table[dep_idx].git.ref,
         );

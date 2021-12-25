@@ -47,7 +47,7 @@ pub fn loadSystemCerts(allocator: std.mem.Allocator) !void {
     }
 }
 
-fn loadUnixCerts(allocator: *std.mem.Allocator) !void {
+fn loadUnixCerts(allocator: std.mem.Allocator) !void {
     // TODO: env var overload
     const has_env_var = try std.process.hasEnvVar(allocator, "SSL_CERT_FILE");
     const files: []const [:0]const u8 = if (has_env_var) blk: {

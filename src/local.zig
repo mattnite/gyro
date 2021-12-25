@@ -93,7 +93,7 @@ fn dedupeResolveAndFetchImpl(
     });
     defer project_file.close();
 
-    const text = try project_file.reader().readAllAlloc(arena.allocator, std.math.maxInt(usize));
+    const text = try project_file.reader().readAllAlloc(arena.allocator(), std.math.maxInt(usize));
     const project = try Project.fromUnownedText(arena, dep.path, text);
     defer project.destroy();
 

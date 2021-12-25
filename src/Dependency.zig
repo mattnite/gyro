@@ -185,7 +185,7 @@ pub fn fromZNode(arena: *ThreadSafeArenaAllocator, node: *zzz.ZNode) !Self {
                 },
             },
             .github => gh: {
-                const url = try std.fmt.allocPrint(arena.allocator, "https://github.com/{s}/{s}.git", .{
+                const url = try std.fmt.allocPrint(arena.allocator(), "https://github.com/{s}/{s}.git", .{
                     (try utils.zFindString(child, "user")) orelse return error.GithubMissingUser,
                     (try utils.zFindString(child, "repo")) orelse return error.GithubMissingRepo,
                 });
@@ -923,10 +923,10 @@ pub fn addToZNode(
             std.mem.eql(u8, self.alias, pkg.name) and
             std.mem.eql(u8, pkg.repository, utils.default_repo))
         {
-            var fifo = std.fifo.LinearFifo(u8, .{ .Dynamic = {} }).init(arena.allocator);
+            var fifo = std.fifo.LinearFifo(u8, .{ .Dynamic = {} }).init(arena.allocator());
             try fifo.writer().print("{s}/{s}", .{ pkg.user, pkg.name });
             alias.value.String = fifo.readableSlice(0);
-            const ver_str = try std.fmt.allocPrint(arena.allocator, "{}", .{pkg.version});
+            const ver_str = try std.fmt.allocPrint(arena.allocator(), "{}", .{pkg.version});
             _ = try tree.addNode(alias, .{ .String = ver_str });
         } else {
             var node = try tree.addNode(alias, .{ .String = "pkg" });
@@ -936,7 +936,7 @@ pub fn addToZNode(
                 try utils.zPutKeyString(tree, node, "name", pkg.name);
             }
 
-            const ver_str = try std.fmt.allocPrint(arena.allocator, "{}", .{pkg.version});
+            const ver_str = try std.fmt.allocPrint(arena.allocator(), "{}", .{pkg.version});
             try utils.zPutKeyString(tree, node, "version", ver_str);
             if (explicit or !std.mem.eql(u8, pkg.repository, utils.default_repo)) {
                 try utils.zPutKeyString(tree, node, "repository", pkg.repository);

@@ -126,7 +126,7 @@ pub fn joinPathConvertSep(arena: *@import("ThreadSafeArenaAllocator.zig"), input
             std.fs.path.sep_str,
         ));
 
-    return std.fs.path.join(arena.allocator, components.items);
+    return std.fs.path.join(arena.allocator(), components.items);
 }
 
 test "normalize zig-zig" {

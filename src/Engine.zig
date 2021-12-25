@@ -544,7 +544,7 @@ pub fn fetch(self: *Engine) !void {
             if (@hasDecl(source, "resolutionToCachePath")) {
                 for (@field(self.resolutions.tables, source.name).items) |entry| {
                     if (entry.dep_idx != null) {
-                        try paths.putNoClobber(try source.resolutionToCachePath(self.arena.allocator, entry), {});
+                        try paths.putNoClobber(try source.resolutionToCachePath(self.arena.allocator(), entry), {});
                     }
                 }
             }
@@ -718,7 +718,7 @@ pub fn writeDepsZig(self: *Engine, writer: anytype) !void {
         switch (edge.from) {
             .root => |root| if (root == .normal) {
                 try writer.print("        artifact.addPackage(pkgs.{s});\n", .{
-                    try utils.escape(self.arena.allocator, edge.alias),
+                    try utils.escape(self.arena.allocator(), edge.alias),
                 });
             },
             else => {},
@@ -741,7 +741,7 @@ pub fn writeDepsZig(self: *Engine, writer: anytype) !void {
             \\        .path = "{s}",
             \\
         , .{
-            try utils.escape(self.arena.allocator, pkg.value_ptr.name),
+            try utils.escape(self.arena.allocator(), pkg.value_ptr.name),
             pkg.value_ptr.name,
             path,
         });
@@ -752,7 +752,7 @@ pub fn writeDepsZig(self: *Engine, writer: anytype) !void {
                 switch (edge.from) {
                     .root => |root| if (root == .normal) {
                         try writer.print("            pkgs.{s},\n", .{
-                            try utils.escape(self.arena.allocator, edge.alias),
+                            try utils.escape(self.arena.allocator(), edge.alias),
                         });
                     },
                     else => {},
@@ -800,7 +800,7 @@ pub fn genBuildDeps(self: Engine, arena: *ThreadSafeArenaAllocator) !std.ArrayLi
                     while (edge_idx < self.edges.items.len) : (edge_idx += 1) {
                         switch (self.edges.items[edge_idx].from) {
                             .index => |idx| if (idx == current) {
-                                try deps.append(arena.allocator, .{
+                                try deps.append(arena.allocator(), .{
                                     .name = self.edges.items[edge_idx].alias,
                                     .path = .{
                                         .path = self.paths.get(self.edges.items[edge_idx].to).?,

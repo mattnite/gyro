@@ -52,7 +52,7 @@ fn migrateGithubLockfile(allocator: Allocator, file: std.fs.File) !void {
         _ = line_it.next() orelse unreachable;
 
         const new_line = try std.fmt.allocPrint(
-            arena.allocator,
+            arena.allocator(),
             "git https://github.com/{s}/{s}.git {s} {s} {s}",
             .{
                 .user = line_it.next() orelse return error.NoUser,
@@ -265,7 +265,7 @@ pub fn build(allocator: Allocator, args: *clap.args.OsIterator) !void {
     defer pkgs.deinit();
 
     const b = try std.build.Builder.create(
-        arena.allocator,
+        arena.allocator(),
         env.zig_exe,
         ".",
         "zig-cache",
@@ -530,7 +530,7 @@ pub fn add(
         const info = try utils.parseUserRepo(target);
         const dep = switch (src_tag) {
             .github => blk: {
-                var value_tree = try api.getGithubRepo(arena.allocator, info.user, info.repo);
+                var value_tree = try api.getGithubRepo(arena.allocator(), info.user, info.repo);
                 if (value_tree.root != .Object) {
                     std.log.err("Invalid JSON response from Github", .{});
                     return error.Explained;
@@ -543,10 +543,10 @@ pub fn add(
                 } else "main";
 
                 const text_opt = try api.getGithubGyroFile(
-                    arena.allocator,
+                    arena.allocator(),
                     info.user,
                     info.repo,
-                    try api.getHeadCommit(arena.allocator, info.user, info.repo, default_branch),
+                    try api.getHeadCommit(arena.allocator(), info.user, info.repo, default_branch),
                 );
 
                 const root_file = if (root_path) |rp| rp else if (text_opt) |t| get_root: {
@@ -556,7 +556,7 @@ pub fn add(
                     var ret: []const u8 = utils.default_root;
                     if (subproject.packages.count() == 1)
                         ret = if (subproject.packages.iterator().next().?.value_ptr.root) |r|
-                            try arena.allocator.dupe(u8, r)
+                            try arena.allocator().dupe(u8, r)
                         else
                             utils.default_root;
 
@@ -568,7 +568,7 @@ pub fn add(
                 const name = try utils.normalizeName(info.repo);
                 try verifyUniqueAlias(name, dep_list.items);
 
-                const url = try std.fmt.allocPrint(arena.allocator, "https://github.com/{s}/{s}.git", .{
+                const url = try std.fmt.allocPrint(arena.allocator(), "https://github.com/{s}/{s}.git", .{
                     info.user,
                     info.repo,
                 });
@@ -585,8 +585,8 @@ pub fn add(
                 };
             },
             .pkg => blk: {
-                const latest = try api.getLatest(arena.allocator, repository, info.user, info.repo, null);
-                var buf = try arena.allocator.alloc(u8, 80);
+                const latest = try api.getLatest(arena.allocator(), repository, info.user, info.repo, null);
+                var buf = try arena.allocator().alloc(u8, 80);
                 var stream = std.io.fixedBufferStream(buf);
                 try stream.writer().print("^{}", .{latest});
 
@@ -613,14 +613,14 @@ pub fn add(
 
                 const detected_root = if (subproject.packages.count() == 1)
                     if (subproject.packages.iterator().next().?.value_ptr.root) |r|
-                        try arena.allocator.dupe(u8, r)
+                        try arena.allocator().dupe(u8, r)
                     else
                         null
                 else
                     null;
 
                 const detected_alias = if (subproject.packages.count() == 1)
-                    try arena.allocator.dupe(u8, subproject.packages.iterator().next().?.value_ptr.name)
+                    try arena.allocator().dupe(u8, subproject.packages.iterator().next().?.value_ptr.name)
                 else
                     null;
 
@@ -979,7 +979,7 @@ pub fn redirect(
                     });
                     return error.Explained;
                 };
-                break :blk try arena.allocator.dupe(u8, result.root orelse "src/main.zig");
+                break :blk try arena.allocator().dupe(u8, result.root orelse "src/main.zig");
             },
             .github => |github| github.root,
             .git => |git| git.root,
