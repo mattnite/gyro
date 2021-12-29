@@ -52,7 +52,7 @@ const UpdateState = struct {
     errors: std.AutoHashMap(usize, void),
     new_size: ?Size,
 
-    fn init(allocator: *std.mem.Allocator) UpdateState {
+    fn init(allocator: std.mem.Allocator) UpdateState {
         return UpdateState{
             .current_len = 0,
             .entries = std.ArrayList(Entry).init(allocator),
@@ -88,7 +88,7 @@ const Self = @This();
 mode: union(enum) {
     direct_log: void,
     ansi: struct {
-        allocator: *std.mem.Allocator,
+        allocator: std.mem.Allocator,
         arena: std.heap.ArenaAllocator,
         entries: std.ArrayList(Entry),
         logs: std.ArrayList([]const u8),
@@ -108,7 +108,7 @@ mode: union(enum) {
     },
 },
 
-pub fn init(location: *Self, allocator: *std.mem.Allocator) !void {
+pub fn init(location: *Self, allocator: std.mem.Allocator) !void {
     var size = Size{
         .rows = 24,
         .cols = 80,
@@ -244,8 +244,8 @@ fn entryFromGit(
 
     return Entry{
         .tag = tag,
-        .label = try self.mode.ansi.arena.allocator.dupe(u8, url[begin .. url.len - end_offset]),
-        .version = try self.mode.ansi.arena.allocator.dupe(u8, commit[0..std.math.min(commit.len, 8)]),
+        .label = try self.mode.ansi.arena.allocator().dupe(u8, url[begin .. url.len - end_offset]),
+        .version = try self.mode.ansi.arena.allocator().dupe(u8, commit[0..std.math.min(commit.len, 8)]),
         .progress = .{
             .current = 0,
             .total = 1,
@@ -278,7 +278,7 @@ pub fn createEntry(self: *Self, source: Source) !usize {
             return 0;
         },
         .ansi => |*ansi| {
-            const allocator = &ansi.arena.allocator;
+            const allocator = ansi.arena.allocator();
             const new_entry = switch (source) {
                 .git => |git| try self.entryFromGit("git", git.url, git.commit),
                 .sub => |sub| try self.entryFromGit("sub", sub.url, sub.commit),

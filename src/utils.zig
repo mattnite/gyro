@@ -95,7 +95,7 @@ pub fn normalizeName(name: []const u8) ![]const u8 {
     return name[begin..end];
 }
 
-pub fn escape(allocator: *std.mem.Allocator, str: []const u8) ![]const u8 {
+pub fn escape(allocator: std.mem.Allocator, str: []const u8) ![]const u8 {
     return for (str) |c| {
         if (!std.ascii.isAlNum(c) and c != '_') {
             var buf = try allocator.alloc(u8, str.len + 3);
@@ -126,7 +126,7 @@ pub fn joinPathConvertSep(arena: *@import("ThreadSafeArenaAllocator.zig"), input
             std.fs.path.sep_str,
         ));
 
-    return std.fs.path.join(&arena.allocator, components.items);
+    return std.fs.path.join(arena.allocator(), components.items);
 }
 
 test "normalize zig-zig" {

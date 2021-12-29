@@ -111,7 +111,7 @@ pub const Resolutions = blk: {
         edges: Edges,
         const Self = @This();
 
-        pub fn deinit(self: *Self, allocator: *Allocator) void {
+        pub fn deinit(self: *Self, allocator: Allocator) void {
             inline for (Sources) |source| {
                 @field(self.tables, source.name).deinit(allocator);
                 @field(self.edges, source.name).deinit(allocator);
@@ -120,7 +120,7 @@ pub const Resolutions = blk: {
             allocator.free(self.text);
         }
 
-        pub fn fromReader(allocator: *Allocator, reader: anytype) !Self {
+        pub fn fromReader(allocator: Allocator, reader: anytype) !Self {
             var ret = Self{
                 .text = try reader.readAllAlloc(allocator, std.math.maxInt(usize)),
                 .tables = undefined,
@@ -242,14 +242,14 @@ pub const FetchQueue = blk: {
                 return ret;
             }
 
-            pub fn deinit(self: *@This(), allocator: *Allocator) void {
+            pub fn deinit(self: *@This(), allocator: Allocator) void {
                 inline for (Sources) |source|
                     @field(self.tables, source.name).deinit(allocator);
             }
 
             pub fn append(
                 self: *@This(),
-                allocator: *Allocator,
+                allocator: Allocator,
                 src_type: Dependency.SourceType,
                 edge: Edge,
             ) !void {
@@ -275,7 +275,7 @@ pub const FetchQueue = blk: {
             return ret;
         }
 
-        pub fn deinit(self: *Self, allocator: *Allocator) void {
+        pub fn deinit(self: *Self, allocator: Allocator) void {
             inline for (Sources) |source| {
                 @field(self.tables, source.name).deinit(allocator);
             }
@@ -283,7 +283,7 @@ pub const FetchQueue = blk: {
 
         pub fn append(
             self: *Self,
-            allocator: *Allocator,
+            allocator: Allocator,
             src_type: Dependency.SourceType,
             edge: Edge,
         ) !void {
@@ -308,7 +308,7 @@ pub const FetchQueue = blk: {
             } else true;
         }
 
-        pub fn clearAndLoad(self: *Self, allocator: *Allocator, next: Next) !void {
+        pub fn clearAndLoad(self: *Self, allocator: Allocator, next: Next) !void {
             // clear current table
             inline for (Sources) |source| {
                 @field(self.tables, source.name).shrinkRetainingCapacity(0);
@@ -353,7 +353,7 @@ pub const FetchQueue = blk: {
                     th.?.join();
         }
 
-        pub fn cleanupDeps(self: *Self, allocator: *Allocator) void {
+        pub fn cleanupDeps(self: *Self, allocator: Allocator) void {
             _ = self;
             _ = allocator;
             //inline for (Sources) |source|
@@ -363,7 +363,7 @@ pub const FetchQueue = blk: {
     };
 };
 
-allocator: *Allocator,
+allocator: Allocator,
 arena: ThreadSafeArenaAllocator,
 project: *Project,
 dep_table: DepTable,
@@ -373,7 +373,7 @@ resolutions: Resolutions,
 paths: std.AutoHashMapUnmanaged(usize, []const u8),
 
 pub fn init(
-    allocator: *Allocator,
+    allocator: Allocator,
     project: *Project,
     lockfile_reader: anytype,
 ) !Engine {
@@ -544,7 +544,7 @@ pub fn fetch(self: *Engine) !void {
             if (@hasDecl(source, "resolutionToCachePath")) {
                 for (@field(self.resolutions.tables, source.name).items) |entry| {
                     if (entry.dep_idx != null) {
-                        try paths.putNoClobber(try source.resolutionToCachePath(&self.arena.allocator, entry), {});
+                        try paths.putNoClobber(try source.resolutionToCachePath(self.arena.allocator(), entry), {});
                     }
                 }
             }
@@ -718,7 +718,7 @@ pub fn writeDepsZig(self: *Engine, writer: anytype) !void {
         switch (edge.from) {
             .root => |root| if (root == .normal) {
                 try writer.print("        artifact.addPackage(pkgs.{s});\n", .{
-                    try utils.escape(&self.arena.allocator, edge.alias),
+                    try utils.escape(self.arena.allocator(), edge.alias),
                 });
             },
             else => {},
@@ -741,7 +741,7 @@ pub fn writeDepsZig(self: *Engine, writer: anytype) !void {
             \\        .path = "{s}",
             \\
         , .{
-            try utils.escape(&self.arena.allocator, pkg.value_ptr.name),
+            try utils.escape(self.arena.allocator(), pkg.value_ptr.name),
             pkg.value_ptr.name,
             path,
         });
@@ -752,7 +752,7 @@ pub fn writeDepsZig(self: *Engine, writer: anytype) !void {
                 switch (edge.from) {
                     .root => |root| if (root == .normal) {
                         try writer.print("            pkgs.{s},\n", .{
-                            try utils.escape(&self.arena.allocator, edge.alias),
+                            try utils.escape(self.arena.allocator(), edge.alias),
                         });
                     },
                     else => {},
@@ -800,7 +800,7 @@ pub fn genBuildDeps(self: Engine, arena: *ThreadSafeArenaAllocator) !std.ArrayLi
                     while (edge_idx < self.edges.items.len) : (edge_idx += 1) {
                         switch (self.edges.items[edge_idx].from) {
                             .index => |idx| if (idx == current) {
-                                try deps.append(&arena.allocator, .{
+                                try deps.append(arena.allocator(), .{
                                     .name = self.edges.items[edge_idx].alias,
                                     .path = .{
                                         .path = self.paths.get(self.edges.items[edge_idx].to).?,

@@ -26,7 +26,7 @@ const ResolutionTable = std.ArrayListUnmanaged(ResolutionEntry);
 
 /// local source types should never be in the lockfile
 pub fn deserializeLockfileEntry(
-    allocator: *Allocator,
+    allocator: Allocator,
     it: *std.mem.TokenIterator(u8),
     resolutions: *ResolutionTable,
 ) !void {
@@ -93,7 +93,7 @@ fn dedupeResolveAndFetchImpl(
     });
     defer project_file.close();
 
-    const text = try project_file.reader().readAllAlloc(&arena.allocator, std.math.maxInt(usize));
+    const text = try project_file.reader().readAllAlloc(arena.allocator(), std.math.maxInt(usize));
     const project = try Project.fromUnownedText(arena, dep.path, text);
     defer project.destroy();
 
@@ -104,7 +104,7 @@ fn dedupeResolveAndFetchImpl(
 }
 
 pub fn updateResolution(
-    allocator: *Allocator,
+    allocator: Allocator,
     resolutions: *ResolutionTable,
     dep_table: []const Dependency.Source,
     fetch_queue: *FetchQueue,

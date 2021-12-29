@@ -10,7 +10,7 @@ const Allocator = std.mem.Allocator;
 
 const Self = @This();
 
-allocator: *Allocator,
+allocator: Allocator,
 arena: *ThreadSafeArenaAllocator,
 base_dir: []const u8,
 text: []const u8,
@@ -106,7 +106,7 @@ fn create(
                         );
                         defer allocator.free(resolved);
 
-                        dep.src.local.path = try std.fs.path.relative(&ret.arena.allocator, ".", resolved);
+                        dep.src.local.path = try std.fs.path.relative(ret.arena.allocator(), ".", resolved);
                     }
 
                     try @field(ret, deps_field).append(dep);

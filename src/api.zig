@@ -11,7 +11,7 @@ const utils = @import("utils.zig");
 const Allocator = std.mem.Allocator;
 
 pub fn getLatest(
-    allocator: *Allocator,
+    allocator: Allocator,
     repository: []const u8,
     user: []const u8,
     package: []const u8,
@@ -80,7 +80,7 @@ pub fn getLatest(
 }
 
 pub fn getHeadCommit(
-    allocator: *Allocator,
+    allocator: Allocator,
     user: []const u8,
     repo: []const u8,
     ref: []const u8,
@@ -109,7 +109,7 @@ pub fn getHeadCommit(
 }
 
 pub fn getPkg(
-    allocator: *Allocator,
+    allocator: Allocator,
     repository: []const u8,
     user: []const u8,
     package: []const u8,
@@ -161,7 +161,7 @@ const HttpCallbackStream = struct {
 };
 
 fn getTarGzImpl(
-    allocator: *Allocator,
+    allocator: Allocator,
     url: []const u8,
     dir: std.fs.Dir,
     skip_depth: usize,
@@ -188,7 +188,7 @@ fn getTarGzImpl(
 }
 
 pub fn getTarGz(
-    allocator: *Allocator,
+    allocator: Allocator,
     url: []const u8,
     dir: std.fs.Dir,
     cb: ?HttpCallback,
@@ -198,7 +198,7 @@ pub fn getTarGz(
 }
 
 pub fn getGithubTarGz(
-    allocator: *Allocator,
+    allocator: Allocator,
     user: []const u8,
     repo: []const u8,
     commit: []const u8,
@@ -219,7 +219,7 @@ pub fn getGithubTarGz(
 }
 
 pub fn getGithubRepo(
-    allocator: *Allocator,
+    allocator: Allocator,
     user: []const u8,
     repo: []const u8,
 ) !std.json.ValueTree {
@@ -247,7 +247,7 @@ pub fn getGithubRepo(
 }
 
 pub fn getGithubTopics(
-    allocator: *Allocator,
+    allocator: Allocator,
     user: []const u8,
     repo: []const u8,
 ) !std.json.ValueTree {
@@ -271,7 +271,7 @@ pub fn getGithubTopics(
 }
 
 pub fn getGithubGyroFile(
-    allocator: *Allocator,
+    allocator: Allocator,
     user: []const u8,
     repo: []const u8,
     commit: []const u8,
@@ -311,7 +311,7 @@ pub const DeviceCodeResponse = struct {
 };
 
 pub fn postDeviceCode(
-    allocator: *Allocator,
+    allocator: Allocator,
     client_id: []const u8,
     scope: []const u8,
 ) !DeviceCodeResponse {
@@ -340,7 +340,7 @@ const PollDeviceCodeResponse = struct {
 };
 
 pub fn pollDeviceCode(
-    allocator: *Allocator,
+    allocator: Allocator,
     client_id: []const u8,
     device_code: []const u8,
 ) !?[]const u8 {
@@ -376,7 +376,7 @@ pub fn pollDeviceCode(
 }
 
 pub fn postPublish(
-    allocator: *Allocator,
+    allocator: Allocator,
     access_token: []const u8,
     pkg: *Package,
 ) !void {
@@ -417,7 +417,7 @@ pub fn postPublish(
 
 // HTTP request with redirect
 fn request(
-    allocator: *std.mem.Allocator,
+    allocator: std.mem.Allocator,
     method: zfetch.Method,
     url: []const u8,
     headers: *zfetch.Headers,
