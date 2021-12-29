@@ -26,11 +26,14 @@ jobs:
     - name: Build 32-bit
       run: zig build test -Dtarget=i386-linux-gnu --prefix tmp
 
+    - name: Build 64-bit glibc
+      run: zig build -Dtarget=x86_64-linux-gnu
+
     - name: Build 64-bit
-      run: zig build
+      run: zig build -Dtarget=x86_64-linux-musl
 
     - name: Test
-      run: zig build test
+      run: zig build test -Dtarget=x86_64-linux-musl
 
     - name: Fetch a test gyro.zzz file
       run: ../zig-out/bin/gyro fetch
