@@ -292,12 +292,12 @@ fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*anyo
     }
 
     // TODO: deleteTree doesn't work on windows with hidden or read-only files
-    if (builtin.target.os.tag != .windows) {
-        const dot_git = try std.fs.path.join(allocator, &.{ base_path, ".git" });
-        defer allocator.free(dot_git);
+    //if (builtin.target.os.tag != .windows) {
+    //    const dot_git = try std.fs.path.join(allocator, &.{ base_path, ".git" });
+    //    defer allocator.free(dot_git);
 
-        std.fs.cwd().deleteTree(dot_git) catch {};
-    }
+    //    try std.fs.cwd().deleteTree(dot_git);
+    //}
 }
 
 fn clone(
@@ -373,12 +373,12 @@ fn clone(
     }
 
     // TODO: deleteTree doesn't work on windows with hidden or read-only files
-    if (builtin.target.os.tag != .windows) {
-        const dot_git = try std.fs.path.join(allocator, &.{ path, ".git" });
-        defer allocator.free(dot_git);
+    //if (builtin.target.os.tag != .windows) {
+    //    const dot_git = try std.fs.path.join(allocator, &.{ path, ".git" });
+    //    defer allocator.free(dot_git);
 
-        std.fs.cwd().deleteTree(dot_git) catch {};
-    }
+    //    try std.fs.cwd().deleteTree(dot_git);
+    //}
 }
 
 fn findPartialMatch(
