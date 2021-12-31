@@ -173,18 +173,6 @@ const srcs = blk: {
     break :blk ret;
 };
 
-const zlib_srcs = &.{
-    pathJoinRoot(&.{ "c", "deps", "zlib", "adler32.c" }),
-    pathJoinRoot(&.{ "c", "deps", "zlib", "crc32.c" }),
-    pathJoinRoot(&.{ "c", "deps", "zlib", "deflate.c" }),
-    pathJoinRoot(&.{ "c", "deps", "zlib", "infback.c" }),
-    pathJoinRoot(&.{ "c", "deps", "zlib", "inffast.c" }),
-    pathJoinRoot(&.{ "c", "deps", "zlib", "inflate.c" }),
-    pathJoinRoot(&.{ "c", "deps", "zlib", "inftrees.c" }),
-    pathJoinRoot(&.{ "c", "deps", "zlib", "trees.c" }),
-    pathJoinRoot(&.{ "c", "deps", "zlib", "zutil.c" }),
-};
-
 const pcre_srcs = &.{
     pathJoinRoot(&.{ "c", "deps", "pcre", "pcre_byte_order.c" }),
     pathJoinRoot(&.{ "c", "deps", "pcre", "pcre_chartables.c" }),
@@ -282,7 +270,6 @@ pub fn link(
             "-DGIT_USE_STAT_MTIM=1",
         });
 
-    artifact.addCSourceFiles(zlib_srcs, &.{});
     artifact.addCSourceFiles(pcre_srcs, &.{
         "-DLINK_SIZE=2",
         "-DNEWLINE=10",
@@ -300,10 +287,6 @@ pub fn link(
     artifact.addIncludeDir(root() ++
         std.fs.path.sep_str ++ "c" ++
         std.fs.path.sep_str ++ "src");
-    artifact.addIncludeDir(root() ++
-        std.fs.path.sep_str ++ "c" ++
-        std.fs.path.sep_str ++ "deps" ++
-        std.fs.path.sep_str ++ "zlib");
     artifact.addIncludeDir(root() ++
         std.fs.path.sep_str ++ "c" ++
         std.fs.path.sep_str ++ "deps" ++

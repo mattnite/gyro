@@ -44,3 +44,6 @@
 [submodule "libs/libssh2/c"]
 	path = libs/libssh2/c
 	url = https://github.com/libssh2/libssh2.git
+[submodule "libs/zlib"]
+	path = libs/zlib
+	url = https://github.com/mattnite/zig-zlib.git

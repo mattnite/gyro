@@ -2,6 +2,7 @@ const std = @import("std");
 const libgit2 = @import("libs/libgit2/libgit2.zig");
 const mbedtls = @import("libs/mbedtls/mbedtls.zig");
 const libssh2 = @import("libs/libssh2/libssh2.zig");
+const zlib = @import("libs/zlib/zlib.zig");
 
 const Builder = std.build.Builder;
 const LibExeObjStep = std.build.LibExeObjStep;
@@ -86,6 +87,8 @@ pub fn build(b: *Builder) !void {
     const target = b.standardTargetOptions(.{});
     const mode = b.standardReleaseOptions();
 
+    const z = zlib.create(b, target, mode);
+
     const gyro = b.addExecutable("gyro", "src/main.zig");
     gyro.setTarget(target);
     gyro.setBuildMode(mode);
@@ -94,6 +97,7 @@ pub fn build(b: *Builder) !void {
     try libgit2.link(b, gyro);
     try libssh2.link(b, gyro);
     mbedtls.link(gyro);
+    z.link(gyro, .{});
 
     // release-* builds for windows end up missing a _tls_index symbol, turning
     // off lto fixes this *shrug*
