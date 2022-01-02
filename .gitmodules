@@ -35,3 +35,15 @@
 [submodule "libs/known-folders"]
 	path = libs/known-folders
 	url = https://github.com/ziglibs/known-folders
+[submodule "libs/zig-zlib"]
+	path = libs/zig-zlib
+	url = https://github.com/mattnite/zig-zlib.git
+[submodule "libs/zig-mbedtls"]
+	path = libs/zig-mbedtls
+	url = https://github.com/mattnite/zig-mbedtls.git
+[submodule "libs/zig-libssh2"]
+	path = libs/zig-libssh2
+	url = https://github.com/mattnite/zig-libssh2.git
+[submodule "libs/zig-libgit2"]
+	path = libs/zig-libgit2
+	url = https://github.com/mattnite/zig-libgit2.git
