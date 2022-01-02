@@ -382,10 +382,11 @@ A map of a gyro.zzz file looks something like this:
 pkgs:
   pkg_a:
     version: 0.0.0
+    root: path/to/root.zig
     description: the description field
     license: spdix-id
     homepage_url: https://straight.forward
-    sourse_url: https://straight.forward
+    source_url: https://straight.forward
 
     # these are shown on astrolabe
     tags:
