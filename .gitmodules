@@ -35,12 +35,3 @@
 [submodule "libs/known-folders"]
 	path = libs/known-folders
 	url = https://github.com/ziglibs/known-folders
-[submodule "libs/libgit2/c"]
-	path = libs/libgit2/c
-	url = https://github.com/libgit2/libgit2.git
-[submodule "libs/mbedtls/c"]
-	path = libs/mbedtls/c
-	url = https://github.com/ARMmbed/mbedtls.git
-[submodule "libs/libssh2/c"]
-	path = libs/libssh2/c
-	url = https://github.com/libssh2/libssh2.git
