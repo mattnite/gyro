@@ -1,7 +1,8 @@
 const std = @import("std");
-const libgit2 = @import("libs/libgit2/libgit2.zig");
-const mbedtls = @import("libs/mbedtls/mbedtls.zig");
-const libssh2 = @import("libs/libssh2/libssh2.zig");
+const libgit2 = @import("libs/zig-libgit2/libgit2.zig");
+const mbedtls = @import("libs/zig-mbedtls/mbedtls.zig");
+const libssh2 = @import("libs/zig-libssh2/libssh2.zig");
+const zlib = @import("libs/zig-zlib/zlib.zig");
 
 const Builder = std.build.Builder;
 const LibExeObjStep = std.build.LibExeObjStep;
@@ -86,14 +87,25 @@ pub fn build(b: *Builder) !void {
     const target = b.standardTargetOptions(.{});
     const mode = b.standardReleaseOptions();
 
+    const z = zlib.create(b, target, mode);
+    const tls = mbedtls.create(b, target, mode);
+    const ssh2 = libssh2.create(b, target, mode);
+    tls.link(ssh2.step);
+
+    const git2 = try libgit2.create(b, target, mode);
+    z.link(git2.step, .{});
+    tls.link(git2.step);
+    ssh2.link(git2.step);
+
     const gyro = b.addExecutable("gyro", "src/main.zig");
     gyro.setTarget(target);
     gyro.setBuildMode(mode);
-    gyro.install();
+    z.link(gyro, .{});
+    tls.link(gyro);
+    ssh2.link(gyro);
+    git2.link(gyro);
     addAllPkgs(gyro);
-    try libgit2.link(b, gyro);
-    try libssh2.link(b, gyro);
-    mbedtls.link(gyro);
+    gyro.install();
 
     // release-* builds for windows end up missing a _tls_index symbol, turning
     // off lto fixes this *shrug*
