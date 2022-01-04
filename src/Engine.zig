@@ -550,7 +550,7 @@ pub fn fetch(self: *Engine) !void {
             }
         }
 
-        var cache_dir = try std.fs.cwd().openDir(".gyro", .{ .iterate = true });
+        var cache_dir = try std.fs.cwd().makeOpenPath(".gyro", .{ .iterate = true });
         defer cache_dir.close();
 
         var it = cache_dir.iterate();
@@ -766,15 +766,6 @@ pub fn writeDepsZig(self: *Engine, writer: anytype) !void {
     try writer.print("}};\n", .{});
 }
 
-fn recursivePrint(pkg: std.build.Pkg, depth: usize) void {
-    const stdout = std.io.getStdOut().writer();
-    stdout.writeByteNTimes(' ', depth) catch {};
-    stdout.print("{s}\n", .{pkg.name}) catch {};
-
-    if (pkg.dependencies) |deps| for (deps) |dep|
-        recursivePrint(dep, depth + 1);
-}
-
 /// arena only stores the arraylists, not text, return slice is allocated in the arena
 pub fn genBuildDeps(self: Engine, arena: *ThreadSafeArenaAllocator) !std.ArrayList(std.build.Pkg) {
     const allocator = arena.child_allocator;
@@ -844,9 +835,6 @@ pub fn genBuildDeps(self: Engine, arena: *ThreadSafeArenaAllocator) !std.ArrayLi
             else => {},
         }
     }
-
-    for (ret.items) |entry|
-        recursivePrint(entry, 0);
 
     return ret;
 }
