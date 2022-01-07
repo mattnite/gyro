@@ -544,7 +544,7 @@ pub fn fetch(self: *Engine) !void {
             if (@hasDecl(source, "resolutionToCachePath")) {
                 for (@field(self.resolutions.tables, source.name).items) |entry| {
                     if (entry.dep_idx != null) {
-                        try paths.putNoClobber(try source.resolutionToCachePath(self.arena.allocator(), entry), {});
+                        try paths.put(try source.resolutionToCachePath(self.arena.allocator(), entry), {});
                     }
                 }
             }

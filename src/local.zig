@@ -82,7 +82,8 @@ fn dedupeResolveAndFetchImpl(
 ) FetchError!void {
     _ = resolutions;
 
-    const dep = &dep_table[fetch_queue.items(.edge)[i].to].local;
+    const edge = fetch_queue.items(.edge)[i];
+    const dep = &dep_table[edge.to].local;
     var base_dir = try std.fs.cwd().openDir(dep.path, .{});
     defer base_dir.close();
 
@@ -97,8 +98,10 @@ fn dedupeResolveAndFetchImpl(
     const project = try Project.fromUnownedText(arena, dep.path, text);
     defer project.destroy();
 
-    // TODO: resolve path when default root
-    const root = dep.root orelse utils.default_root;
+    const root = dep.root orelse blk: {
+        const pkg = (try project.findBestMatchingPackage(edge.alias)) orelse break :blk utils.default_root;
+        break :blk pkg.root orelse utils.default_root;
+    };
     fetch_queue.items(.path)[i] = try utils.joinPathConvertSep(arena, &.{ dep.path, root });
     try fetch_queue.items(.deps)[i].appendSlice(arena.child_allocator, project.deps.items);
 }

@@ -979,7 +979,9 @@ pub fn redirect(
                     });
                     return error.Explained;
                 };
-                break :blk try arena.allocator().dupe(u8, result.root orelse "src/main.zig");
+
+                // TODO: the orelse here should probably be an error
+                break :blk try arena.allocator().dupe(u8, result.root orelse utils.default_root);
             },
             .github => |github| github.root,
             .git => |git| git.root,
