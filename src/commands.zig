@@ -549,24 +549,27 @@ pub fn add(
                     try api.getHeadCommit(arena.allocator(), info.user, info.repo, default_branch),
                 );
 
-                const root_file = if (root_path) |rp| rp else if (text_opt) |t| get_root: {
+                const name = alias orelse try utils.normalizeName(info.repo);
+                try verifyUniqueAlias(name, dep_list.items);
+
+                const root_file = if (root_path) |rp|
+                    rp
+                else if (text_opt) |t| get_root: {
                     const subproject = try Project.fromUnownedText(&arena, ".", t);
                     defer subproject.destroy();
 
-                    var ret: []const u8 = utils.default_root;
-                    if (subproject.packages.count() == 1)
-                        ret = if (subproject.packages.iterator().next().?.value_ptr.root) |r|
+                    if (try subproject.findBestMatchingPackage(name)) |pkg|
+                        if (pkg.root) |pkg_root|
+                            break :get_root pkg_root;
+
+                    break :get_root if (subproject.packages.count() == 1)
+                        if (subproject.packages.iterator().next().?.value_ptr.root) |r|
                             try arena.allocator().dupe(u8, r)
                         else
-                            utils.default_root;
-
-                    // TODO try other matching methods
-
-                    break :get_root ret;
+                            utils.default_root
+                    else
+                        utils.default_root;
                 } else utils.default_root;
-
-                const name = try utils.normalizeName(info.repo);
-                try verifyUniqueAlias(name, dep_list.items);
 
                 const url = try std.fmt.allocPrint(arena.allocator(), "https://github.com/{s}/{s}.git", .{
                     info.user,
@@ -611,44 +614,21 @@ pub fn add(
                 const subproject = try Project.fromDirPath(&arena, target);
                 defer subproject.destroy();
 
-                const detected_root = if (subproject.packages.count() == 1)
-                    if (subproject.packages.iterator().next().?.value_ptr.root) |r|
-                        try arena.allocator().dupe(u8, r)
-                    else
-                        null
+                const name = alias orelse try utils.normalizeName(std.fs.path.basename(target));
+                try verifyUniqueAlias(name, dep_list.items);
+
+                const root = root_path orelse
+                    if (try subproject.findBestMatchingPackage(name)) |pkg|
+                    pkg.root orelse utils.default_root
                 else
-                    null;
+                    utils.default_root;
 
-                const detected_alias = if (subproject.packages.count() == 1)
-                    try arena.allocator().dupe(u8, subproject.packages.iterator().next().?.value_ptr.name)
-                else
-                    null;
-
-                const a = alias orelse (detected_alias orelse {
-                    if (subproject.packages.count() == 0) {
-                        std.log.err("no exported packages in '{s}', need an explicit alias, use -a", .{target});
-                    } else if (subproject.packages.count() > 1) {
-                        std.log.err("don't know which package to use from '{s}', need an explicit alias, use -a", .{target});
-                    }
-
-                    return error.Explained;
-                });
-
-                try verifyUniqueAlias(a, dep_list.items);
-
-                const r = root_path orelse (detected_root orelse root_blk: {
-                    std.log.info("no explicit or detected root path for '{s}', using default: " ++ utils.default_root, .{
-                        target,
-                    });
-                    break :root_blk utils.default_root;
-                });
                 break :blk Dependency{
-                    .alias = a,
-
+                    .alias = name,
                     .src = .{
                         .local = .{
                             .path = target,
-                            .root = r,
+                            .root = root,
                         },
                     },
                 };
