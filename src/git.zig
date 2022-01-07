@@ -244,8 +244,15 @@ fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*anyo
     const arena = parent_state.arena;
     const allocator = arena.child_allocator;
 
+    if (sm == null)
+        return;
+
+    const submodule_name = if (sm_name != null)
+        std.mem.span(sm_name)
+    else
+        return;
     // git always uses posix path separators
-    const sub_path = try std.mem.replaceOwned(u8, allocator, std.mem.span(sm_name), "/", std.fs.path.sep_str);
+    const sub_path = try std.mem.replaceOwned(u8, allocator, submodule_name, "/", std.fs.path.sep_str);
     defer allocator.free(sub_path);
 
     const base_path = try std.fs.path.join(allocator, &.{ parent_state.base_path, sub_path });
@@ -257,9 +264,15 @@ fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*anyo
         c.git_submodule_head_id(sm),
     );
 
+    const sm_url = c.git_submodule_url(sm);
+    const url = if (sm_url != null)
+        std.mem.sliceTo(sm_url, 0)
+    else
+        return;
+
     var handle = try main.display.createEntry(.{
         .sub = .{
-            .url = try arena.allocator().dupe(u8, std.mem.sliceTo(c.git_submodule_url(sm), 0)),
+            .url = try arena.allocator().dupe(u8, url),
             .commit = oid,
         },
     });
