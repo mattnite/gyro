@@ -588,7 +588,6 @@ fn dedupeResolveAndFetchImpl(
             dep_idx,
             fetch_queue.items(.edge)[0..i],
         )) |idx| {
-            std.log.err("found partial match: {}", .{idx});
             fetch_queue.items(.result)[i] = .{
                 .copy_deps = idx,
             };
@@ -656,7 +655,6 @@ pub fn updateResolution(
             return error.Explained;
         },
         .copy_deps => |queue_idx| {
-            std.log.err("queue_idx: {}", .{queue_idx});
             const commit = resolutions.items[
                 findResolution(
                     dep_table[fetch_queue.items(.edge)[queue_idx].to],

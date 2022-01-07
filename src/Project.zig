@@ -206,3 +206,22 @@ pub fn get(self: Self, name: []const u8) ?*Package {
 pub fn iterator(self: Self) Iterator {
     return Iterator{ .inner = self.packages.iterator() };
 }
+
+pub fn findBestMatchingPackage(self: Self, alias: []const u8) !?Package {
+    // I would use a switch but it's not deducing types correctly.
+    const count = self.packages.count();
+    if (0 == count)
+        return null
+    else if (1 == count)
+        return self.packages.iterator().next().?.value_ptr.*
+    else if (self.packages.get(alias)) |pkg|
+        return pkg
+    else {
+        std.log.err("ambiguous package selection, dependency has alias of '{s}', options are:", .{alias});
+
+        var it = self.packages.iterator();
+        while (it.next()) |entry|
+            std.log.err("    {s}, root: {s}", .{ entry.key_ptr.*, entry.value_ptr.root });
+        return error.Explained;
+    }
+}
