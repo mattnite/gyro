@@ -303,6 +303,7 @@ pub fn build(allocator: Allocator, args: *clap.args.OsIterator) !void {
                 std.log.err("Compiler had an unclean exit", .{});
                 return error.Explained;
             },
+            error.UnexpectedExitCode => return error.Explained,
             else => return err,
         }
     };
