@@ -3,6 +3,7 @@ const libgit2 = @import("libs/zig-libgit2/libgit2.zig");
 const mbedtls = @import("libs/zig-mbedtls/mbedtls.zig");
 const libssh2 = @import("libs/zig-libssh2/libssh2.zig");
 const zlib = @import("libs/zig-zlib/zlib.zig");
+const libcurl = @import("libs/zig-libcurl/libcurl.zig");
 
 const Builder = std.build.Builder;
 const LibExeObjStep = std.build.LibExeObjStep;
@@ -92,6 +93,8 @@ pub fn build(b: *Builder) !void {
     const ssh2 = libssh2.create(b, target, mode);
     tls.link(ssh2.step);
 
+    const curl = try libcurl.create(b, target, mode);
+
     const git2 = try libgit2.create(b, target, mode);
     z.link(git2.step, .{});
     tls.link(git2.step);
@@ -104,6 +107,7 @@ pub fn build(b: *Builder) !void {
     tls.link(gyro);
     ssh2.link(gyro);
     git2.link(gyro);
+    curl.link(gyro, .{ .import_name = "curl" });
     addAllPkgs(gyro);
     gyro.install();
 

@@ -47,3 +47,6 @@
 [submodule "libs/zig-libgit2"]
 	path = libs/zig-libgit2
 	url = https://github.com/mattnite/zig-libgit2.git
+[submodule "libs/zig-libcurl"]
+	path = libs/zig-libcurl
+	url = https://github.com/mattnite/zig-libcurl.git
