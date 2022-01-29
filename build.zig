@@ -94,6 +94,9 @@ pub fn build(b: *Builder) !void {
     tls.link(ssh2.step);
 
     const curl = try libcurl.create(b, target, mode);
+    ssh2.link(curl.step);
+    tls.link(curl.step);
+    z.link(curl.step, .{});
 
     const git2 = try libgit2.create(b, target, mode);
     z.link(git2.step, .{});

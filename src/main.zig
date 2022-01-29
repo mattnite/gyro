@@ -188,6 +188,7 @@ pub const commands = struct {
             cmd.addOption('a', "alias", "package", completion.Param.Package, "Override what string the package is imported with");
             cmd.addFlag('b', "build-dep", "Add this as a build dependency");
             cmd.addOption('r', "root", "file", completion.Param.File, "Set root path with respect to the project root, default is 'src/main.zig'");
+            cmd.addOption('c', "ref", "file", completion.Param.File, "commit, tag, or branch to reference for git or github source types");
             cmd.addPositional("package", completion.Param.Package, .many, "The package(s) to add");
 
             cmd.done();
@@ -210,8 +211,10 @@ pub const commands = struct {
                 src_tag,
                 args.option("--alias"),
                 args.flag("--build-dep"),
+                args.option("--ref"),
                 args.option("--root"),
-                args.positionals(),
+                // TODO fix
+                args.positionals()[0],
             );
         }
     };
