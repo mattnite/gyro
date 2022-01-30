@@ -16,7 +16,7 @@ const utils = @import("utils.zig");
 const Allocator = std.mem.Allocator;
 
 fn assertFileExistsInCwd(subpath: []const u8) !void {
-    std.fs.cwd().access(subpath, .{ .read = true }) catch |err| {
+    std.fs.cwd().access(subpath, .{ .mode = .read_only }) catch |err| {
         return if (err == error.FileNotFound) blk: {
             std.log.err("no {s} in current working directory", .{subpath});
             break :blk error.Explained;
@@ -110,9 +110,7 @@ pub fn fetch(allocator: Allocator) !void {
     try engine.writeLockfile(lockfile.writer());
     try engine.writeDepsZig(deps_file.writer());
 
-    const project_file = try std.fs.cwd().openFile("gyro.zzz", .{
-        .write = true,
-    });
+    const project_file = try std.fs.cwd().openFile("gyro.zzz", .{ .mode = .read_write });
     defer project_file.close();
 
     try project.toFile(project_file);
@@ -310,9 +308,7 @@ pub fn build(allocator: Allocator, args: *clap.args.OsIterator) !void {
         }
     };
 
-    const project_file = try std.fs.cwd().openFile("gyro.zzz", .{
-        .write = true,
-    });
+    const project_file = try std.fs.cwd().openFile("gyro.zzz", .{ .mode = .read_write });
     defer project_file.close();
 
     try project.toFile(project_file);
@@ -825,7 +821,7 @@ pub fn publish(allocator: Allocator, pkg: ?[]const u8) !void {
     var arena = ThreadSafeArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    const file = std.fs.cwd().openFile("gyro.zzz", .{ .read = true }) catch |err| {
+    const file = std.fs.cwd().openFile("gyro.zzz", .{}) catch |err| {
         if (err == error.FileNotFound) {
             std.log.err("missing gyro.zzz file", .{});
             return error.Explained;
@@ -1003,10 +999,7 @@ pub fn redirect(
     var arena = ThreadSafeArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    const project_file = try std.fs.cwd().openFile("gyro.zzz", .{
-        .read = true,
-        .write = true,
-    });
+    const project_file = try std.fs.cwd().openFile("gyro.zzz", .{ .mode = .read_write });
     defer project_file.close();
 
     var gyro_dir = try std.fs.cwd().makeOpenPath(".gyro", .{});
