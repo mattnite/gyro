@@ -1,5 +1,7 @@
 const std = @import("std");
 const uri = @import("uri");
+const curl = @import("curl");
+
 const Engine = @import("Engine.zig");
 const Dependency = @import("Dependency.zig");
 const Project = @import("Project.zig");
@@ -107,13 +109,25 @@ pub fn resolutionToCachePath(
     return fmtCachePath(allocator, res.str);
 }
 
-fn progressCb(current: usize, total: usize, handle: usize) void {
+fn progressCb(
+    data: ?*anyopaque,
+    dltotal: c_long,
+    dlnow: c_long,
+    ultotal: c_long,
+    ulnow: c_long,
+) callconv(.C) c_int {
+    _ = ultotal;
+    _ = ulnow;
+
+    const handle = @ptrCast(*usize, @alignCast(@alignOf(*usize), data orelse return 0)).*;
     main.display.updateEntry(handle, .{
         .progress = .{
-            .current = current,
-            .total = total,
+            .current = @intCast(usize, dlnow),
+            .total = @intCast(usize, if (dltotal == 0) 1 else dltotal),
         },
     }) catch {};
+
+    return 0;
 }
 
 fn fetch(
@@ -134,10 +148,18 @@ fn fetch(
         defer content_dir.close();
 
         // TODO: allow user to strip directories from a tarball
-        const handle = try main.display.createEntry(.{ .url = dep.url.str });
+        var handle = try main.display.createEntry(.{ .url = dep.url.str });
         errdefer main.display.updateEntry(handle, .{ .err = {} }) catch {};
 
-        try api.getTarGz(allocator, dep.url.str, content_dir, progressCb, handle);
+        const url_z = try allocator.dupeZ(u8, dep.url.str);
+        defer allocator.free(url_z);
+
+        const xfer_ctx = api.XferCtx{
+            .cb = progressCb,
+            .data = &handle,
+        };
+
+        try api.getTarGz(allocator, url_z, content_dir, xfer_ctx);
         try entry.done();
     }
 

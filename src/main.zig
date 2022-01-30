@@ -1,7 +1,8 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const clap = @import("clap");
-const zfetch = @import("zfetch");
+const curl = @import("curl");
+
 const Dependency = @import("Dependency.zig");
 const cmds = @import("commands.zig");
 const loadSystemCerts = @import("certs.zig").loadSystemCerts;
@@ -38,8 +39,8 @@ pub fn main() !void {
         try Display.init(&display, allocator);
         defer display.deinit();
 
-        try zfetch.init();
-        defer zfetch.deinit();
+        try curl.globalInit();
+        defer curl.globalCleanup();
 
         if (builtin.mode == .Debug)
             c.mbedtls_debug_set_threshold(1);

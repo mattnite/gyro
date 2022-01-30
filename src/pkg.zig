@@ -1,12 +1,14 @@
 const std = @import("std");
+const main = @import("root");
+const curl = @import("curl");
 const version = @import("version");
 const zzz = @import("zzz");
+
 const Engine = @import("Engine.zig");
 const Dependency = @import("Dependency.zig");
 const api = @import("api.zig");
 const cache = @import("cache.zig");
 const utils = @import("utils.zig");
-const main = @import("root");
 const ThreadSafeArenaAllocator = @import("ThreadSafeArenaAllocator.zig");
 
 const Allocator = std.mem.Allocator;
@@ -147,13 +149,25 @@ pub fn resolutionToCachePath(
     );
 }
 
-fn progressCb(current: usize, total: usize, handle: usize) void {
+fn progressCb(
+    data: ?*anyopaque,
+    dltotal: c_long,
+    dlnow: c_long,
+    ultotal: c_long,
+    ulnow: c_long,
+) callconv(.C) c_int {
+    _ = ultotal;
+    _ = ulnow;
+
+    const handle = @ptrCast(*usize, @alignCast(@alignOf(*usize), data orelse return 0)).*;
     main.display.updateEntry(handle, .{
         .progress = .{
-            .current = current,
-            .total = total,
+            .current = @intCast(usize, dlnow),
+            .total = @intCast(usize, if (dltotal == 0) 1 else dltotal),
         },
     }) catch {};
+
+    return 0;
 }
 
 fn fetch(
@@ -177,7 +191,7 @@ fn fetch(
     defer entry.deinit();
 
     if (!try entry.isDone()) {
-        const handle = try main.display.createEntry(.{
+        var handle = try main.display.createEntry(.{
             .pkg = .{
                 .repository = dep.pkg.repository,
                 .user = dep.pkg.user,
@@ -187,6 +201,11 @@ fn fetch(
         });
         errdefer main.display.updateEntry(handle, .{ .err = {} }) catch {};
 
+        const xfer_ctx = api.XferCtx{
+            .cb = progressCb,
+            .data = &handle,
+        };
+
         try api.getPkg(
             allocator,
             dep.pkg.repository,
@@ -194,8 +213,7 @@ fn fetch(
             dep.pkg.name,
             semver,
             entry.dir,
-            progressCb,
-            handle,
+            xfer_ctx,
         );
 
         try entry.done();

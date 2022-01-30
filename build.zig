@@ -14,29 +14,6 @@ const clap = .{
     .path = .{ .path = "libs/zig-clap/clap.zig" },
 };
 
-const zfetch = .{
-    .name = "zfetch",
-    .path = .{ .path = "libs/zfetch/src/main.zig" },
-    .dependencies = &[_]Pkg{
-        .{
-            .name = "iguanaTLS",
-            .path = .{ .path = "libs/iguanaTLS/src/main.zig" },
-        },
-        .{
-            .name = "network",
-            .path = .{ .path = "libs/zig-network/network.zig" },
-        },
-        .{
-            .name = "uri",
-            .path = .{ .path = "libs/zig-uri/uri.zig" },
-        },
-        .{
-            .name = "hzzp",
-            .path = .{ .path = "libs/hzzp/src/main.zig" },
-        },
-    },
-};
-
 const zzz = .{
     .name = "zzz",
     .path = .{ .path = "libs/zzz/src/main.zig" },
@@ -63,14 +40,14 @@ const version = .{
     },
 };
 
-const uri = .{
-    .name = "uri",
-    .path = .{ .path = "libs/zig-uri/uri.zig" },
-};
-
 const known_folders = .{
     .name = "known-folders",
     .path = .{ .path = "libs/known-folders/known-folders.zig" },
+};
+
+const uri = .{
+    .name = "uri",
+    .path = .{ .path = "libs/zig-uri/uri.zig" },
 };
 
 fn addAllPkgs(lib: *LibExeObjStep) void {
@@ -79,7 +56,6 @@ fn addAllPkgs(lib: *LibExeObjStep) void {
     lib.addPackage(tar);
     lib.addPackage(zzz);
     lib.addPackage(glob);
-    lib.addPackage(zfetch);
     lib.addPackage(uri);
     lib.addPackage(known_folders);
 }

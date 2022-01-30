@@ -8,21 +8,9 @@
 [submodule "libs/zzz"]
 	path = libs/zzz
 	url = https://github.com/mattnite/zzz.git
-[submodule "libs/hzzp"]
-	path = libs/hzzp
-	url = https://github.com/truemedian/hzzp.git
-[submodule "libs/zfetch"]
-	path = libs/zfetch
-	url = https://github.com/truemedian/zfetch.git
 [submodule "libs/zig-uri"]
 	path = libs/zig-uri
 	url = https://github.com/MasterQ32/zig-uri.git
-[submodule "libs/zig-network"]
-	path = libs/zig-network
-	url = https://github.com/MasterQ32/zig-network.git
-[submodule "libs/iguanaTLS"]
-	path = libs/iguanaTLS
-	url = https://github.com/marler8997/iguanaTLS.git
 [submodule "libs/version"]
 	path = libs/version
 	url = https://github.com/mattnite/version.git
