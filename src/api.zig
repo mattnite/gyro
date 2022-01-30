@@ -18,7 +18,7 @@ pub fn getLatest(
     range: ?version.Range,
 ) !version.Semver {
     const url = if (range) |r|
-        try std.fmt.allocPrintZ(allocator, "https://{s}/pkgs/{s}/{s}/latest?v={}", .{
+        try std.fmt.allocPrintZ(allocator, "https://{s}/pkgs/{s}/{s}/latest?v={u}", .{
             repository,
             user,
             package,
@@ -354,6 +354,7 @@ pub fn pollDeviceCode(
 
 pub fn postPublish(
     allocator: Allocator,
+    repository_opt: ?[]const u8,
     access_token: []const u8,
     pkg: *Package,
 ) !void {
@@ -368,7 +369,10 @@ pub fn postPublish(
         std.fs.cwd().deleteFile(filename) catch {};
     }
 
-    const url = "https://" ++ utils.default_repo ++ "/publish";
+    const repository = repository_opt orelse utils.default_repo;
+    const url = try std.fmt.allocPrintZ(allocator, "https://{s}/publish", .{repository});
+    defer allocator.free(url);
+
     const payload = try file.reader().readAllAlloc(allocator, std.math.maxInt(usize));
     defer allocator.free(payload);
 
@@ -404,8 +408,12 @@ pub fn postPublish(
         200 => {},
         401 => return error.Unauthorized,
         else => |code| {
-            std.log.err("http status code: {}", .{code});
-            return error.HttpError;
+            if (fifo.readableSlice(0).len > 0) {
+                return error.Explained;
+            } else {
+                std.log.err("http status code: {}", .{code});
+                return error.HttpError;
+            }
         },
     }
 }

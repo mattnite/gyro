@@ -7,6 +7,7 @@ const Dependency = @import("Dependency.zig");
 const cmds = @import("commands.zig");
 const loadSystemCerts = @import("certs.zig").loadSystemCerts;
 const Display = @import("Display.zig");
+const utils = @import("utils.zig");
 
 const c = @cImport({
     @cInclude("git2.h");
@@ -190,7 +191,8 @@ pub const commands = struct {
             cmd.addFlag('b', "build-dep", "Add this as a build dependency");
             cmd.addOption('r', "root", "file", completion.Param.File, "Set root path with respect to the project root, default is 'src/main.zig'");
             cmd.addOption('c', "ref", "file", completion.Param.File, "commit, tag, or branch to reference for git or github source types");
-            cmd.addPositional("package", completion.Param.Package, .many, "The package(s) to add");
+            cmd.addOption('p', "repository", "repo", ?completion.Param.Repository, "The package repository you want to add a package from, default is " ++ utils.default_repo);
+            cmd.addPositional("package", completion.Param.Package, .one, "The package to add");
 
             cmd.done();
             break :blk cmd;
@@ -214,7 +216,7 @@ pub const commands = struct {
                 args.flag("--build-dep"),
                 args.option("--ref"),
                 args.option("--root"),
-                // TODO fix
+                args.option("--repository"),
                 args.positionals()[0],
             );
         }
@@ -296,6 +298,7 @@ pub const commands = struct {
 
             cmd.addFlag('h', "help", "Display help");
             cmd.addPositional("package", ?completion.Param.Package, .one, "The package to publish");
+            cmd.addOption('r', "repository", "repo", ?completion.Param.Repository, "The package repository you want to publish to, default is " ++ utils.default_repo);
 
             cmd.done();
             break :blk cmd;
@@ -303,7 +306,11 @@ pub const commands = struct {
 
         pub const Args = info.ClapComptime();
         pub fn run(allocator: std.mem.Allocator, args: *Args, _: *clap.args.OsIterator) !void {
-            try cmds.publish(allocator, if (args.positionals().len > 0) args.positionals()[0] else null);
+            try cmds.publish(
+                allocator,
+                args.option("--repository"),
+                if (args.positionals().len > 0) args.positionals()[0] else null,
+            );
         }
     };
 
