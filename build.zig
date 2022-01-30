@@ -1,8 +1,10 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const libgit2 = @import("libs/zig-libgit2/libgit2.zig");
 const mbedtls = @import("libs/zig-mbedtls/mbedtls.zig");
 const libssh2 = @import("libs/zig-libssh2/libssh2.zig");
 const zlib = @import("libs/zig-zlib/zlib.zig");
+const libcurl = @import("libs/zig-libcurl/libcurl.zig");
 
 const Builder = std.build.Builder;
 const LibExeObjStep = std.build.LibExeObjStep;
@@ -11,29 +13,6 @@ const Pkg = std.build.Pkg;
 const clap = .{
     .name = "clap",
     .path = .{ .path = "libs/zig-clap/clap.zig" },
-};
-
-const zfetch = .{
-    .name = "zfetch",
-    .path = .{ .path = "libs/zfetch/src/main.zig" },
-    .dependencies = &[_]Pkg{
-        .{
-            .name = "iguanaTLS",
-            .path = .{ .path = "libs/iguanaTLS/src/main.zig" },
-        },
-        .{
-            .name = "network",
-            .path = .{ .path = "libs/zig-network/network.zig" },
-        },
-        .{
-            .name = "uri",
-            .path = .{ .path = "libs/zig-uri/uri.zig" },
-        },
-        .{
-            .name = "hzzp",
-            .path = .{ .path = "libs/hzzp/src/main.zig" },
-        },
-    },
 };
 
 const zzz = .{
@@ -62,14 +41,14 @@ const version = .{
     },
 };
 
-const uri = .{
-    .name = "uri",
-    .path = .{ .path = "libs/zig-uri/uri.zig" },
-};
-
 const known_folders = .{
     .name = "known-folders",
     .path = .{ .path = "libs/known-folders/known-folders.zig" },
+};
+
+const uri = .{
+    .name = "uri",
+    .path = .{ .path = "libs/zig-uri/uri.zig" },
 };
 
 fn addAllPkgs(lib: *LibExeObjStep) void {
@@ -78,19 +57,32 @@ fn addAllPkgs(lib: *LibExeObjStep) void {
     lib.addPackage(tar);
     lib.addPackage(zzz);
     lib.addPackage(glob);
-    lib.addPackage(zfetch);
     lib.addPackage(uri);
     lib.addPackage(known_folders);
 }
 
 pub fn build(b: *Builder) !void {
-    const target = b.standardTargetOptions(.{});
+    const target = b.standardTargetOptions(.{
+        .default_target = std.zig.CrossTarget{
+            .abi = if (builtin.os.tag == .linux) .musl else null,
+        },
+    });
     const mode = b.standardReleaseOptions();
+
+    if (target.isLinux() and target.isGnuLibC()) {
+        std.log.err("glibc builds don't work right now, use musl instead. The issue is tracked here: https://github.com/ziglang/zig/issues/9485", .{});
+        return error.WaitingOnFix;
+    }
 
     const z = zlib.create(b, target, mode);
     const tls = mbedtls.create(b, target, mode);
     const ssh2 = libssh2.create(b, target, mode);
     tls.link(ssh2.step);
+
+    const curl = try libcurl.create(b, target, mode);
+    ssh2.link(curl.step);
+    tls.link(curl.step);
+    z.link(curl.step, .{});
 
     const git2 = try libgit2.create(b, target, mode);
     z.link(git2.step, .{});
@@ -104,6 +96,7 @@ pub fn build(b: *Builder) !void {
     tls.link(gyro);
     ssh2.link(gyro);
     git2.link(gyro);
+    curl.link(gyro, .{ .import_name = "curl" });
     addAllPkgs(gyro);
     gyro.install();
 

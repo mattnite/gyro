@@ -4,17 +4,19 @@ const clap = @import("clap");
 const version = @import("version");
 const zzz = @import("zzz");
 const known_folders = @import("known-folders");
-const api = @import("api.zig");
-const Project = @import("Project.zig");
+const curl = @import("curl");
+
 const Dependency = @import("Dependency.zig");
 const Engine = @import("Engine.zig");
-const utils = @import("utils.zig");
+const Project = @import("Project.zig");
 const ThreadSafeArenaAllocator = @import("ThreadSafeArenaAllocator.zig");
+const api = @import("api.zig");
+const utils = @import("utils.zig");
 
 const Allocator = std.mem.Allocator;
 
 fn assertFileExistsInCwd(subpath: []const u8) !void {
-    std.fs.cwd().access(subpath, .{ .read = true }) catch |err| {
+    std.fs.cwd().access(subpath, .{ .mode = .read_only }) catch |err| {
         return if (err == error.FileNotFound) blk: {
             std.log.err("no {s} in current working directory", .{subpath});
             break :blk error.Explained;
@@ -108,9 +110,7 @@ pub fn fetch(allocator: Allocator) !void {
     try engine.writeLockfile(lockfile.writer());
     try engine.writeDepsZig(deps_file.writer());
 
-    const project_file = try std.fs.cwd().openFile("gyro.zzz", .{
-        .write = true,
-    });
+    const project_file = try std.fs.cwd().openFile("gyro.zzz", .{ .mode = .read_write });
     defer project_file.close();
 
     try project.toFile(project_file);
@@ -308,9 +308,7 @@ pub fn build(allocator: Allocator, args: *clap.args.OsIterator) !void {
         }
     };
 
-    const project_file = try std.fs.cwd().openFile("gyro.zzz", .{
-        .write = true,
-    });
+    const project_file = try std.fs.cwd().openFile("gyro.zzz", .{ .mode = .read_write });
     defer project_file.close();
 
     try project.toFile(project_file);
@@ -473,16 +471,197 @@ fn verifyUniqueAlias(alias: []const u8, deps: []const Dependency) !void {
     }
 }
 
+fn gitDependency(
+    arena: *ThreadSafeArenaAllocator,
+    url: []const u8,
+    alias_opt: ?[]const u8,
+    ref_opt: ?[]const u8,
+    root_opt: ?[]const u8,
+) !Dependency {
+    const git = @import("git.zig");
+    const cache = @import("cache.zig");
+
+    const allocator = arena.child_allocator;
+    const commit = if (ref_opt) |r|
+        try git.getHeadCommitOfRef(allocator, url, r)
+    else
+        try git.getHEADCommit(allocator, url);
+    const ref = if (ref_opt) |r| r else commit;
+
+    const entry_name = try git.fmtCachePath(allocator, url, commit);
+    defer allocator.free(entry_name);
+
+    var entry = try cache.getEntry(entry_name);
+    defer entry.deinit();
+
+    const base_path = try std.fs.path.join(allocator, &.{
+        ".gyro",
+        entry_name,
+        "pkg",
+    });
+    defer allocator.free(base_path);
+
+    if (!try entry.isDone()) {
+        if (builtin.target.os.tag != .windows) {
+            if (std.fs.cwd().access(base_path, .{})) {
+                try std.fs.cwd().deleteTree(base_path);
+            } else |_| {}
+            // TODO: if base_path exists then deleteTree it
+        }
+
+        try git.clone(
+            arena,
+            url,
+            commit,
+            base_path,
+        );
+
+        try entry.done();
+    }
+
+    // if root is not specified then try to read the manifest and find a match
+    // for the alias, if no alias is specified then it would have been
+    // calculated from the url
+
+    var alias = alias_opt;
+    var root = root_opt;
+    if (root) |r| {
+        const root_path = try std.fs.path.join(allocator, &.{ base_path, r });
+        defer allocator.free(root_path);
+
+        std.fs.cwd().access(root_path, .{}) catch |err| switch (err) {
+            error.FileNotFound => {
+                std.log.err("the path '{s}' does not exist in {s}", .{ r, url });
+                return error.Explained;
+            },
+            else => return err,
+        };
+
+        if (alias != null)
+            return Dependency{
+                .alias = alias.?,
+                .src = .{
+                    .git = .{
+                        .url = url,
+                        .ref = ref,
+                        .root = root.?,
+                    },
+                },
+            };
+    }
+
+    var base_dir = try std.fs.cwd().openDir(base_path, .{});
+    defer base_dir.close();
+
+    const project_file = try base_dir.createFile("gyro.zzz", .{
+        .read = true,
+        .truncate = false,
+        .exclusive = false,
+    });
+    defer project_file.close();
+
+    const text = try project_file.reader().readAllAlloc(
+        arena.allocator(),
+        std.math.maxInt(usize),
+    );
+    const project = try Project.fromUnownedText(arena, base_path, text);
+    defer project.destroy();
+
+    if (project.packages.count() == 1) {
+        const pkg_entry = project.packages.iterator().next().?;
+        if (alias == null)
+            alias = pkg_entry.key_ptr.*;
+
+        if (root == null)
+            root = pkg_entry.value_ptr.root orelse utils.default_root;
+
+        return Dependency{
+            .alias = alias.?,
+            .src = .{
+                .git = .{
+                    .url = url,
+                    .ref = ref,
+                    .root = root.?,
+                },
+            },
+        };
+    }
+
+    if (project.packages.count() == 0 and root == null) {
+        std.log.err("this repo has no advertised packages, you need to manually specify the root path with '--root' or '-r'", .{});
+        return error.Explained;
+    }
+
+    // TODO: if no alias, print error about ambiguity
+    if (alias == null and root == null) {
+        std.log.err("this repo advertises multiple packages, you must choose an alias:", .{});
+        var it = project.packages.iterator();
+        while (it.next()) |pkgs_entry| {
+            const pkg_root = pkgs_entry.value_ptr.root orelse utils.default_root;
+            std.log.err("    {s}: {s}", .{ pkgs_entry.key_ptr.*, pkg_root });
+        }
+
+        return error.Explained;
+    }
+
+    if (root == null) {
+        var iterator = project.packages.iterator();
+        while (iterator.next()) |pkgs_entry| {
+            if (std.mem.eql(u8, pkgs_entry.key_ptr.*, alias.?)) {
+                root = pkgs_entry.value_ptr.root orelse utils.default_root;
+                break;
+            }
+        } else {
+            std.log.err("failed to find package that matched the alias '{s}', the advertised packages are:", .{alias});
+            var it = project.packages.iterator();
+            while (it.next()) |pkgs_entry| {
+                const pkg_root = pkgs_entry.value_ptr.root orelse utils.default_root;
+                std.log.err("    {s}: {s}", .{ pkgs_entry.key_ptr.*, pkg_root });
+            }
+
+            return error.Explained;
+        }
+    }
+
+    if (alias == null) {
+        const url_z = try arena.allocator().dupeZ(u8, url);
+        const curl_url = try curl.Url.init();
+        defer curl_url.cleanup();
+
+        try curl_url.set(url_z);
+        alias = std.fs.path.basename(std.mem.span(try curl_url.getPath()));
+        const ext = std.fs.path.extension(alias.?);
+        alias = alias.?[0 .. alias.?.len - ext.len];
+
+        if (alias.?.len == 0) {
+            std.log.err("failed to figure out an alias from the url, please manually specify it with '--alias' or '-a'", .{});
+            return error.Explained;
+        }
+    }
+
+    return Dependency{
+        .alias = alias.?,
+        .src = .{
+            .git = .{
+                .url = url,
+                .ref = ref,
+                .root = root.?,
+            },
+        },
+    };
+}
+
 pub fn add(
     allocator: Allocator,
     src_tag: Dependency.SourceType,
     alias: ?[]const u8,
     build_deps: bool,
+    ref: ?[]const u8,
     root_path: ?[]const u8,
-    targets: []const []const u8,
+    target: []const u8,
 ) !void {
     switch (src_tag) {
-        .pkg, .github, .local => {},
+        .pkg, .github, .local, .git => {},
         else => return error.Todo,
     }
 
@@ -505,141 +684,75 @@ pub fn add(
     else
         &project.deps;
 
-    // TODO: handle user/pkg in targets
+    const dep = switch (src_tag) {
+        .github => blk: {
+            const info = try utils.parseUserRepo(target);
+            const url = try std.fmt.allocPrint(arena.allocator(), "https://github.com/{s}/{s}.git", .{
+                info.user,
+                info.repo,
+            });
 
-    // make sure targets are unique
-    for (targets[0 .. targets.len - 1]) |_, i| {
-        for (targets[i + 1 ..]) |_, j| {
-            if (std.mem.eql(u8, targets[i], targets[j])) {
-                std.log.err("duplicated target: {s}", .{targets[i]});
-                return error.Explained;
-            }
+            break :blk try gitDependency(&arena, url, alias, ref, root_path);
+        },
+        .git => try gitDependency(&arena, target, alias, ref, root_path),
+        .pkg => blk: {
+            const info = try utils.parseUserRepo(target);
+            const latest = try api.getLatest(arena.allocator(), repository, info.user, info.repo, null);
+            var buf = try arena.allocator().alloc(u8, 80);
+            var stream = std.io.fixedBufferStream(buf);
+            try stream.writer().print("^{}", .{latest});
+
+            try verifyUniqueAlias(info.repo, dep_list.items);
+
+            break :blk Dependency{
+                .alias = info.repo,
+                .src = .{
+                    .pkg = .{
+                        .user = info.user,
+                        .name = info.repo,
+                        .version = version.Range{
+                            .min = latest,
+                            .kind = .caret,
+                        },
+                        .repository = utils.default_repo,
+                    },
+                },
+            };
+        },
+        .local => blk: {
+            const subproject = try Project.fromDirPath(&arena, target);
+            defer subproject.destroy();
+
+            const name = alias orelse try utils.normalizeName(std.fs.path.basename(target));
+            try verifyUniqueAlias(name, dep_list.items);
+
+            const root = root_path orelse
+                if (try subproject.findBestMatchingPackage(name)) |pkg|
+                pkg.root orelse utils.default_root
+            else
+                utils.default_root;
+
+            break :blk Dependency{
+                .alias = name,
+                .src = .{
+                    .local = .{
+                        .path = target,
+                        .root = root,
+                    },
+                },
+            };
+        },
+        else => return error.Todo,
+    };
+
+    for (dep_list.items) |d| {
+        if (std.mem.eql(u8, d.alias, dep.alias)) {
+            std.log.err("alias '{s}' is already being used", .{dep.alias});
+            return error.Explained;
         }
     }
 
-    // ensure all targets are valid
-    for (targets) |target| {
-        for (dep_list.items) |dep| {
-            if (std.mem.eql(u8, target, dep.alias)) {
-                std.log.err("{s} is already a dependency", .{target});
-                return error.Explained;
-            }
-        }
-    }
-
-    for (targets) |target| {
-        const info = try utils.parseUserRepo(target);
-        const dep = switch (src_tag) {
-            .github => blk: {
-                var value_tree = try api.getGithubRepo(arena.allocator(), info.user, info.repo);
-                if (value_tree.root != .Object) {
-                    std.log.err("Invalid JSON response from Github", .{});
-                    return error.Explained;
-                }
-
-                const root_json = value_tree.root.Object;
-                const default_branch = if (root_json.get("default_branch")) |val| switch (val) {
-                    .String => |str| str,
-                    else => "main",
-                } else "main";
-
-                const text_opt = try api.getGithubGyroFile(
-                    arena.allocator(),
-                    info.user,
-                    info.repo,
-                    try api.getHeadCommit(arena.allocator(), info.user, info.repo, default_branch),
-                );
-
-                const name = alias orelse try utils.normalizeName(info.repo);
-                try verifyUniqueAlias(name, dep_list.items);
-
-                const root_file = if (root_path) |rp|
-                    rp
-                else if (text_opt) |t| get_root: {
-                    const subproject = try Project.fromUnownedText(&arena, ".", t);
-                    defer subproject.destroy();
-
-                    if (try subproject.findBestMatchingPackage(name)) |pkg|
-                        if (pkg.root) |pkg_root|
-                            break :get_root pkg_root;
-
-                    break :get_root if (subproject.packages.count() == 1)
-                        if (subproject.packages.iterator().next().?.value_ptr.root) |r|
-                            try arena.allocator().dupe(u8, r)
-                        else
-                            utils.default_root
-                    else
-                        utils.default_root;
-                } else utils.default_root;
-
-                const url = try std.fmt.allocPrint(arena.allocator(), "https://github.com/{s}/{s}.git", .{
-                    info.user,
-                    info.repo,
-                });
-
-                break :blk Dependency{
-                    .alias = name,
-                    .src = .{
-                        .git = .{
-                            .url = url,
-                            .ref = default_branch,
-                            .root = root_file,
-                        },
-                    },
-                };
-            },
-            .pkg => blk: {
-                const latest = try api.getLatest(arena.allocator(), repository, info.user, info.repo, null);
-                var buf = try arena.allocator().alloc(u8, 80);
-                var stream = std.io.fixedBufferStream(buf);
-                try stream.writer().print("^{}", .{latest});
-
-                try verifyUniqueAlias(info.repo, dep_list.items);
-
-                break :blk Dependency{
-                    .alias = info.repo,
-                    .src = .{
-                        .pkg = .{
-                            .user = info.user,
-                            .name = info.repo,
-                            .version = version.Range{
-                                .min = latest,
-                                .kind = .caret,
-                            },
-                            .repository = utils.default_repo,
-                        },
-                    },
-                };
-            },
-            .local => blk: {
-                const subproject = try Project.fromDirPath(&arena, target);
-                defer subproject.destroy();
-
-                const name = alias orelse try utils.normalizeName(std.fs.path.basename(target));
-                try verifyUniqueAlias(name, dep_list.items);
-
-                const root = root_path orelse
-                    if (try subproject.findBestMatchingPackage(name)) |pkg|
-                    pkg.root orelse utils.default_root
-                else
-                    utils.default_root;
-
-                break :blk Dependency{
-                    .alias = name,
-                    .src = .{
-                        .local = .{
-                            .path = target,
-                            .root = root,
-                        },
-                    },
-                };
-            },
-            else => return error.Todo,
-        };
-
-        try dep_list.append(dep);
-    }
-
+    try dep_list.append(dep);
     try project.toFile(file);
 }
 
@@ -701,14 +814,14 @@ pub fn rm(
     try project.toFile(file);
 }
 
-pub fn publish(allocator: Allocator, pkg: ?[]const u8) !void {
+pub fn publish(allocator: Allocator, pkg: ?[]const u8) anyerror!void {
     const client_id = "ea14bba19a49f4cba053";
     const scope = "read:user user:email";
 
     var arena = ThreadSafeArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    const file = std.fs.cwd().openFile("gyro.zzz", .{ .read = true }) catch |err| {
+    const file = std.fs.cwd().openFile("gyro.zzz", .{}) catch |err| {
         if (err == error.FileNotFound) {
             std.log.err("missing gyro.zzz file", .{});
             return error.Explained;
@@ -754,6 +867,7 @@ pub fn publish(allocator: Allocator, pkg: ?[]const u8) !void {
     };
     defer if (access_token) |at| allocator.free(at);
 
+    const from_env = access_token != null;
     if (access_token == null) {
         access_token = blk: {
             var dir = if (try known_folders.open(allocator, .cache, .{ .access_sub_paths = true })) |d|
@@ -819,7 +933,23 @@ pub fn publish(allocator: Allocator, pkg: ?[]const u8) !void {
         return error.Explained;
     }
 
-    try api.postPublish(allocator, access_token.?, project.get(name).?);
+    api.postPublish(allocator, access_token.?, project.get(name).?) catch |err| switch (err) {
+        error.Unauthorized => {
+            if (from_env) {
+                std.log.err("the access token from the env var 'GYRO_ACCESS_TOKEN' is using an outdated format for github. You need to get a new one.", .{});
+                return error.Explained;
+            }
+            std.log.info("looks like you were using an old token, deleting your cached one.", .{});
+            if (try known_folders.open(allocator, .cache, .{ .access_sub_paths = true })) |*dir| {
+                defer dir.close();
+                try dir.deleteFile("gyro-access-token");
+            }
+
+            std.log.info("getting you a new token...", .{});
+            try publish(allocator, pkg);
+        },
+        else => return err,
+    };
 }
 
 fn validateDepsAliases(redirected_deps: []const Dependency, project_deps: []const Dependency) !void {
@@ -886,10 +1016,7 @@ pub fn redirect(
     var arena = ThreadSafeArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    const project_file = try std.fs.cwd().openFile("gyro.zzz", .{
-        .read = true,
-        .write = true,
-    });
+    const project_file = try std.fs.cwd().openFile("gyro.zzz", .{ .mode = .read_write });
     defer project_file.close();
 
     var gyro_dir = try std.fs.cwd().makeOpenPath(".gyro", .{});

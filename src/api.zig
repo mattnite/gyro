@@ -1,14 +1,14 @@
 const std = @import("std");
 const version = @import("version");
-const zfetch = @import("zfetch");
 const tar = @import("tar");
 const zzz = @import("zzz");
-const uri = @import("uri");
 const Dependency = @import("Dependency.zig");
 const Package = @import("Package.zig");
 const utils = @import("utils.zig");
+const curl = @import("curl");
 
 const Allocator = std.mem.Allocator;
+const Fifo = std.fifo.LinearFifo(u8, .{ .Dynamic = {} });
 
 pub fn getLatest(
     allocator: Allocator,
@@ -18,33 +18,34 @@ pub fn getLatest(
     range: ?version.Range,
 ) !version.Semver {
     const url = if (range) |r|
-        try std.fmt.allocPrint(allocator, "https://{s}/pkgs/{s}/{s}/latest?v={}", .{
+        try std.fmt.allocPrintZ(allocator, "https://{s}/pkgs/{s}/{s}/latest?v={}", .{
             repository,
             user,
             package,
             r,
         })
     else
-        try std.fmt.allocPrint(allocator, "https://{s}/pkgs/{s}/{s}/latest", .{
+        try std.fmt.allocPrintZ(allocator, "https://{s}/pkgs/{s}/{s}/latest", .{
             repository,
             user,
             package,
         });
     defer allocator.free(url);
 
-    var headers = zfetch.Headers.init(allocator);
-    defer headers.deinit();
+    var fifo = Fifo.init(allocator);
+    defer fifo.deinit();
 
-    const link = try uri.parse(url);
-    try headers.set("Accept", "*/*");
-    try headers.set("User-Agent", "gyro");
-    try headers.set("Host", link.host orelse return error.NoHost);
+    const easy = try curl.Easy.init();
+    defer easy.cleanup();
 
-    var req = try zfetch.Request.init(allocator, url, null);
-    defer req.deinit();
+    try easy.setUrl(url);
+    try easy.setSslVerifyPeer(false);
+    try easy.setWriteFn(curl.writeToFifo(Fifo));
+    try easy.setWriteData(&fifo);
+    try easy.perform();
 
-    try req.do(.GET, headers, null);
-    switch (req.status.code) {
+    const status_code = try easy.getResponseCode();
+    switch (status_code) {
         200 => {},
         404 => {
             if (range) |r| {
@@ -65,48 +66,20 @@ pub fn getLatest(
             return error.Explained;
         },
         else => {
-            const body = try req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
-            defer allocator.free(body);
-
             const stderr = std.io.getStdErr().writer();
-            try stderr.print("got http status code for {s}: {}", .{ url, req.status.code });
-            try stderr.print("{s}\n", .{body});
+            try stderr.print("got http status code for {s}: {}", .{ url, status_code });
+            try stderr.print("{s}\n", .{fifo.readableSlice(0)});
             return error.Explained;
         },
     }
 
-    var buf: [10]u8 = undefined;
-    return version.Semver.parse(allocator, buf[0..try req.reader().readAll(&buf)]);
+    return version.Semver.parse(allocator, fifo.readableSlice(0));
 }
 
-pub fn getHeadCommit(
-    allocator: Allocator,
-    user: []const u8,
-    repo: []const u8,
-    ref: []const u8,
-) ![]const u8 {
-    const url = try std.fmt.allocPrint(
-        allocator,
-        "https://api.github.com/repos/{s}/{s}/tarball/{s}",
-        .{ user, repo, ref },
-    );
-    defer allocator.free(url);
-
-    var headers = zfetch.Headers.init(allocator);
-    defer headers.deinit();
-
-    try headers.set("Accept", "*/*");
-    var req = try request(allocator, .GET, url, &headers, null);
-    defer req.deinit();
-
-    var gzip = try std.compress.gzip.gzipStream(allocator, req.reader());
-    defer gzip.deinit();
-
-    var pax_header = try tar.PaxHeaderMap.init(allocator, gzip.reader());
-    defer pax_header.deinit();
-
-    return allocator.dupe(u8, pax_header.get("comment") orelse return error.MissingCommitKey);
-}
+pub const XferCtx = struct {
+    cb: curl.XferInfoFn,
+    data: ?*anyopaque,
+};
 
 pub fn getPkg(
     allocator: Allocator,
@@ -115,10 +88,9 @@ pub fn getPkg(
     package: []const u8,
     semver: version.Semver,
     dir: std.fs.Dir,
-    cb: ?HttpCallback,
-    payload: ?usize,
+    xfer_ctx: ?XferCtx,
 ) !void {
-    const url = try std.fmt.allocPrint(
+    const url = try std.fmt.allocPrintZ(
         allocator,
         "https://{s}/archive/{s}/{s}/{}",
         .{
@@ -130,58 +102,49 @@ pub fn getPkg(
     );
     defer allocator.free(url);
 
-    try getTarGz(allocator, url, dir, cb, payload);
+    try getTarGz(allocator, url, dir, xfer_ctx);
 }
 
-const HttpCallback = fn (count: usize, total: usize, payload: usize) void;
-
-const HttpCallbackStream = struct {
-    req_reader: zfetch.Request.Reader,
-    cb: ?HttpCallback,
-    payload: ?usize,
-
-    pub const Reader = std.io.Reader(*Self, ReaderError, Self.read);
-    const ReaderError = zfetch.Request.Reader.Error;
-
-    const Self = @This();
-
-    fn read(self: *Self, buf: []u8) ReaderError!usize {
-        const ret = try self.req_reader.read(buf);
-        if (self.cb) |cb| cb(
-            self.req_reader.context.parser.read_needed,
-            self.req_reader.context.parser.read_current,
-            self.payload orelse 0,
-        );
-        return ret;
-    }
-
-    fn reader(self: *Self) Reader {
-        return Reader{ .context = self };
-    }
-};
-
+// not a super huge fan of allocating the entire response over streaming, but
+// it'll do for now, at least it's compressed lol
 fn getTarGzImpl(
     allocator: Allocator,
-    url: []const u8,
+    url: [:0]const u8,
     dir: std.fs.Dir,
     skip_depth: usize,
-    cb: ?HttpCallback,
-    payload: ?usize,
+    xfer: ?XferCtx,
 ) !void {
-    var headers = zfetch.Headers.init(allocator);
-    defer headers.deinit();
+    var fifo = Fifo.init(allocator);
+    defer fifo.deinit();
 
-    try headers.set("Accept", "*/*");
-    var req = try request(allocator, .GET, url, &headers, null);
-    defer req.deinit();
+    var headers = curl.HeaderList.init();
+    defer headers.freeAll();
 
-    var callback_stream = HttpCallbackStream{
-        .req_reader = req.reader(),
-        .cb = cb,
-        .payload = payload,
-    };
+    try headers.append("Accept: */*");
+    const easy = try curl.Easy.init();
+    defer easy.cleanup();
 
-    var gzip = try std.compress.gzip.gzipStream(allocator, callback_stream.reader());
+    try easy.setUrl(url);
+    try easy.setHeaders(headers);
+    try easy.setSslVerifyPeer(false);
+    try easy.setWriteFn(curl.writeToFifo(Fifo));
+    try easy.setWriteData(&fifo);
+    if (xfer) |x| {
+        try easy.setXferInfoFn(x.cb);
+        if (x.data) |data|
+            try easy.setXferInfoData(data);
+
+        try easy.setNoProgress(false);
+    }
+
+    try easy.perform();
+    const status_code = try easy.getResponseCode();
+    if (status_code != 200) {
+        std.log.err("http status code: {}", .{status_code});
+        return error.HttpError;
+    }
+
+    var gzip = try std.compress.gzip.gzipStream(allocator, fifo.reader());
     defer gzip.deinit();
 
     try tar.instantiate(allocator, dir, gzip.reader(), skip_depth);
@@ -189,33 +152,11 @@ fn getTarGzImpl(
 
 pub fn getTarGz(
     allocator: Allocator,
-    url: []const u8,
+    url: [:0]const u8,
     dir: std.fs.Dir,
-    cb: ?HttpCallback,
-    payload: ?usize,
+    xfer_ctx: ?XferCtx,
 ) !void {
-    try getTarGzImpl(allocator, url, dir, 0, cb, payload);
-}
-
-pub fn getGithubTarGz(
-    allocator: Allocator,
-    user: []const u8,
-    repo: []const u8,
-    commit: []const u8,
-    dir: std.fs.Dir,
-) !void {
-    const url = try std.fmt.allocPrint(
-        allocator,
-        "https://api.github.com/repos/{s}/{s}/tarball/{s}",
-        .{
-            user,
-            repo,
-            commit,
-        },
-    );
-    defer allocator.free(url);
-
-    try getTarGzImpl(allocator, url, dir, 1);
+    try getTarGzImpl(allocator, url, dir, 0, xfer_ctx);
 }
 
 pub fn getGithubRepo(
@@ -223,27 +164,39 @@ pub fn getGithubRepo(
     user: []const u8,
     repo: []const u8,
 ) !std.json.ValueTree {
-    const url = try std.fmt.allocPrint(
+    const url = try std.fmt.allocPrintZ(
         allocator,
         "https://api.github.com/repos/{s}/{s}",
         .{ user, repo },
     );
     defer allocator.free(url);
 
-    var headers = zfetch.Headers.init(allocator);
-    defer headers.deinit();
+    var fifo = Fifo.init(allocator);
+    defer fifo.deinit();
 
-    try headers.set("Accept", "application/vnd.github.v3+json");
-    var req = try request(allocator, .GET, url, &headers, null);
-    defer req.deinit();
+    var headers = curl.HeaderList.init();
+    defer headers.freeAll();
 
-    var text = try req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
-    defer allocator.free(text);
+    try headers.append("Accept: application/vnd.github.v3+json");
+    const easy = try curl.Easy.init();
+    defer easy.cleanup();
+
+    try easy.setUrl(url);
+    try easy.setHeaders(headers);
+    try easy.setSslVerifyPeer(false);
+    try easy.setWriteFn(curl.writeToFifo(Fifo));
+    try easy.setWriteData(&fifo);
+    try easy.perform();
+    const status_code = try easy.getResponseCode();
+    if (status_code != 200) {
+        std.log.err("http status code: {}", .{status_code});
+        return error.HttpError;
+    }
 
     var parser = std.json.Parser.init(allocator, true);
     defer parser.deinit();
 
-    return try parser.parse(text);
+    return try parser.parse(fifo.readableSlice(0));
 }
 
 pub fn getGithubTopics(
@@ -251,55 +204,37 @@ pub fn getGithubTopics(
     user: []const u8,
     repo: []const u8,
 ) !std.json.ValueTree {
-    const url = try std.fmt.allocPrint(allocator, "https://api.github.com/repos/{s}/{s}/topics", .{ user, repo });
+    const url = try std.fmt.allocPrintZ(allocator, "https://api.github.com/repos/{s}/{s}/topics", .{ user, repo });
     defer allocator.free(url);
 
-    var headers = zfetch.Headers.init(allocator);
-    defer headers.deinit();
+    var fifo = Fifo.init(allocator);
+    defer fifo.deinit();
 
-    try headers.set("Accept", "application/vnd.github.mercy-preview+json");
-    var req = try request(allocator, .GET, url, &headers, null);
-    defer req.deinit();
+    var headers = curl.HeaderList.init();
+    defer headers.freeAll();
 
-    var body = try req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
-    defer allocator.free(body);
+    try headers.append("Accept: application/vnd.github.mercy-preview+json");
+
+    const easy = try curl.Easy.init();
+    defer easy.cleanup();
+
+    try easy.setUrl(url);
+    try easy.setHeaders(headers);
+    try easy.setSslVerifyPeer(false);
+    try easy.setWriteFn(curl.writeToFifo(Fifo));
+    try easy.setWriteData(&fifo);
+    try easy.perform();
+    const status_code = try easy.getResponseCode();
+    if (status_code != 200) {
+        std.log.err("http status code: {}", .{status_code});
+        std.log.err("{s}", .{fifo.readableSlice(0)});
+        return error.Explained;
+    }
 
     var parser = std.json.Parser.init(allocator, true);
     defer parser.deinit();
 
-    return try parser.parse(body);
-}
-
-pub fn getGithubGyroFile(
-    allocator: Allocator,
-    user: []const u8,
-    repo: []const u8,
-    commit: []const u8,
-) !?[]const u8 {
-    const url = try std.fmt.allocPrint(
-        allocator,
-        "https://api.github.com/repos/{s}/{s}/tarball/{s}",
-        .{ user, repo, commit },
-    );
-    defer allocator.free(url);
-
-    var headers = zfetch.Headers.init(allocator);
-    defer headers.deinit();
-
-    //std.log.info("fetching tarball: {s}", .{url});
-    try headers.set("Accept", "*/*");
-    var req = try request(allocator, .GET, url, &headers, null);
-    defer req.deinit();
-
-    const subpath = try std.fmt.allocPrint(allocator, "{s}-{s}-{s}/gyro.zzz", .{ user, repo, commit[0..7] });
-    defer allocator.free(subpath);
-
-    var gzip = try std.compress.gzip.gzipStream(allocator, req.reader());
-    defer gzip.deinit();
-
-    var extractor = tar.fileExtractor(subpath, gzip.reader());
-    return extractor.reader().readAllAlloc(allocator, std.math.maxInt(usize)) catch |err|
-        return if (err == error.FileNotFound) null else err;
+    return try parser.parse(fifo.readableSlice(0));
 }
 
 pub const DeviceCodeResponse = struct {
@@ -319,18 +254,43 @@ pub fn postDeviceCode(
     const payload = try std.fmt.allocPrint(allocator, "client_id={s}&scope={s}", .{ client_id, scope });
     defer allocator.free(payload);
 
-    var headers = zfetch.Headers.init(allocator);
-    defer headers.deinit();
+    var fifo = Fifo.init(allocator);
+    defer fifo.deinit();
 
-    try headers.set("Accept", "application/json");
-    var req = try request(allocator, .POST, url, &headers, payload);
-    defer req.deinit();
+    var headers = curl.HeaderList.init();
+    defer headers.freeAll();
 
-    const body = try req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
-    defer allocator.free(body);
+    try headers.append("Accept: application/json");
 
-    var token_stream = std.json.TokenStream.init(body);
-    return std.json.parse(DeviceCodeResponse, &token_stream, .{ .allocator = allocator });
+    // remove expect header
+    try headers.append("Expect:");
+
+    const easy = try curl.Easy.init();
+    defer easy.cleanup();
+
+    try easy.setPost();
+    try easy.setUrl(url);
+    try easy.setHeaders(headers);
+    try easy.setSslVerifyPeer(false);
+    try easy.setPostFields(payload.ptr);
+    try easy.setPostFieldSize(payload.len);
+    try easy.setWriteFn(curl.writeToFifo(Fifo));
+    try easy.setWriteData(&fifo);
+    try easy.perform();
+
+    const status_code = try easy.getResponseCode();
+    if (status_code != 200) {
+        std.log.err("http status code: {}", .{status_code});
+        std.log.err("{s}", .{fifo.readableSlice(0)});
+        return error.Explained;
+    }
+
+    std.log.debug("message: {s}", .{fifo.readableSlice(0)});
+    var token_stream = std.json.TokenStream.init(fifo.readableSlice(0));
+    return std.json.parse(DeviceCodeResponse, &token_stream, .{
+        .allocator = allocator,
+        .ignore_unknown_fields = true,
+    });
 }
 
 const PollDeviceCodeResponse = struct {
@@ -352,20 +312,37 @@ pub fn pollDeviceCode(
     );
     defer allocator.free(payload);
 
-    var headers = zfetch.Headers.init(allocator);
-    defer headers.deinit();
+    var fifo = Fifo.init(allocator);
+    defer fifo.deinit();
 
-    try headers.set("Accept", "application/json");
-    var req = try request(allocator, .POST, url, &headers, payload);
-    defer req.deinit();
+    var headers = curl.HeaderList.init();
+    defer headers.freeAll();
 
-    const body = try req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
-    defer allocator.free(body);
+    try headers.append("Accept: application/json");
+
+    const easy = try curl.Easy.init();
+    defer easy.cleanup();
+
+    try easy.setPost();
+    try easy.setUrl(url);
+    try easy.setHeaders(headers);
+    try easy.setSslVerifyPeer(false);
+    try easy.setPostFields(payload.ptr);
+    try easy.setPostFieldSize(payload.len);
+    try easy.setWriteFn(curl.writeToFifo(Fifo));
+    try easy.setWriteData(&fifo);
+    try easy.perform();
+    const status_code = try easy.getResponseCode();
+    if (status_code != 200) {
+        std.log.err("http status code: {}", .{status_code});
+        std.log.err("{s}", .{fifo.readableSlice(0)});
+        return error.Explained;
+    }
 
     var parser = std.json.Parser.init(allocator, false);
     defer parser.deinit();
 
-    var value_tree = try parser.parse(body);
+    var value_tree = try parser.parse(fifo.readableSlice(0));
     defer value_tree.deinit();
 
     // TODO: error handling based on the json error codes
@@ -391,71 +368,44 @@ pub fn postPublish(
         std.fs.cwd().deleteFile(filename) catch {};
     }
 
-    const authorization = try std.fmt.allocPrint(allocator, "Bearer github {s}", .{access_token});
-    defer allocator.free(authorization);
-
     const url = "https://" ++ utils.default_repo ++ "/publish";
-    var headers = zfetch.Headers.init(allocator);
-    defer headers.deinit();
-
-    try headers.set("Content-Type", "application/octet-stream");
-    try headers.set("Accept", "*/*");
-    try headers.set("Authorization", authorization);
-
     const payload = try file.reader().readAllAlloc(allocator, std.math.maxInt(usize));
     defer allocator.free(payload);
 
-    var req = try request(allocator, .POST, url, &headers, payload);
-    defer req.deinit();
+    var fifo = Fifo.init(allocator);
+    defer fifo.deinit();
 
-    const body = try req.reader().readAllAlloc(allocator, std.math.maxInt(usize));
-    defer allocator.free(body);
+    const authorization_header = try std.fmt.allocPrintZ(allocator, "Authorization: Bearer github {s}", .{access_token});
+    defer allocator.free(authorization_header);
+
+    var headers = curl.HeaderList.init();
+    defer headers.freeAll();
+
+    try headers.append("Content-Type: application/octet-stream");
+    try headers.append("Accept: */*");
+    try headers.append(authorization_header);
+
+    const easy = try curl.Easy.init();
+    defer easy.cleanup();
+
+    try easy.setPost();
+    try easy.setUrl(url);
+    try easy.setHeaders(headers);
+    try easy.setSslVerifyPeer(false);
+    try easy.setPostFields(payload.ptr);
+    try easy.setPostFieldSize(payload.len);
+    try easy.setWriteFn(curl.writeToFifo(Fifo));
+    try easy.setWriteData(&fifo);
+    try easy.perform();
 
     const stderr = std.io.getStdErr().writer();
-    defer stderr.print("{s}\n", .{body}) catch {};
-}
-
-// HTTP request with redirect
-fn request(
-    allocator: std.mem.Allocator,
-    method: zfetch.Method,
-    url: []const u8,
-    headers: *zfetch.Headers,
-    payload: ?[]const u8,
-) !*zfetch.Request {
-    try headers.set("User-Agent", "gyro");
-
-    var real_url = try allocator.dupe(u8, url);
-    defer allocator.free(real_url);
-
-    var redirects: usize = 0;
-    return while (redirects < 128) {
-        var ret = try zfetch.Request.init(allocator, real_url, null);
-        errdefer ret.deinit();
-
-        const link = try uri.parse(real_url);
-        try headers.set("Host", link.host orelse return error.NoHost);
-        try ret.do(method, headers.*, payload);
-        switch (ret.status.code) {
-            200 => break ret,
-            302 => {
-                // tmp needed for memory safety
-                const tmp = real_url;
-                const location = ret.headers.get("location") orelse return error.NoLocation;
-                real_url = try allocator.dupe(u8, location);
-                allocator.free(tmp);
-
-                ret.deinit();
-            },
-            else => {
-                const body = try ret.reader().readAllAlloc(allocator, std.math.maxInt(usize));
-                defer allocator.free(body);
-
-                const stderr = std.io.getStdErr().writer();
-                try stderr.print("got http status code for {s}: {}", .{ url, ret.status.code });
-                try stderr.print("{s}\n", .{body});
-                return error.Explained;
-            },
-        }
-    } else return error.TooManyRedirects;
+    defer stderr.print("{s}\n", .{fifo.readableSlice(0)}) catch {};
+    switch (try easy.getResponseCode()) {
+        200 => {},
+        401 => return error.Unauthorized,
+        else => |code| {
+            std.log.err("http status code: {}", .{code});
+            return error.HttpError;
+        },
+    }
 }

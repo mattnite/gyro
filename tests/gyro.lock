@@ -1,2 +1,5 @@
 pkg astrolabe.pm jedisct1 zigly 0.0.0
+pkg astrolabe.pm mattnite tar 0.0.3
 git https://github.com/prime31/zig-upaya.git master src/main.zig 0e58ee0b3e0351183a3c7839e59867df59a7a6fd
+git https://github.com/mattnite/version.git main src/main.zig a4be29db27cf25b3e5b58c5808b85940cf70ab3c
+git https://github.com/Hejsil/mecha.git zig-master mecha.zig 79c5596d92cfc557c15cfd69eb09d801bffcdfab

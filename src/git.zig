@@ -45,7 +45,7 @@ pub const ResolutionEntry = struct {
     }
 };
 pub const FetchError =
-    @typeInfo(@typeInfo(@TypeOf(getHeadCommit)).Fn.return_type.?).ErrorUnion.error_set ||
+    @typeInfo(@typeInfo(@TypeOf(getHeadCommitOfRef)).Fn.return_type.?).ErrorUnion.error_set ||
     @typeInfo(@typeInfo(@TypeOf(fetch)).Fn.return_type.?).ErrorUnion.error_set;
 
 const FetchQueue = Engine.MultiQueueImpl(Resolution, FetchError);
@@ -118,7 +118,84 @@ const RemoteHeadEntry = struct {
     name: []const u8,
 };
 
-fn getHeadCommit(
+pub fn getHEADCommit(
+    allocator: Allocator,
+    url: []const u8,
+) ![]const u8 {
+    const url_z = try allocator.dupeZ(u8, url);
+    defer allocator.free(url_z);
+
+    var remote: ?*c.git_remote = null;
+    var err = c.git_remote_create_anonymous(&remote, null, url_z);
+    if (err < 0) {
+        const last_error = c.git_error_last();
+        std.log.err("{s}", .{last_error.*.message});
+        return error.GitRemoteCreate;
+    }
+    defer c.git_remote_free(remote);
+
+    var callbacks: c.git_remote_callbacks = undefined;
+    err = c.git_remote_init_callbacks(
+        &callbacks,
+        c.GIT_REMOTE_CALLBACKS_VERSION,
+    );
+    if (err < 0) {
+        const last_error = c.git_error_last();
+        std.log.err("{s}", .{last_error.*.message});
+        return error.GitRemoteInitCallbacks;
+    }
+
+    err = c.git_remote_connect(
+        remote,
+        c.GIT_DIRECTION_FETCH,
+        &callbacks,
+        null,
+        null,
+    );
+    if (err < 0) {
+        const last_error = c.git_error_last();
+        std.log.err("{s}", .{last_error.*.message});
+        return error.GitRemoteConnect;
+    }
+
+    var refs_ptr: [*c][*c]c.git_remote_head = undefined;
+    var refs_len: usize = undefined;
+    err = c.git_remote_ls(&refs_ptr, &refs_len, remote);
+    if (err < 0) {
+        const last_error = c.git_error_last();
+        std.log.err("{s}", .{last_error.*.message});
+        return error.GitRemoteLs;
+    }
+
+    var refs = std.ArrayList(RemoteHeadEntry).init(allocator);
+    defer {
+        for (refs.items) |entry|
+            allocator.free(entry.name);
+
+        refs.deinit();
+    }
+
+    var i: usize = 0;
+    while (i < refs_len) : (i += 1) {
+        const len = std.mem.len(refs_ptr[i].*.name);
+        try refs.append(.{
+            .oid = undefined,
+            .name = try allocator.dupeZ(u8, refs_ptr[i].*.name[0..len]),
+        });
+
+        _ = c.git_oid_fmt(
+            &refs.items[refs.items.len - 1].oid,
+            &refs_ptr[i].*.oid,
+        );
+    }
+
+    return for (refs.items) |entry| {
+        if (std.mem.eql(u8, entry.name, "HEAD"))
+            break allocator.dupe(u8, &entry.oid);
+    } else error.RefNotFound;
+}
+
+pub fn getHeadCommitOfRef(
     allocator: Allocator,
     url: []const u8,
     ref: []const u8,
@@ -251,6 +328,7 @@ fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*anyo
         std.mem.span(sm_name)
     else
         return;
+
     // git always uses posix path separators
     const sub_path = try std.mem.replaceOwned(u8, allocator, submodule_name, "/", std.fs.path.sep_str);
     defer allocator.free(sub_path);
@@ -284,8 +362,10 @@ fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*anyo
     options.fetch_opts.callbacks.payload = &handle;
 
     var err = c.git_submodule_update(sm, 1, &options);
-    if (err != 0)
+    if (err != 0) {
+        std.log.err("{s}", .{c.git_error_last().*.message});
         return error.GitSubmoduleUpdate;
+    }
 
     var repo: ?*c.git_repository = null;
     err = c.git_submodule_open(&repo, sm);
@@ -313,7 +393,7 @@ fn submoduleCbImpl(sm: ?*c.git_submodule, sm_name: [*c]const u8, payload: ?*anyo
     }
 }
 
-fn clone(
+pub fn clone(
     arena: *ThreadSafeArenaAllocator,
     url: []const u8,
     commit: []const u8,
@@ -405,7 +485,7 @@ fn findPartialMatch(
     return for (edges) |edge| {
         const other = dep_table[edge.to].git;
         if (std.mem.eql(u8, dep.url, other.url)) {
-            const other_commit = try getHeadCommit(
+            const other_commit = try getHeadCommitOfRef(
                 allocator,
                 other.url,
                 other.ref,
@@ -419,7 +499,7 @@ fn findPartialMatch(
     } else null;
 }
 
-fn fmtCachePath(
+pub fn fmtCachePath(
     allocator: Allocator,
     url: []const u8,
     commit: []const u8,
@@ -575,7 +655,7 @@ fn dedupeResolveAndFetchImpl(
 
         return;
     } else {
-        commit = try getHeadCommit(
+        commit = try getHeadCommitOfRef(
             arena.allocator(),
             dep_table[dep_idx].git.url,
             dep_table[dep_idx].git.ref,

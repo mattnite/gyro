@@ -1,12 +1,11 @@
 deps:
   version:
-    src:
-      git:
-        url: "https://github.com/mattnite/version.git"
-        ref: main
+    git:
+      url: "https://github.com/mattnite/version.git"
+      ref: main
   jedisct1/zigly: ^0.0.0
   upaya:
-    src:
-      git:
-        url: "https://github.com/prime31/zig-upaya.git"
-        ref: master
+    git:
+      url: "https://github.com/prime31/zig-upaya.git"
+      ref: master
+  mattnite/tar: ^0.0.3
