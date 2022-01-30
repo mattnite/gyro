@@ -814,7 +814,7 @@ pub fn rm(
     try project.toFile(file);
 }
 
-pub fn publish(allocator: Allocator, pkg: ?[]const u8) !void {
+pub fn publish(allocator: Allocator, pkg: ?[]const u8) anyerror!void {
     const client_id = "ea14bba19a49f4cba053";
     const scope = "read:user user:email";
 
@@ -867,6 +867,7 @@ pub fn publish(allocator: Allocator, pkg: ?[]const u8) !void {
     };
     defer if (access_token) |at| allocator.free(at);
 
+    const from_env = access_token != null;
     if (access_token == null) {
         access_token = blk: {
             var dir = if (try known_folders.open(allocator, .cache, .{ .access_sub_paths = true })) |d|
@@ -932,7 +933,23 @@ pub fn publish(allocator: Allocator, pkg: ?[]const u8) !void {
         return error.Explained;
     }
 
-    try api.postPublish(allocator, access_token.?, project.get(name).?);
+    api.postPublish(allocator, access_token.?, project.get(name).?) catch |err| switch (err) {
+        error.Unauthorized => {
+            if (from_env) {
+                std.log.err("the access token from the env var 'GYRO_ACCESS_TOKEN' is using an outdated format for github. You need to get a new one.", .{});
+                return error.Explained;
+            }
+            std.log.info("looks like you were using an old token, deleting your cached one.", .{});
+            if (try known_folders.open(allocator, .cache, .{ .access_sub_paths = true })) |*dir| {
+                defer dir.close();
+                try dir.deleteFile("gyro-access-token");
+            }
+
+            std.log.info("getting you a new token...", .{});
+            try publish(allocator, pkg);
+        },
+        else => return err,
+    };
 }
 
 fn validateDepsAliases(redirected_deps: []const Dependency, project_deps: []const Dependency) !void {

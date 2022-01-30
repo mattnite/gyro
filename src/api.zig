@@ -138,6 +138,11 @@ fn getTarGzImpl(
     }
 
     try easy.perform();
+    const status_code = try easy.getResponseCode();
+    if (status_code != 200) {
+        std.log.err("http status code: {}", .{status_code});
+        return error.HttpError;
+    }
 
     var gzip = try std.compress.gzip.gzipStream(allocator, fifo.reader());
     defer gzip.deinit();
@@ -182,6 +187,11 @@ pub fn getGithubRepo(
     try easy.setWriteFn(curl.writeToFifo(Fifo));
     try easy.setWriteData(&fifo);
     try easy.perform();
+    const status_code = try easy.getResponseCode();
+    if (status_code != 200) {
+        std.log.err("http status code: {}", .{status_code});
+        return error.HttpError;
+    }
 
     var parser = std.json.Parser.init(allocator, true);
     defer parser.deinit();
@@ -214,6 +224,12 @@ pub fn getGithubTopics(
     try easy.setWriteFn(curl.writeToFifo(Fifo));
     try easy.setWriteData(&fifo);
     try easy.perform();
+    const status_code = try easy.getResponseCode();
+    if (status_code != 200) {
+        std.log.err("http status code: {}", .{status_code});
+        std.log.err("{s}", .{fifo.readableSlice(0)});
+        return error.Explained;
+    }
 
     var parser = std.json.Parser.init(allocator, true);
     defer parser.deinit();
@@ -238,9 +254,6 @@ pub fn postDeviceCode(
     const payload = try std.fmt.allocPrint(allocator, "client_id={s}&scope={s}", .{ client_id, scope });
     defer allocator.free(payload);
 
-    var fbs = std.io.fixedBufferStream(payload);
-    fbs.pos = payload.len;
-
     var fifo = Fifo.init(allocator);
     defer fifo.deinit();
 
@@ -249,6 +262,9 @@ pub fn postDeviceCode(
 
     try headers.append("Accept: application/json");
 
+    // remove expect header
+    try headers.append("Expect:");
+
     const easy = try curl.Easy.init();
     defer easy.cleanup();
 
@@ -256,14 +272,25 @@ pub fn postDeviceCode(
     try easy.setUrl(url);
     try easy.setHeaders(headers);
     try easy.setSslVerifyPeer(false);
+    try easy.setPostFields(payload.ptr);
+    try easy.setPostFieldSize(payload.len);
     try easy.setWriteFn(curl.writeToFifo(Fifo));
     try easy.setWriteData(&fifo);
-    try easy.setReadFn(curl.readFromFbs(@TypeOf(fbs)));
-    try easy.setReadData(&fbs);
     try easy.perform();
 
+    const status_code = try easy.getResponseCode();
+    if (status_code != 200) {
+        std.log.err("http status code: {}", .{status_code});
+        std.log.err("{s}", .{fifo.readableSlice(0)});
+        return error.Explained;
+    }
+
+    std.log.debug("message: {s}", .{fifo.readableSlice(0)});
     var token_stream = std.json.TokenStream.init(fifo.readableSlice(0));
-    return std.json.parse(DeviceCodeResponse, &token_stream, .{ .allocator = allocator });
+    return std.json.parse(DeviceCodeResponse, &token_stream, .{
+        .allocator = allocator,
+        .ignore_unknown_fields = true,
+    });
 }
 
 const PollDeviceCodeResponse = struct {
@@ -285,9 +312,6 @@ pub fn pollDeviceCode(
     );
     defer allocator.free(payload);
 
-    var fbs = std.io.fixedBufferStream(payload);
-    fbs.pos = payload.len;
-
     var fifo = Fifo.init(allocator);
     defer fifo.deinit();
 
@@ -303,11 +327,17 @@ pub fn pollDeviceCode(
     try easy.setUrl(url);
     try easy.setHeaders(headers);
     try easy.setSslVerifyPeer(false);
+    try easy.setPostFields(payload.ptr);
+    try easy.setPostFieldSize(payload.len);
     try easy.setWriteFn(curl.writeToFifo(Fifo));
     try easy.setWriteData(&fifo);
-    try easy.setReadFn(curl.readFromFbs(@TypeOf(fbs)));
-    try easy.setReadData(&fbs);
     try easy.perform();
+    const status_code = try easy.getResponseCode();
+    if (status_code != 200) {
+        std.log.err("http status code: {}", .{status_code});
+        std.log.err("{s}", .{fifo.readableSlice(0)});
+        return error.Explained;
+    }
 
     var parser = std.json.Parser.init(allocator, false);
     defer parser.deinit();
@@ -342,9 +372,6 @@ pub fn postPublish(
     const payload = try file.reader().readAllAlloc(allocator, std.math.maxInt(usize));
     defer allocator.free(payload);
 
-    var fbs = std.io.fixedBufferStream(payload);
-    fbs.pos = payload.len;
-
     var fifo = Fifo.init(allocator);
     defer fifo.deinit();
 
@@ -365,12 +392,20 @@ pub fn postPublish(
     try easy.setUrl(url);
     try easy.setHeaders(headers);
     try easy.setSslVerifyPeer(false);
+    try easy.setPostFields(payload.ptr);
+    try easy.setPostFieldSize(payload.len);
     try easy.setWriteFn(curl.writeToFifo(Fifo));
     try easy.setWriteData(&fifo);
-    try easy.setReadFn(curl.readFromFbs(@TypeOf(fbs)));
-    try easy.setReadData(&fbs);
     try easy.perform();
 
     const stderr = std.io.getStdErr().writer();
     defer stderr.print("{s}\n", .{fifo.readableSlice(0)}) catch {};
+    switch (try easy.getResponseCode()) {
+        200 => {},
+        401 => return error.Unauthorized,
+        else => |code| {
+            std.log.err("http status code: {}", .{code});
+            return error.HttpError;
+        },
+    }
 }
