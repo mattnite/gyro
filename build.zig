@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const libgit2 = @import("libs/zig-libgit2/libgit2.zig");
 const mbedtls = @import("libs/zig-mbedtls/mbedtls.zig");
 const libssh2 = @import("libs/zig-libssh2/libssh2.zig");
@@ -61,8 +62,17 @@ fn addAllPkgs(lib: *LibExeObjStep) void {
 }
 
 pub fn build(b: *Builder) !void {
-    const target = b.standardTargetOptions(.{});
+    const target = b.standardTargetOptions(.{
+        .default_target = std.zig.CrossTarget{
+            .abi = if (builtin.os.tag == .linux) .musl else null,
+        },
+    });
     const mode = b.standardReleaseOptions();
+
+    if (target.isLinux() and target.isGnuLibC()) {
+        std.log.err("glibc builds don't work right now, use musl instead. The issue is tracked here: https://github.com/ziglang/zig/issues/9485", .{});
+        return error.WaitingOnFix;
+    }
 
     const z = zlib.create(b, target, mode);
     const tls = mbedtls.create(b, target, mode);

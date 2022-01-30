@@ -111,10 +111,10 @@ pub fn resolutionToCachePath(
 
 fn progressCb(
     data: ?*anyopaque,
-    dltotal: c_long,
-    dlnow: c_long,
-    ultotal: c_long,
-    ulnow: c_long,
+    dltotal: curl.Offset,
+    dlnow: curl.Offset,
+    ultotal: curl.Offset,
+    ulnow: curl.Offset,
 ) callconv(.C) c_int {
     _ = ultotal;
     _ = ulnow;
