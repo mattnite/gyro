@@ -658,6 +658,7 @@ pub fn add(
     build_deps: bool,
     ref: ?[]const u8,
     root_path: ?[]const u8,
+    repository_opt: ?[]const u8,
     target: []const u8,
 ) !void {
     switch (src_tag) {
@@ -665,7 +666,7 @@ pub fn add(
         else => return error.Todo,
     }
 
-    const repository = utils.default_repo;
+    const repository = repository_opt orelse utils.default_repo;
     var arena = ThreadSafeArenaAllocator.init(allocator);
     defer arena.deinit();
 
@@ -714,7 +715,7 @@ pub fn add(
                             .min = latest,
                             .kind = .caret,
                         },
-                        .repository = utils.default_repo,
+                        .repository = repository,
                     },
                 },
             };
@@ -814,7 +815,7 @@ pub fn rm(
     try project.toFile(file);
 }
 
-pub fn publish(allocator: Allocator, pkg: ?[]const u8) anyerror!void {
+pub fn publish(allocator: Allocator, repository: ?[]const u8, pkg: ?[]const u8) anyerror!void {
     const client_id = "ea14bba19a49f4cba053";
     const scope = "read:user user:email";
 
@@ -933,7 +934,7 @@ pub fn publish(allocator: Allocator, pkg: ?[]const u8) anyerror!void {
         return error.Explained;
     }
 
-    api.postPublish(allocator, access_token.?, project.get(name).?) catch |err| switch (err) {
+    api.postPublish(allocator, repository, access_token.?, project.get(name).?) catch |err| switch (err) {
         error.Unauthorized => {
             if (from_env) {
                 std.log.err("the access token from the env var 'GYRO_ACCESS_TOKEN' is using an outdated format for github. You need to get a new one.", .{});
@@ -946,7 +947,7 @@ pub fn publish(allocator: Allocator, pkg: ?[]const u8) anyerror!void {
             }
 
             std.log.info("getting you a new token...", .{});
-            try publish(allocator, pkg);
+            try publish(allocator, repository, pkg);
         },
         else => return err,
     };
