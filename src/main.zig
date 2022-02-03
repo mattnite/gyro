@@ -102,6 +102,9 @@ fn runCommands(allocator: std.mem.Allocator) !void {
     var iter = try std.process.ArgIterator.initWithAllocator(allocator);
     defer iter.deinit();
 
+    // skip process name
+    _ = iter.next();
+
     const command_name = (iter.next()) orelse {
         try usage();
         std.log.err("expected command argument", .{});
