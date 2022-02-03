@@ -35,5 +35,3 @@
 [submodule "libs/zig-libcurl"]
 	path = libs/zig-libcurl
 	url = https://github.com/mattnite/zig-libcurl.git
-[submodule "zig-clap"]
-	url = https://github.com/mattnite/zig-clap.git
