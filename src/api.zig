@@ -73,7 +73,7 @@ pub fn getLatest(
         },
     }
 
-    return version.Semver.parse(allocator, fifo.readableSlice(0));
+    return version.Semver.parse(fifo.readableSlice(0));
 }
 
 pub const XferCtx = struct {

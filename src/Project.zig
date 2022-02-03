@@ -66,7 +66,7 @@ fn create(
                 return error.Explained;
             };
 
-            const ver = version.Semver.parse(allocator, ver_str) catch |err| {
+            const ver = version.Semver.parse(ver_str) catch |err| {
                 std.log.err("failed to parse version string '{s}', must be <major>.<minor>.<patch>: {}", .{ ver_str, err });
                 return error.Explained;
             };

@@ -112,7 +112,6 @@ pub const Source = union(enum) {
 ///   root: <root file>
 /// ```
 pub fn fromZNode(arena: *ThreadSafeArenaAllocator, node: *zzz.ZNode) !Self {
-    const allocator = arena.child_allocator;
     if (node.*.child == null) return error.NoChildren;
 
     // check if only one child node and that it has no children
@@ -128,7 +127,7 @@ pub fn fromZNode(arena: *ThreadSafeArenaAllocator, node: *zzz.ZNode) !Self {
                 .pkg = .{
                     .user = info.user,
                     .name = info.repo,
-                    .version = try version.Range.parse(allocator, ver_str),
+                    .version = try version.Range.parse(ver_str),
                     .repository = utils.default_repo,
                 },
             },
@@ -180,7 +179,7 @@ pub fn fromZNode(arena: *ThreadSafeArenaAllocator, node: *zzz.ZNode) !Self {
                 .pkg = .{
                     .user = (try utils.zFindString(child, "user")) orelse return error.MissingUser,
                     .name = (try utils.zFindString(child, "name")) orelse alias,
-                    .version = try version.Range.parse(allocator, (try utils.zFindString(child, "version")) orelse return error.MissingVersion),
+                    .version = try version.Range.parse((try utils.zFindString(child, "version")) orelse return error.MissingVersion),
                     .repository = (try utils.zFindString(child, "repository")) orelse utils.default_repo,
                 },
             },
