@@ -59,7 +59,7 @@ pub fn deserializeLockfileEntry(
         .repository = if (std.mem.eql(u8, repo, "default")) "astrolabe.pm" else repo,
         .user = it.next() orelse return error.NoUser,
         .name = it.next() orelse return error.NoName,
-        .semver = try version.Semver.parse(allocator, it.next() orelse return error.NoVersion),
+        .semver = try version.Semver.parse(it.next() orelse return error.NoVersion),
         .dep_idx = null,
     });
 }

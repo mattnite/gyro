@@ -2,9 +2,6 @@
 	path = libs/zig-clap
 	url = https://github.com/Hejsil/zig-clap.git
 	branch = zig-master
-[submodule "libs/mecha"]
-	path = libs/mecha
-	url = https://github.com/Hejsil/mecha.git
 [submodule "libs/zzz"]
 	path = libs/zzz
 	url = https://github.com/mattnite/zzz.git
