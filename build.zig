@@ -33,12 +33,6 @@ const tar = .{
 const version = .{
     .name = "version",
     .path = .{ .path = "libs/version/src/main.zig" },
-    .dependencies = &[_]Pkg{
-        .{
-            .name = "mecha",
-            .path = .{ .path = "libs/mecha/mecha.zig" },
-        },
-    },
 };
 
 const known_folders = .{

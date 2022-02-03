@@ -99,10 +99,10 @@ fn help(comptime command: completion.Command) !void {
 fn runCommands(allocator: std.mem.Allocator) !void {
     const stderr = std.io.getStdErr().writer();
 
-    var iter = try clap.args.OsIterator.init(allocator);
+    var iter = try std.process.ArgIterator.initWithAllocator(allocator);
     defer iter.deinit();
 
-    const command_name = (try iter.next()) orelse {
+    const command_name = (iter.next()) orelse {
         try usage();
         std.log.err("expected command argument", .{});
 
@@ -169,7 +169,7 @@ pub const commands = struct {
         };
 
         pub const Args = info.ClapComptime();
-        pub fn run(allocator: std.mem.Allocator, args: *Args, _: *clap.args.OsIterator) !void {
+        pub fn run(allocator: std.mem.Allocator, args: *Args, _: *std.process.ArgIterator) !void {
             const num = args.positionals().len;
             if (num > 1) {
                 std.log.err("that's too many args, please just give me one in the form of a link to your github repo or just '<user>/<repo>'", .{});
@@ -199,7 +199,7 @@ pub const commands = struct {
         };
 
         pub const Args = info.ClapComptime();
-        pub fn run(allocator: std.mem.Allocator, args: *Args, _: *clap.args.OsIterator) !void {
+        pub fn run(allocator: std.mem.Allocator, args: *Args, _: *std.process.ArgIterator) !void {
             const src_str = args.option("--src") orelse "pkg";
             const src_tag = inline for (std.meta.fields(Dependency.SourceType)) |field| {
                 if (std.mem.eql(u8, src_str, field.name))
@@ -235,7 +235,7 @@ pub const commands = struct {
         };
 
         pub const Args = info.ClapComptime();
-        pub fn run(allocator: std.mem.Allocator, args: *Args, _: *clap.args.OsIterator) !void {
+        pub fn run(allocator: std.mem.Allocator, args: *Args, _: *std.process.ArgIterator) !void {
             try cmds.rm(allocator, args.flag("--build-dep"), args.positionals());
         }
     };
@@ -253,7 +253,7 @@ pub const commands = struct {
         };
 
         pub const Args = info.ClapComptime();
-        pub fn run(allocator: std.mem.Allocator, _: *Args, iterator: *clap.args.OsIterator) !void {
+        pub fn run(allocator: std.mem.Allocator, _: *Args, iterator: *std.process.ArgIterator) !void {
             try cmds.build(allocator, iterator);
         }
     };
@@ -269,7 +269,7 @@ pub const commands = struct {
         };
 
         pub const Args = info.ClapComptime();
-        pub fn run(allocator: std.mem.Allocator, _: *Args, iterator: *clap.args.OsIterator) !void {
+        pub fn run(allocator: std.mem.Allocator, _: *Args, iterator: *std.process.ArgIterator) !void {
             _ = iterator;
             try cmds.fetch(allocator);
         }
@@ -287,7 +287,7 @@ pub const commands = struct {
         };
 
         pub const Args = info.ClapComptime();
-        pub fn run(allocator: std.mem.Allocator, args: *Args, _: *clap.args.OsIterator) !void {
+        pub fn run(allocator: std.mem.Allocator, args: *Args, _: *std.process.ArgIterator) !void {
             try cmds.update(allocator, args.positionals());
         }
     };
@@ -305,7 +305,7 @@ pub const commands = struct {
         };
 
         pub const Args = info.ClapComptime();
-        pub fn run(allocator: std.mem.Allocator, args: *Args, _: *clap.args.OsIterator) !void {
+        pub fn run(allocator: std.mem.Allocator, args: *Args, _: *std.process.ArgIterator) !void {
             try cmds.publish(
                 allocator,
                 args.option("--repository"),
@@ -327,7 +327,7 @@ pub const commands = struct {
         };
 
         pub const Args = info.ClapComptime();
-        pub fn run(allocator: std.mem.Allocator, args: *Args, _: *clap.args.OsIterator) !void {
+        pub fn run(allocator: std.mem.Allocator, args: *Args, _: *std.process.ArgIterator) !void {
             try cmds.package(allocator, args.option("--output-dir"), args.positionals());
         }
     };
@@ -348,7 +348,7 @@ pub const commands = struct {
         };
 
         pub const Args = info.ClapComptime();
-        pub fn run(allocator: std.mem.Allocator, args: *Args, _: *clap.args.OsIterator) !void {
+        pub fn run(allocator: std.mem.Allocator, args: *Args, _: *std.process.ArgIterator) !void {
             try cmds.redirect(allocator, args.flag("--check"), args.flag("--clean"), args.flag("--build-dep"), args.option("--alias"), args.option("--path"));
         }
     };
@@ -367,7 +367,7 @@ pub const commands = struct {
         };
 
         pub const Args = info.ClapComptime();
-        pub fn run(allocator: std.mem.Allocator, args: *Args, _: *clap.args.OsIterator) !void {
+        pub fn run(allocator: std.mem.Allocator, args: *Args, _: *std.process.ArgIterator) !void {
             const positionals = args.positionals();
 
             if (positionals.len < 1) {

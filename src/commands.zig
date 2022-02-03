@@ -165,7 +165,7 @@ const EnvInfo = struct {
     version: []const u8,
 };
 
-pub fn build(allocator: Allocator, args: *clap.args.OsIterator) !void {
+pub fn build(allocator: Allocator, args: *std.process.ArgIterator) !void {
     try assertFileExistsInCwd("build.zig");
 
     var fifo = std.fifo.LinearFifo(u8, .{ .Dynamic = {} }).init(allocator);
@@ -291,7 +291,7 @@ pub fn build(allocator: Allocator, args: *clap.args.OsIterator) !void {
         env.global_cache_dir,
     });
 
-    while (try args.next()) |arg| run_cmd.addArg(arg);
+    while (args.next()) |arg| run_cmd.addArg(arg);
     b.default_step.dependOn(&run_cmd.step);
     if (b.validateUserInputDidItFail()) {
         return error.UserInputFailed;
