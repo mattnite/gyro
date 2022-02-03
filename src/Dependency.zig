@@ -298,7 +298,7 @@ test "default repo pkg" {
             .pkg = .{
                 .user = "matt",
                 .name = "something",
-                .version = try version.Range.parse(testing.allocator, "^0.1.0"),
+                .version = try version.Range.parse("^0.1.0"),
                 .repository = utils.default_repo,
             },
         },
@@ -324,7 +324,7 @@ test "legacy aliased, default repo pkg" {
             .pkg = .{
                 .user = "matt",
                 .name = "blarg",
-                .version = try version.Range.parse(testing.allocator, "^0.1.0"),
+                .version = try version.Range.parse("^0.1.0"),
                 .repository = utils.default_repo,
             },
         },
@@ -351,7 +351,7 @@ test "aliased, default repo pkg" {
             .pkg = .{
                 .user = "matt",
                 .name = "blarg",
-                .version = try version.Range.parse(testing.allocator, "^0.1.0"),
+                .version = try version.Range.parse("^0.1.0"),
                 .repository = utils.default_repo,
             },
         },
@@ -379,7 +379,7 @@ test "legacy non-default repo pkg" {
             .pkg = .{
                 .user = "matt",
                 .name = "something",
-                .version = try version.Range.parse(testing.allocator, "^0.1.0"),
+                .version = try version.Range.parse("^0.1.0"),
                 .repository = "example.com",
             },
         },
@@ -406,7 +406,7 @@ test "non-default repo pkg" {
             .pkg = .{
                 .user = "matt",
                 .name = "something",
-                .version = try version.Range.parse(testing.allocator, "^0.1.0"),
+                .version = try version.Range.parse("^0.1.0"),
                 .repository = "example.com",
             },
         },
@@ -435,7 +435,7 @@ test "legacy aliased, non-default repo pkg" {
             .pkg = .{
                 .user = "matt",
                 .name = "real_name",
-                .version = try version.Range.parse(testing.allocator, "^0.1.0"),
+                .version = try version.Range.parse("^0.1.0"),
                 .repository = "example.com",
             },
         },
@@ -463,7 +463,7 @@ test "aliased, non-default repo pkg" {
             .pkg = .{
                 .user = "matt",
                 .name = "real_name",
-                .version = try version.Range.parse(testing.allocator, "^0.1.0"),
+                .version = try version.Range.parse("^0.1.0"),
                 .repository = "example.com",
             },
         },
