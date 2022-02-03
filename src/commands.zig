@@ -631,7 +631,7 @@ fn gitDependency(
         try curl_url.set(url_z);
         alias = std.fs.path.basename(std.mem.span(try curl_url.getPath()));
         const ext = std.fs.path.extension(alias.?);
-        alias = alias.?[0 .. alias.?.len - ext.len];
+        alias = try utils.normalizeName(alias.?[0 .. alias.?.len - ext.len]);
 
         if (alias.?.len == 0) {
             std.log.err("failed to figure out an alias from the url, please manually specify it with '--alias' or '-a'", .{});
