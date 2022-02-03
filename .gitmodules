@@ -1,6 +1,6 @@
 [submodule "libs/zig-clap"]
 	path = libs/zig-clap
-	url = https://github.com/Hejsil/zig-clap.git
+	url = https://github.com/mattnite/zig-clap.git
 	branch = zig-master
 [submodule "libs/zzz"]
 	path = libs/zzz
@@ -35,3 +35,5 @@
 [submodule "libs/zig-libcurl"]
 	path = libs/zig-libcurl
 	url = https://github.com/mattnite/zig-libcurl.git
+[submodule "zig-clap"]
+	url = https://github.com/mattnite/zig-clap.git
