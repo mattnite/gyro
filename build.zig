@@ -1,59 +1,16 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const libgit2 = @import("libs/zig-libgit2/libgit2.zig");
-const mbedtls = @import("libs/zig-mbedtls/mbedtls.zig");
-const libssh2 = @import("libs/zig-libssh2/libssh2.zig");
-const zlib = @import("libs/zig-zlib/zlib.zig");
-const libcurl = @import("libs/zig-libcurl/libcurl.zig");
+const deps = @import("deps.zig");
+
+const libgit2 = deps.build_pkgs.libgit2;
+const mbedtls = deps.build_pkgs.mbedtls;
+const libssh2 = deps.build_pkgs.libssh2;
+const zlib = deps.build_pkgs.zlib;
+const libcurl = deps.build_pkgs.libcurl;
 
 const Builder = std.build.Builder;
 const LibExeObjStep = std.build.LibExeObjStep;
 const Pkg = std.build.Pkg;
-
-const clap = .{
-    .name = "clap",
-    .path = .{ .path = "libs/zig-clap/clap.zig" },
-};
-
-const zzz = .{
-    .name = "zzz",
-    .path = .{ .path = "libs/zzz/src/main.zig" },
-};
-
-const glob = .{
-    .name = "glob",
-    .path = .{ .path = "libs/glob/src/main.zig" },
-};
-
-const tar = .{
-    .name = "tar",
-    .path = .{ .path = "libs/tar/src/main.zig" },
-};
-
-const version = .{
-    .name = "version",
-    .path = .{ .path = "libs/version/src/main.zig" },
-};
-
-const known_folders = .{
-    .name = "known-folders",
-    .path = .{ .path = "libs/known-folders/known-folders.zig" },
-};
-
-const uri = .{
-    .name = "uri",
-    .path = .{ .path = "libs/zig-uri/uri.zig" },
-};
-
-fn addAllPkgs(lib: *LibExeObjStep) void {
-    lib.addPackage(clap);
-    lib.addPackage(version);
-    lib.addPackage(tar);
-    lib.addPackage(zzz);
-    lib.addPackage(glob);
-    lib.addPackage(uri);
-    lib.addPackage(known_folders);
-}
 
 pub fn build(b: *Builder) !void {
     const target = b.standardTargetOptions(.{
@@ -91,7 +48,7 @@ pub fn build(b: *Builder) !void {
     ssh2.link(gyro);
     git2.link(gyro);
     curl.link(gyro, .{ .import_name = "curl" });
-    addAllPkgs(gyro);
+    deps.pkgs.addAllTo(gyro);
     gyro.install();
 
     // release-* builds for windows end up missing a _tls_index symbol, turning
@@ -102,7 +59,7 @@ pub fn build(b: *Builder) !void {
     const tests = b.addTest("src/main.zig");
     tests.setBuildMode(mode);
     tests.setTarget(target);
-    addAllPkgs(tests);
+    deps.pkgs.addAllTo(tests);
 
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&tests.step);

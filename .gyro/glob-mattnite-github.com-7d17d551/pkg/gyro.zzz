@@ -1,0 +1,14 @@
+pkgs:
+  glob:
+    version: 0.0.0
+    author: mattnite
+    description: "small library for globing file paths"
+    license: MIT
+    source_url: "https://github.com/mattnite/glob"
+    tags:
+      filesystem
+
+    files:
+      build.zig
+      README.md
+      LICENSE

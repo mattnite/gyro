@@ -1,5 +1,6 @@
 zig-cache
 zig-out
-deps.zig
-.gyro
 build_runner.zig
+.gyro/redirects
+tests/.gyro
+tests/deps.zig

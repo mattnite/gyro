@@ -1,0 +1,6 @@
+build_deps:
+  mbedtls:
+    git:
+      url: "https://github.com/mattnite/zig-mbedtls.git"
+      ref: main
+      root: mbedtls.zig
