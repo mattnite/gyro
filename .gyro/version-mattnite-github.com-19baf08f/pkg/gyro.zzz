@@ -1,0 +1,8 @@
+pkgs:
+  version:
+    version: 0.2.0
+    description: small library for semver
+    license: MIT
+    source_url: "https://github.com/mattnite/version"
+    tags: semver
+    root: src/main.zig

@@ -632,101 +632,149 @@ pub fn writeDepEnd(writer: anytype, indent: usize) !void {
 }
 
 pub fn writeDepsZig(self: *Engine, writer: anytype) !void {
-    try writer.print(
+    try writer.writeAll(
         \\const std = @import("std");
         \\const Pkg = std.build.Pkg;
         \\const FileSource = std.build.FileSource;
         \\
-        \\pub const pkgs = struct {{
         \\
-    , .{});
+    );
 
-    for (self.edges.items) |edge| {
+    const has_build_pkgs = for (self.edges.items) |edge| {
         switch (edge.from) {
-            .root => |root| if (root == .normal) {
-                var stack = std.ArrayList(struct {
-                    current: usize,
-                    edge_idx: usize,
-                    has_deps: bool,
-                }).init(self.allocator);
-                defer stack.deinit();
+            .root => |root| if (root == .build) break true,
+            else => {},
+        }
+    } else false;
 
-                var current = edge.to;
-                var edge_idx = 1 + edge.to;
-                var has_deps = false;
-                try self.writeDepBeginRoot(writer, 1 + stack.items.len, edge);
+    const has_pkgs = for (self.edges.items) |edge| {
+        switch (edge.from) {
+            .root => |root| if (root == .normal) break true,
+            else => {},
+        }
+    } else false;
 
-                while (true) {
-                    while (edge_idx < self.edges.items.len) : (edge_idx += 1) {
-                        const root_level = stack.items.len == 0;
-                        switch (self.edges.items[edge_idx].from) {
-                            .index => |idx| if (idx == current) {
-                                if (!has_deps) {
+    if (has_build_pkgs) {
+        try writer.writeAll(
+            \\pub const build_pkgs = struct {
+            \\
+        );
+
+        for (self.edges.items) |edge| {
+            switch (edge.from) {
+                .root => |root| if (root == .build) {
+                    try writer.print(
+                        \\    pub const {s} = @import("{s}");
+                        \\
+                    , .{ std.zig.fmtId(edge.alias), self.paths.get(edge.to).? });
+                },
+                else => {},
+            }
+        }
+
+        try writer.writeAll(
+            \\};
+            \\
+        );
+    }
+
+    if (has_pkgs) {
+        if (has_build_pkgs) {
+            try writer.writeByte('\n');
+        }
+
+        try writer.writeAll(
+            \\pub const pkgs = struct {
+            \\
+        );
+
+        for (self.edges.items) |edge| {
+            switch (edge.from) {
+                .root => |root| if (root == .normal) {
+                    var stack = std.ArrayList(struct {
+                        current: usize,
+                        edge_idx: usize,
+                        has_deps: bool,
+                    }).init(self.allocator);
+                    defer stack.deinit();
+
+                    var current = edge.to;
+                    var edge_idx = 1 + edge.to;
+                    var has_deps = false;
+                    try self.writeDepBeginRoot(writer, 1 + stack.items.len, edge);
+
+                    while (true) {
+                        while (edge_idx < self.edges.items.len) : (edge_idx += 1) {
+                            const root_level = stack.items.len == 0;
+                            switch (self.edges.items[edge_idx].from) {
+                                .index => |idx| if (idx == current) {
+                                    if (!has_deps) {
+                                        const offset: usize = if (root_level) 2 else 3;
+                                        try writer.writeByteNTimes(' ', 4 * (stack.items.len + offset));
+                                        try writer.print(".dependencies = &[_]Pkg{{\n", .{});
+                                        has_deps = true;
+                                    }
+
+                                    try stack.append(.{
+                                        .current = current,
+                                        .edge_idx = edge_idx,
+                                        .has_deps = has_deps,
+                                    });
+
                                     const offset: usize = if (root_level) 2 else 3;
-                                    try writer.writeByteNTimes(' ', 4 * (stack.items.len + offset));
-                                    try writer.print(".dependencies = &[_]Pkg{{\n", .{});
-                                    has_deps = true;
-                                }
+                                    try self.writeDepBegin(writer, offset + stack.items.len, self.edges.items[edge_idx]);
+                                    current = edge_idx;
+                                    edge_idx += 1;
+                                    has_deps = false;
+                                    break;
+                                },
+                                else => {},
+                            }
+                        } else if (stack.items.len > 0) {
+                            if (has_deps) {
+                                try writer.writeByteNTimes(' ', 4 * (stack.items.len + 3));
+                                try writer.print("}},\n", .{});
+                            }
 
-                                try stack.append(.{
-                                    .current = current,
-                                    .edge_idx = edge_idx,
-                                    .has_deps = has_deps,
-                                });
-
-                                const offset: usize = if (root_level) 2 else 3;
-                                try self.writeDepBegin(writer, offset + stack.items.len, self.edges.items[edge_idx]);
-                                current = edge_idx;
-                                edge_idx += 1;
-                                has_deps = false;
-                                break;
-                            },
-                            else => {},
-                        }
-                    } else if (stack.items.len > 0) {
-                        if (has_deps) {
-                            try writer.writeByteNTimes(' ', 4 * (stack.items.len + 3));
+                            const offset: usize = if (stack.items.len == 1) 2 else 3;
+                            try writer.writeByteNTimes(' ', 4 * (stack.items.len + offset));
                             try writer.print("}},\n", .{});
+
+                            const pop = stack.pop();
+                            current = pop.current;
+                            edge_idx = 1 + pop.edge_idx;
+                            has_deps = pop.has_deps;
+                        } else {
+                            if (has_deps) {
+                                try writer.writeByteNTimes(' ', 8);
+                                try writer.print("}},\n", .{});
+                            }
+
+                            break;
                         }
-
-                        const offset: usize = if (stack.items.len == 1) 2 else 3;
-                        try writer.writeByteNTimes(' ', 4 * (stack.items.len + offset));
-                        try writer.print("}},\n", .{});
-
-                        const pop = stack.pop();
-                        current = pop.current;
-                        edge_idx = 1 + pop.edge_idx;
-                        has_deps = pop.has_deps;
-                    } else {
-                        if (has_deps) {
-                            try writer.writeByteNTimes(' ', 8);
-                            try writer.print("}},\n", .{});
-                        }
-
-                        break;
                     }
-                }
 
-                try writer.writeByteNTimes(' ', 4);
-                try writer.print("}};\n\n", .{});
-            },
-            else => {},
+                    try writer.writeByteNTimes(' ', 4);
+                    try writer.print("}};\n\n", .{});
+                },
+                else => {},
+            }
         }
-    }
-    try writer.print("    pub fn addAllTo(artifact: *std.build.LibExeObjStep) void {{\n", .{});
-    for (self.edges.items) |edge| {
-        switch (edge.from) {
-            .root => |root| if (root == .normal) {
-                try writer.print("        artifact.addPackage(pkgs.{s});\n", .{
-                    try utils.escape(self.arena.allocator(), edge.alias),
-                });
-            },
-            else => {},
+        try writer.print("    pub fn addAllTo(artifact: *std.build.LibExeObjStep) void {{\n", .{});
+        for (self.edges.items) |edge| {
+            switch (edge.from) {
+                .root => |root| if (root == .normal) {
+                    try writer.print("        artifact.addPackage(pkgs.{s});\n", .{
+                        try utils.escape(self.arena.allocator(), edge.alias),
+                    });
+                },
+                else => {},
+            }
         }
-    }
-    try writer.print("    }}\n", .{});
+        try writer.print("    }}\n", .{});
 
-    try writer.print("}};\n", .{});
+        try writer.print("}};\n", .{});
+    }
 
     if (self.project.packages.count() == 0)
         return;

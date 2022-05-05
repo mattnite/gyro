@@ -1,0 +1,62 @@
+deps:
+  version:
+    git:
+      url: "https://github.com/mattnite/version.git"
+      ref: main
+      root: src/main.zig
+  clap:
+    git:
+      url: "https://github.com/Hejsil/zig-clap.git"
+      ref: master
+      root: clap.zig
+  glob:
+    git:
+      url: "https://github.com/mattnite/glob.git"
+      ref: main
+      root: src/main.zig
+  known-folders:
+    git:
+      url: "https://github.com/ziglibs/known-folders.git"
+      ref: master
+      root: known-folders.zig
+  tar:
+    git:
+      url: "https://github.com/mattnite/tar.git"
+      ref: main
+      root: src/main.zig
+  uri:
+    git:
+      url: "https://github.com/MasterQ32/zig-uri.git"
+      ref: master
+      root: uri.zig
+  zzz:
+    git:
+      url: "https://github.com/mattnite/zzz.git"
+      ref: main
+      root: src/main.zig
+build_deps:
+  mbedtls:
+    git:
+      url: "https://github.com/mattnite/zig-mbedtls.git"
+      ref: main
+      root: mbedtls.zig
+  libgit2:
+    git:
+      url: "https://github.com/mattnite/zig-libgit2.git"
+      ref: main
+      root: libgit2.zig
+  libssh2:
+    git:
+      url: "https://github.com/mattnite/zig-libssh2.git"
+      ref: main
+      root: libssh2.zig
+  zlib:
+    git:
+      url: "https://github.com/mattnite/zig-zlib.git"
+      ref: main
+      root: zlib.zig
+  libcurl:
+    git:
+      url: "https://github.com/mattnite/zig-libcurl.git"
+      ref: main
+      root: libcurl.zig

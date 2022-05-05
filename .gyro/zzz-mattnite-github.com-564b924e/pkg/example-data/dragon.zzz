@@ -1,0 +1,19 @@
+# Made up stat block to.
+
+name: Dragon
+health: 100
+attacks:
+  : name: Claws
+    types: Slashing
+    damage: 4, 10
+    range: 10
+    description:
+  : name: Fire Breath
+    types: Fire, Magic
+    damage: 4, 100
+    range: 100
+    description: [[
+Breaths fire!]]
+complex:
+  arbitrary:
+    data: goes, here

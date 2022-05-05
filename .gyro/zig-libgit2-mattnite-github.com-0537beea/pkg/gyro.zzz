@@ -1,0 +1,16 @@
+build_deps:
+  zlib:
+    git:
+      url: "https://github.com/mattnite/zig-zlib.git"
+      ref: main
+      root: zlib.zig
+  mbedtls:
+    git:
+      url: "https://github.com/mattnite/zig-mbedtls.git"
+      ref: main
+      root: mbedtls.zig
+  libssh2:
+    git:
+      url: "https://github.com/mattnite/zig-libssh2.git"
+      ref: main
+      root: libssh2.zig

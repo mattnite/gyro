@@ -1,0 +1,13 @@
+pkgs:
+  tar:
+    version: 0.0.3
+    description: "tar library that has a bad interface ngl"
+    license: MIT
+    source_url: "https://github.com/mattnite/tar"
+    tags:
+      archive
+
+    files:
+      README.md
+      LICENSE
+      build.zig

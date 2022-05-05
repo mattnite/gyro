@@ -1,0 +1,10 @@
+pkgs:
+  known-folders:
+    version: 0.0.0
+    description: "Provides access to well-known folders across several operating systems"
+    source_url: "https://github.com/ziglibs/known-folders"    
+    root: known-folders.zig
+    files:
+      LICENSE
+      README.md
+      RESOURCES.md
