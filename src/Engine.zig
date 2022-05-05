@@ -660,13 +660,28 @@ pub fn writeDepsZig(self: *Engine, writer: anytype) !void {
             \\
         );
 
-        for (self.edges.items) |edge| {
+        for (self.edges.items) |edge, i| {
             switch (edge.from) {
                 .root => |root| if (root == .build) {
-                    try writer.print(
-                        \\    pub const {s} = @import("{s}");
-                        \\
-                    , .{ std.zig.fmtId(edge.alias), self.paths.get(edge.to).? });
+                    const has_deps = for (self.edges.items[i..]) |other| {
+                        switch (other.from) {
+                            .index => |parent_idx| if (parent_idx == i) break true,
+                            else => {},
+                        }
+                    } else false;
+
+                    if (has_deps) {
+                        try writer.print(
+                            \\    pub const {s} = @compileError("can't directly import because it has dependencies, you'll need to directly import: https://github.com/mattnite/gyro#build-dependencies");
+                            \\
+                        , .{std.zig.fmtId(edge.alias)});
+                    } else {
+                        // we can't import it if it has dependencies, they'll have to use gyro build deps then
+                        try writer.print(
+                            \\    pub const {s} = @import("{s}");
+                            \\
+                        , .{ std.zig.fmtId(edge.alias), self.paths.get(edge.to).? });
+                    }
                 },
                 else => {},
             }
