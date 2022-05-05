@@ -895,8 +895,7 @@ pub fn publish(allocator: Allocator, repository: ?[]const u8, pkg: ?[]const u8) 
             .macos => "open",
             else => "xdg-open",
         };
-        var browser = try std.ChildProcess.init(&.{ open_program, "https://github.com/login/device" }, allocator);
-        defer browser.deinit();
+        var browser = std.ChildProcess.init(&.{ open_program, "https://github.com/login/device" }, allocator);
 
         _ = browser.spawnAndWait() catch {
             try std.io.getStdErr().writer().print("Failed to open your browser, please go to https://github.com/login/device", .{});
