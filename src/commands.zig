@@ -202,19 +202,13 @@ pub fn build(allocator: Allocator, args: *std.process.ArgIterator) !void {
     );
     defer std.json.parseFree(EnvInfo, env, parse_opts);
 
-    const path = try std.fs.path.join(
-        allocator,
-        &[_][]const u8{ env.std_dir, "special" },
-    );
-    defer allocator.free(path);
-
-    var special_dir = try std.fs.openDirAbsolute(
-        path,
+    var zig_lib_dir = try std.fs.openDirAbsolute(
+        env.lib_dir,
         .{ .access_sub_paths = true },
     );
-    defer special_dir.close();
+    defer zig_lib_dir.close();
 
-    try special_dir.copyFile(
+    try zig_lib_dir.copyFile(
         "build_runner.zig",
         std.fs.cwd(),
         "build_runner.zig",
