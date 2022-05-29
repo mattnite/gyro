@@ -271,7 +271,7 @@ pub fn build(allocator: Allocator, args: *std.process.ArgIterator) !void {
     const runner = b.addExecutable("build", "build_runner.zig");
     runner.addPackage(std.build.Pkg{
         .name = "@build",
-        .path = .{
+        .source = .{
             .path = "build.zig",
         },
         .dependencies = pkgs.items,

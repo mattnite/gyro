@@ -13,49 +13,49 @@ pub const build_pkgs = struct {
 pub const pkgs = struct {
     pub const version = Pkg{
         .name = "version",
-        .path = FileSource{
+        .source = FileSource{
             .path = ".gyro/version-mattnite-github.com-19baf08f/pkg/src/main.zig",
         },
     };
 
     pub const clap = Pkg{
         .name = "clap",
-        .path = FileSource{
+        .source = FileSource{
             .path = ".gyro/zig-clap-Hejsil-github.com-7188a9fc/pkg/clap.zig",
         },
     };
 
     pub const glob = Pkg{
         .name = "glob",
-        .path = FileSource{
+        .source = FileSource{
             .path = ".gyro/glob-mattnite-github.com-7d17d551/pkg/src/main.zig",
         },
     };
 
     pub const @"known-folders" = Pkg{
         .name = "known-folders",
-        .path = FileSource{
+        .source = FileSource{
             .path = ".gyro/known-folders-ziglibs-github.com-9db1b992/pkg/known-folders.zig",
         },
     };
 
     pub const tar = Pkg{
         .name = "tar",
-        .path = FileSource{
+        .source = FileSource{
             .path = ".gyro/tar-mattnite-github.com-92141da6/pkg/src/main.zig",
         },
     };
 
     pub const uri = Pkg{
         .name = "uri",
-        .path = FileSource{
+        .source = FileSource{
             .path = ".gyro/zig-uri-MasterQ32-github.com-e879df3a/pkg/uri.zig",
         },
     };
 
     pub const zzz = Pkg{
         .name = "zzz",
-        .path = FileSource{
+        .source = FileSource{
             .path = ".gyro/zzz-mattnite-github.com-564b924e/pkg/src/main.zig",
         },
     };

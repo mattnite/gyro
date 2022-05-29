@@ -578,7 +578,7 @@ pub fn writeDepBeginRoot(self: *Engine, writer: anytype, indent: usize, edge: Ed
     try writer.print(".name = \"{s}\",\n", .{edge.alias});
 
     try writer.writeByteNTimes(' ', 4 * (indent + 1));
-    try writer.print(".path = FileSource{{\n", .{});
+    try writer.print(".source = FileSource{{\n", .{});
 
     const path = if (builtin.target.os.tag == .windows)
         try std.mem.replaceOwned(u8, self.allocator, self.paths.get(edge.to).?, "\\", "\\\\")
@@ -609,7 +609,7 @@ pub fn writeDepBegin(self: Engine, writer: anytype, indent: usize, edge: Edge) !
     try writer.print(".name = \"{s}\",\n", .{edge.alias});
 
     try writer.writeByteNTimes(' ', 4 * (indent + 1));
-    try writer.print(".path = FileSource{{\n", .{});
+    try writer.print(".source = FileSource{{\n", .{});
 
     const path = if (builtin.target.os.tag == .windows)
         try std.mem.replaceOwned(u8, self.allocator, self.paths.get(edge.to).?, "\\", "\\\\")
@@ -801,7 +801,7 @@ pub fn writeDepsZig(self: *Engine, writer: anytype) !void {
         try writer.print(
             \\    pub const {s} = Pkg{{
             \\        .name = "{s}",
-            \\        .path = "{s}",
+            \\        .source = FileSource{{ .path = "{s}" }},
             \\
         , .{
             try utils.escape(self.arena.allocator(), pkg.value_ptr.name),
@@ -856,7 +856,7 @@ pub fn genBuildDeps(self: Engine, arena: *ThreadSafeArenaAllocator) !std.ArrayLi
                             .index => |idx| if (idx == current) {
                                 try deps.append(arena.allocator(), .{
                                     .name = self.edges.items[edge_idx].alias,
-                                    .path = .{
+                                    .source = .{
                                         .path = self.paths.get(self.edges.items[edge_idx].to).?,
                                     },
                                 });
@@ -889,7 +889,7 @@ pub fn genBuildDeps(self: Engine, arena: *ThreadSafeArenaAllocator) !std.ArrayLi
 
                 try ret.append(.{
                     .name = edge.alias,
-                    .path = .{ .path = self.paths.get(edge.to).? },
+                    .source = .{ .path = self.paths.get(edge.to).? },
                     .dependencies = deps.items,
                 });
 
