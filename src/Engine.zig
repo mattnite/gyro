@@ -676,11 +676,16 @@ pub fn writeDepsZig(self: *Engine, writer: anytype) !void {
                             \\
                         , .{std.zig.fmtId(edge.alias)});
                     } else {
+                        const path = if (builtin.target.os.tag == .windows)
+                            try std.mem.replaceOwned(u8, self.allocator, self.paths.get(edge.to).?, "\\", "\\\\")
+                        else
+                            self.paths.get(edge.to).?;
+
                         // we can't import it if it has dependencies, they'll have to use gyro build deps then
                         try writer.print(
                             \\    pub const {s} = @import("{s}");
                             \\
-                        , .{ std.zig.fmtId(edge.alias), self.paths.get(edge.to).? });
+                        , .{ std.zig.fmtId(edge.alias), path });
                     }
                 },
                 else => {},
