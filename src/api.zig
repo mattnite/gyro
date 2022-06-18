@@ -10,6 +10,8 @@ const curl = @import("curl");
 const Allocator = std.mem.Allocator;
 const Fifo = std.fifo.LinearFifo(u8, .{ .Dynamic = {} });
 
+const userAgent = "user-agent: gyro/0.7.0";
+
 pub fn getLatest(
     allocator: Allocator,
     repository: []const u8,
@@ -178,6 +180,7 @@ pub fn getGithubRepo(
     defer headers.freeAll();
 
     try headers.append("Accept: application/vnd.github.v3+json");
+    try headers.append(userAgent);
     const easy = try curl.Easy.init();
     defer easy.cleanup();
 
@@ -214,6 +217,7 @@ pub fn getGithubTopics(
     defer headers.freeAll();
 
     try headers.append("Accept: application/vnd.github.mercy-preview+json");
+    try headers.append(userAgent);
 
     const easy = try curl.Easy.init();
     defer easy.cleanup();
@@ -261,6 +265,7 @@ pub fn postDeviceCode(
     defer headers.freeAll();
 
     try headers.append("Accept: application/json");
+    try headers.append(userAgent);
 
     // remove expect header
     try headers.append("Expect:");
@@ -319,6 +324,7 @@ pub fn pollDeviceCode(
     defer headers.freeAll();
 
     try headers.append("Accept: application/json");
+    try headers.append(userAgent);
 
     const easy = try curl.Easy.init();
     defer easy.cleanup();
