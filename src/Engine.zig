@@ -550,13 +550,13 @@ pub fn fetch(self: *Engine) !void {
             }
         }
 
-        var cache_dir = try std.fs.cwd().makeOpenPath(".gyro", .{ .iterate = true });
+        var cache_dir = try std.fs.cwd().makeOpenPathIterable(".gyro", .{});
         defer cache_dir.close();
 
         var it = cache_dir.iterate();
         while (try it.next()) |entry| switch (entry.kind) {
             .Directory => if (!paths.contains(entry.name)) {
-                try cache_dir.deleteTree(entry.name);
+                try cache_dir.dir.deleteTree(entry.name);
             },
             else => {},
         };

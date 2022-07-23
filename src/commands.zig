@@ -340,20 +340,20 @@ pub fn package(
         };
 
     if (found_not_pkg) return error.Explained;
-    var write_dir = try std.fs.cwd().openDir(
+    var write_dir = try std.fs.cwd().openIterableDir(
         if (output_dir) |output| output else ".",
-        .{ .iterate = true, .access_sub_paths = true },
+        .{ .access_sub_paths = true },
     );
     defer write_dir.close();
 
-    var read_dir = try std.fs.cwd().openDir(".", .{ .iterate = true });
+    var read_dir = try std.fs.cwd().openIterableDir(".", .{});
     defer read_dir.close();
 
     if (names.len > 0) {
-        for (names) |name| try project.get(name).?.bundle(read_dir, write_dir);
+        for (names) |name| try project.get(name).?.bundle(read_dir.dir, write_dir.dir);
     } else {
         var it = project.iterator();
-        while (it.next()) |pkg| try pkg.bundle(read_dir, write_dir);
+        while (it.next()) |pkg| try pkg.bundle(read_dir.dir, write_dir.dir);
     }
 }
 

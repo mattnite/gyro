@@ -3,26 +3,25 @@ const mem = std.mem;
 
 const open_flags = .{
     .access_sub_paths = true,
-    .iterate = true,
 };
 
 pub const Iterator = struct {
     allocator: mem.Allocator,
-    root: std.fs.Dir,
+    root: std.fs.IterableDir,
     segments: std.ArrayListUnmanaged([]const u8),
-    stack: std.ArrayListUnmanaged(std.fs.Dir.Iterator),
+    stack: std.ArrayListUnmanaged(std.fs.IterableDir.Iterator),
     components: std.ArrayListUnmanaged([]const u8),
     path: ?[]const u8,
     done: bool,
 
-    pub fn init(allocator: mem.Allocator, root: std.fs.Dir, pattern: []const u8) !Iterator {
+    pub fn init(allocator: mem.Allocator, root: std.fs.IterableDir, pattern: []const u8) !Iterator {
         if (pattern.len > 0 and pattern[0] == '/') return error.NoAbsolutePatterns;
 
         var ret = Iterator{
             .allocator = allocator,
             .root = root,
             .segments = std.ArrayListUnmanaged([]const u8){},
-            .stack = std.ArrayListUnmanaged(std.fs.Dir.Iterator){},
+            .stack = std.ArrayListUnmanaged(std.fs.IterableDir.Iterator){},
             .components = std.ArrayListUnmanaged([]const u8){},
             .path = null,
             .done = false,
@@ -102,7 +101,7 @@ pub const Iterator = struct {
                     },
                     .Directory => {
                         if (i < self.segments.items.len - 1) {
-                            const dir = try it.dir.openDir(entry.name, open_flags);
+                            const dir = try it.dir.openIterableDir(entry.name, open_flags);
                             try self.stack.append(self.allocator, dir.iterate());
                             try self.components.append(self.allocator, entry.name);
                             i += 1;
@@ -129,7 +128,7 @@ pub const Iterator = struct {
 pub fn copy(
     allocator: mem.Allocator,
     pattern: []const u8,
-    from: std.fs.Dir,
+    from: std.fs.IterableDir,
     to: std.fs.Dir,
 ) !void {
     var it = try Iterator.init(allocator, from, pattern);
@@ -138,7 +137,7 @@ pub fn copy(
     while (try it.next()) |subpath| {
         if (std.fs.path.dirname(subpath)) |dirname|
             try to.makePath(dirname);
-        try from.copyFile(subpath, to, subpath, .{});
+        try from.dir.copyFile(subpath, to, subpath, .{});
     }
 }
 
@@ -249,12 +248,12 @@ fn copy_test(pattern: []const u8, fs: []const []const u8, expected: []const []co
     var dst = std.testing.tmpDir(open_flags);
     defer dst.cleanup();
 
-    try copy(std.testing.allocator, pattern, dir.dir, dst.dir);
+    try copy(std.testing.allocator, pattern, dir.iterable_dir, dst.dir);
     try expect_fs(dst.dir, expected);
 }
 
-fn setup_fs(files: []const []const u8) !std.testing.TmpDir {
-    var root = std.testing.tmpDir(open_flags);
+fn setup_fs(files: []const []const u8) !std.testing.TmpIterableDir {
+    var root = std.testing.tmpIterableDir(open_flags);
     errdefer root.cleanup();
 
     for (files) |subpath| {
@@ -271,14 +270,14 @@ fn setup_fs(files: []const []const u8) !std.testing.TmpDir {
         else
             .File;
 
-        try touch(root.dir, path, kind);
+        try touch(root.iterable_dir.dir, path, kind);
     }
 
     return root;
 }
 
 fn expect_fs(root: std.fs.Dir, expected: []const []const u8) !void {
-    for (expected) |subpath| try root.access(subpath, .{ .read = true });
+    for (expected) |subpath| try root.access(subpath, .{ .mode = .read_only });
 }
 
 fn touch(root: std.fs.Dir, subpath: []const u8, kind: std.fs.File.Kind) !void {

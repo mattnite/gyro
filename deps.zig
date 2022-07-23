@@ -28,7 +28,7 @@ pub const pkgs = struct {
     pub const glob = Pkg{
         .name = "glob",
         .source = FileSource{
-            .path = ".gyro/glob-mattnite-github.com-7d17d551/pkg/src/main.zig",
+            .path = ".gyro/glob-mattnite-github.com-2375fdbb/pkg/src/main.zig",
         },
     };
 
