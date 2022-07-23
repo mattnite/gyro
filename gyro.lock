@@ -1,7 +1,6 @@
 git https://github.com/mattnite/zig-mbedtls.git main mbedtls.zig a4f5357ca74a7d8586f9464580a0e860ab119e78
 git https://github.com/mattnite/version.git main src/main.zig 19baf08fdb6d52b9f19137d775b69d1496bd4324
 git https://github.com/Hejsil/zig-clap.git master clap.zig 7188a9fc85f6aa0f71a4cb7966f8b0a044f29e02
-git https://github.com/mattnite/glob.git main src/main.zig 7d17d5515d4151eb4487cb6d460a66b1330e902e
 git https://github.com/ziglibs/known-folders.git master known-folders.zig 9db1b99219c767d5e24994b1525273fe4031e464
 git https://github.com/mattnite/tar.git main src/main.zig 92141da66db3ba3bebb0d2236b4f00983696f2d9
 git https://github.com/MasterQ32/zig-uri.git master uri.zig e879df3a236869f92298fbe2db3c25e6e84cfd4c
@@ -10,3 +9,4 @@ git https://github.com/mattnite/zig-libgit2.git main libgit2.zig 0537beeaf38bee8
 git https://github.com/mattnite/zig-libssh2.git main libssh2.zig b5472a817a2b363565c984a3b3d5715b4a519a3f
 git https://github.com/mattnite/zig-zlib.git main zlib.zig eca7a5ba547ccf032f2094e2d4e7b1d61520e5eb
 git https://github.com/mattnite/zig-libcurl.git main libcurl.zig f1f316dc2dcd219fe9ad48e91812bc176f64dfe0
+git https://github.com/mattnite/glob.git main src/main.zig 2375fdbbb36e92eeef7393e0ae9b4469a24d4c0e
