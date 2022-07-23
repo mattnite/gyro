@@ -164,14 +164,14 @@ pub fn bundle(self: *Self, root: std.fs.Dir, output_dir: std.fs.Dir) !void {
     }
 
     for (self.files.items) |pattern| {
-        var dir = try root.openDir(".", .{ .iterate = true, .access_sub_paths = true });
+        var dir = try root.openIterableDir(".", .{ .access_sub_paths = true });
         defer dir.close();
 
         var it = try glob.Iterator.init(self.arena.child_allocator, dir, pattern);
         defer it.deinit();
 
         while (try it.next()) |subpath| {
-            tarball.addFile(dir, "pkg", subpath) catch |err| {
+            tarball.addFile(dir.dir, "pkg", subpath) catch |err| {
                 return if (err == error.FileNotFound) blk: {
                     std.log.err("file pattern '{s}' wants path '{s}', but it doesn't exist", .{
                         pattern,
