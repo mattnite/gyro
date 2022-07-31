@@ -5,6 +5,14 @@ const uri = @import("uri");
 
 const assert = std.debug.assert;
 
+const is_windows = builtin.os.tag == .windows;
+
+const w32 = if (is_windows) struct {
+    extern "kernel32" fn SetConsoleMode(console: ?*anyopaque, mode: std.os.windows.DWORD) callconv(std.os.windows.WINAPI) u32;
+} else undefined;
+
+var w32_mode: if (is_windows) std.os.windows.DWORD else void = undefined;
+
 pub const Size = struct {
     rows: usize,
     cols: usize,
@@ -131,6 +139,12 @@ pub fn init(location: *Self, allocator: std.mem.Allocator) !void {
 
             size.rows = @intCast(usize, csbi.srWindow.Bottom - csbi.srWindow.Top + 1);
             size.cols = @intCast(usize, csbi.srWindow.Right - csbi.srWindow.Left + 1);
+
+            const h = c.GetStdHandle(c.STD_OUTPUT_HANDLE);
+            if (c.GetConsoleMode(h, &w32_mode) != 0) {
+                w32_mode |= c.ENABLE_VIRTUAL_TERMINAL_PROCESSING;
+                w32_mode = w32.SetConsoleMode(h, w32_mode);
+            }
         },
         else => {
             const c = @cImport({
@@ -207,6 +221,14 @@ pub fn deinit(self: *Self) void {
             ansi.fifo.deinit();
             ansi.arena.deinit();
         },
+    }
+
+    if (builtin.os.tag == .windows) {
+        const c = @cImport({
+            @cInclude("windows.h");
+        });
+        const h = c.GetStdHandle(c.STD_OUTPUT_HANDLE);
+        _ = w32.SetConsoleMode(h, w32_mode);
     }
 }
 
