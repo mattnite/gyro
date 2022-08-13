@@ -221,7 +221,7 @@ pub fn findBestMatchingPackage(self: Self, alias: []const u8) !?Package {
 
         var it = self.packages.iterator();
         while (it.next()) |entry|
-            std.log.err("    {s}, root: {s}", .{ entry.key_ptr.*, entry.value_ptr.root });
+            std.log.err("    {s}, root: {s}", .{ entry.key_ptr.*, entry.value_ptr.root.? });
         return error.Explained;
     }
 }

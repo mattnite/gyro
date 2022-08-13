@@ -76,8 +76,8 @@ fn usage() !void {
     try stderr.writeAll("Usage: gyro [command] [options]\n\n");
     try stderr.writeAll("Commands:\n\n");
 
-    inline for (all_commands) |cmd| {
-        try stderr.print("  {s: <10}  {s}\n", .{ cmd.name, cmd.summary });
+    inline for (@typeInfo(commands).Struct.decls) |decl| {
+        try stderr.print("  {s: <10}  {s}\n", .{ decl.name, @field(commands, decl.name).description });
     }
 
     try stderr.writeAll("\nOptions:\n\n");
@@ -85,14 +85,14 @@ fn usage() !void {
 }
 
 // prints usage and help for a single command
-fn help(comptime command: completion.Command) !void {
+fn help(comptime name: []const u8, comptime command: type) !void {
     const stderr = std.io.getStdErr().writer();
 
-    try stderr.writeAll("Usage: gyro " ++ command.name ++ " ");
-    try clap.usage(stderr, command.clap_params);
+    try stderr.writeAll("Usage: gyro " ++ name ++ " ");
+    try clap.usage(stderr, clap.Help, &command.params);
     try stderr.writeAll("\n\nOptions:\n\n");
 
-    try clap.help(stderr, command.clap_params);
+    try clap.help(stderr, clap.Help, &command.params, .{});
     try stderr.writeAll("\n");
 }
 
@@ -112,28 +112,35 @@ fn runCommands(allocator: std.mem.Allocator) !void {
         return error.Explained;
     };
 
-    inline for (all_commands) |cmd| {
-        if (std.mem.eql(u8, command_name, cmd.name)) {
-            var args: cmd.parent.Args = if (!cmd.passthrough) blk: {
+    inline for (@typeInfo(commands).Struct.decls) |decl| {
+        const cmd = @field(commands, decl.name);
+        // special handling for build subcommand since it passes through
+        // arguments to build runner
+        const is_build = std.mem.eql(u8, "build", decl.name);
+        if (std.mem.eql(u8, command_name, decl.name)) {
+            var args = if (!is_build) blk: {
                 var diag = clap.Diagnostic{};
-                var ret = cmd.parent.Args.parse(&iter, .{ .diagnostic = &diag }) catch |err| {
-                    try diag.report(stderr, err);
-                    try help(cmd);
 
+                var res = clap.parse(clap.Help, &cmd.params, clap.parsers.default, .{
+                    .diagnostic = &diag,
+                }) catch |err| {
+                    // Report useful error and exit
+                    diag.report(stderr, err) catch {};
+                    try help(decl.name, cmd);
                     return error.Explained;
                 };
 
-                if (ret.flag("--help")) {
-                    try help(cmd);
+                if (res.args.help) {
+                    try help(decl.name, cmd);
 
                     return;
                 }
 
-                break :blk ret;
+                break :blk res;
             } else undefined;
-            defer if (!cmd.passthrough) args.deinit();
+            defer if (!is_build) args.deinit();
 
-            try cmd.parent.run(allocator, &args, &iter);
+            try cmd.run(allocator, &args, &iter);
 
             return;
         }
@@ -145,65 +152,43 @@ fn runCommands(allocator: std.mem.Allocator) !void {
     }
 }
 
-const completion = @import("completion.zig");
-
-pub const all_commands = blk: {
-    var list: []const completion.Command = &[_]completion.Command{};
-
-    for (std.meta.declarations(commands)) |decl| {
-        list = list ++ [_]completion.Command{
-            @field(commands, decl.name).info,
-        };
-    }
-
-    break :blk list;
-};
-
 pub const commands = struct {
     pub const init = struct {
-        pub const info: completion.Command = blk: {
-            var cmd = completion.Command.init("init", "Initialize a gyro.zzz with a link to a github repo", init);
+        pub const description = "Initialize a gyro.zzz with a link to a github repo";
+        pub const params = clap.parseParamsComptime(
+            \\-h, --help  Display Help
+            \\<str>
+            \\
+        );
 
-            cmd.addFlag('h', "help", "Display help");
-            cmd.addPositional("repo", ?completion.Param.Repository, .one, "The repository to initialize this project with");
-
-            cmd.done();
-            break :blk cmd;
-        };
-
-        pub const Args = info.ClapComptime();
-        pub fn run(allocator: std.mem.Allocator, args: *Args, _: *std.process.ArgIterator) !void {
-            const num = args.positionals().len;
-            if (num > 1) {
+        pub fn run(allocator: std.mem.Allocator, res: anytype, _: *std.process.ArgIterator) !void {
+            const repo = if (res.positionals.len == 1)
+                res.positionals[0]
+            else {
                 std.log.err("that's too many args, please just give me one in the form of a link to your github repo or just '<user>/<repo>'", .{});
                 return error.Explained;
-            }
+            };
 
-            const repo = if (num == 1) args.positionals()[0] else null;
             try cmds.init(allocator, repo);
         }
     };
 
     pub const add = struct {
-        pub const info: completion.Command = blk: {
-            var cmd = completion.Command.init("add", "Add dependencies to the project", add);
+        pub const description = "Add dependencies to the project";
+        pub const params = clap.parseParamsComptime(
+            \\-h, --help              Display Help
+            \\-s, --src <str>         Set type of dependency
+            \\-a, --alias <str>       Override what string the package is imported with
+            \\-b, --build_dep         Add this as a build dependency
+            \\-r, --root <str>        Set root path with respect to the project root, default is 'src/main.zig'
+            \\    --ref <str>         Commit, tag, or branch to reference for git or github source types
+            \\    --repository <str>  The package repository you want to add a package from, default is astrolabe.pm
+            \\<str>
+            \\
+        );
 
-            cmd.addFlag('h', "help", "Display help");
-            cmd.addOption('s', "src", "kind", enum { pkg, github, url, local }, "Set type of dependency, one of pkg, github, url, or local");
-            cmd.addOption('a', "alias", "package", completion.Param.Package, "Override what string the package is imported with");
-            cmd.addFlag('b', "build-dep", "Add this as a build dependency");
-            cmd.addOption('r', "root", "file", completion.Param.File, "Set root path with respect to the project root, default is 'src/main.zig'");
-            cmd.addOption('c', "ref", "file", completion.Param.File, "commit, tag, or branch to reference for git or github source types");
-            cmd.addOption('p', "repository", "repo", ?completion.Param.Repository, "The package repository you want to add a package from, default is " ++ utils.default_repo);
-            cmd.addPositional("package", completion.Param.Package, .one, "The package to add");
-
-            cmd.done();
-            break :blk cmd;
-        };
-
-        pub const Args = info.ClapComptime();
-        pub fn run(allocator: std.mem.Allocator, args: *Args, _: *std.process.ArgIterator) !void {
-            const src_str = args.option("--src") orelse "pkg";
+        pub fn run(allocator: std.mem.Allocator, res: anytype, _: *std.process.ArgIterator) !void {
+            const src_str = res.args.src orelse "pkg";
             const src_tag = inline for (std.meta.fields(Dependency.SourceType)) |field| {
                 if (std.mem.eql(u8, src_str, field.name))
                     break @field(Dependency.SourceType, field.name);
@@ -212,196 +197,117 @@ pub const commands = struct {
                 return error.Explained;
             };
 
+            // TODO: only one positional
+
             try cmds.add(
                 allocator,
                 src_tag,
-                args.option("--alias"),
-                args.flag("--build-dep"),
-                args.option("--ref"),
-                args.option("--root"),
-                args.option("--repository"),
-                args.positionals()[0],
+                res.args.alias,
+                res.args.build_dep,
+                res.args.ref,
+                res.args.root,
+                res.args.repository,
+                res.positionals[0],
             );
         }
     };
 
     pub const rm = struct {
-        pub const info: completion.Command = blk: {
-            var cmd = completion.Command.init("rm", "Remove dependencies from the project", rm);
+        pub const description = "Remove dependencies from the project";
+        pub const params = clap.parseParamsComptime(
+            \\-h, --help       Display help
+            \\-b, --build_dep  Remove this as a build dependency
+            \\<str>
+            \\
+        );
 
-            cmd.addFlag('h', "help", "Display help");
-            cmd.addFlag('b', "build-dep", "Remove this as a build dependency");
-            cmd.addPositional("package", completion.Param.Package, .many, "The package(s) to remove");
-
-            cmd.done();
-            break :blk cmd;
-        };
-
-        pub const Args = info.ClapComptime();
-        pub fn run(allocator: std.mem.Allocator, args: *Args, _: *std.process.ArgIterator) !void {
-            try cmds.rm(allocator, args.flag("--build-dep"), args.positionals());
+        pub fn run(allocator: std.mem.Allocator, res: anytype, _: *std.process.ArgIterator) !void {
+            try cmds.rm(allocator, res.args.build_dep, res.positionals);
         }
     };
 
     pub const build = struct {
-        pub const info: completion.Command = blk: {
-            var cmd = completion.Command.init("build", "Wrapper around 'zig build', automatically downloads dependencies", build);
+        pub const description = "Wrapper around 'zig build', automatically downloads dependencies";
+        pub const params = clap.parseParamsComptime(
+            \\-h, --help Dispaly help
+            \\<str>...
+            \\
+        );
 
-            cmd.addFlag('h', "help", "Display help");
-            cmd.addPositional("args", void, .many, "arguments to pass to zig build");
-            cmd.passthrough = true;
-
-            cmd.done();
-            break :blk cmd;
-        };
-
-        pub const Args = info.ClapComptime();
-        pub fn run(allocator: std.mem.Allocator, _: *Args, iterator: *std.process.ArgIterator) !void {
+        pub fn run(allocator: std.mem.Allocator, _: anytype, iterator: *std.process.ArgIterator) !void {
             try cmds.build(allocator, iterator);
         }
     };
 
     pub const fetch = struct {
-        pub const info: completion.Command = blk: {
-            var cmd = completion.Command.init("fetch", "Manually download dependencies and generate deps.zig file", fetch);
+        pub const description = "Manually download dependencies and generate deps.zig file";
+        pub const params = clap.parseParamsComptime(
+            \\-h, --help Display help
+            \\
+        );
 
-            cmd.addFlag('h', "help", "Display help");
-
-            cmd.done();
-            break :blk cmd;
-        };
-
-        pub const Args = info.ClapComptime();
-        pub fn run(allocator: std.mem.Allocator, _: *Args, iterator: *std.process.ArgIterator) !void {
-            _ = iterator;
+        pub fn run(allocator: std.mem.Allocator, _: anytype, _: *std.process.ArgIterator) !void {
             try cmds.fetch(allocator);
         }
     };
 
     pub const update = struct {
-        pub const info: completion.Command = blk: {
-            var cmd = completion.Command.init("update", "Update project dependencies to latest", update);
+        pub const description = "Update project dependencies to latest";
+        pub const params = clap.parseParamsComptime(
+            \\-h, --help Display help
+            \\<str>
+        );
 
-            cmd.addFlag('h', "help", "Display help");
-            cmd.addPositional("package", ?completion.Param.Package, .many, "The package(s) to update");
-
-            cmd.done();
-            break :blk cmd;
-        };
-
-        pub const Args = info.ClapComptime();
-        pub fn run(allocator: std.mem.Allocator, args: *Args, _: *std.process.ArgIterator) !void {
-            try cmds.update(allocator, args.positionals());
+        pub fn run(allocator: std.mem.Allocator, res: anytype, _: *std.process.ArgIterator) !void {
+            try cmds.update(allocator, res.positionals);
         }
     };
 
     pub const publish = struct {
-        pub const info: completion.Command = blk: {
-            var cmd = completion.Command.init("publish", "Publish package to astrolabe.pm, requires github account", publish);
+        pub const description = "Publish package to astrolabe.pm, requires github account";
+        pub const params = clap.parseParamsComptime(
+            \\-h, --help              Display help
+            \\-r, --repository <str>  The package repository you want to publish to, default is astrolabe.pm
+            \\<str>
+            \\
+        );
 
-            cmd.addFlag('h', "help", "Display help");
-            cmd.addPositional("package", ?completion.Param.Package, .one, "The package to publish");
-            cmd.addOption('r', "repository", "repo", ?completion.Param.Repository, "The package repository you want to publish to, default is " ++ utils.default_repo);
-
-            cmd.done();
-            break :blk cmd;
-        };
-
-        pub const Args = info.ClapComptime();
-        pub fn run(allocator: std.mem.Allocator, args: *Args, _: *std.process.ArgIterator) !void {
+        pub fn run(allocator: std.mem.Allocator, res: anytype, _: *std.process.ArgIterator) !void {
             try cmds.publish(
                 allocator,
-                args.option("--repository"),
-                if (args.positionals().len > 0) args.positionals()[0] else null,
+                res.args.repository,
+                if (res.positionals.len > 0) res.positionals[0] else null,
             );
         }
     };
 
     pub const package = struct {
-        pub const info: completion.Command = blk: {
-            var cmd = completion.Command.init("package", "Generate a tar file for publishing", package);
+        pub const description = "Generate a tar file for publishing";
+        pub const params = clap.parseParamsComptime(
+            \\-h, --help              Display help
+            \\-o, --output_dir <str>  Set package output directory
+            \\<str>
+            \\
+        );
 
-            cmd.addFlag('h', "help", "Display help");
-            cmd.addOption('o', "output-dir", "dir", completion.Param.Directory, "Set package output directory");
-            cmd.addPositional("package", ?completion.Param.Package, .one, "The package(s) to package");
-
-            cmd.done();
-            break :blk cmd;
-        };
-
-        pub const Args = info.ClapComptime();
-        pub fn run(allocator: std.mem.Allocator, args: *Args, _: *std.process.ArgIterator) !void {
-            try cmds.package(allocator, args.option("--output-dir"), args.positionals());
+        pub fn run(allocator: std.mem.Allocator, res: anytype, _: *std.process.ArgIterator) !void {
+            try cmds.package(allocator, res.args.output_dir, res.positionals);
         }
     };
 
     pub const redirect = struct {
-        pub const info: completion.Command = blk: {
-            var cmd = completion.Command.init("redirect", "Manage local development", redirect);
-
-            cmd.addFlag('h', "help", "Display help");
-            cmd.addFlag('c', "clean", "Undo all local redirects");
-            cmd.addOption('a', "alias", "package", completion.Param.Package, "Which package to redirect");
-            cmd.addOption('p', "path", "dir", completion.Param.Directory, "Project root directory");
-            cmd.addFlag('b', "build-dep", "Redirect a build dependency");
-            cmd.addFlag('e', "check", "Return successfully if there are no redirects (intended for git pre-commit hook)");
-
-            cmd.done();
-            break :blk cmd;
-        };
-
-        pub const Args = info.ClapComptime();
-        pub fn run(allocator: std.mem.Allocator, args: *Args, _: *std.process.ArgIterator) !void {
-            try cmds.redirect(allocator, args.flag("--check"), args.flag("--clean"), args.flag("--build-dep"), args.option("--alias"), args.option("--path"));
-        }
-    };
-
-    pub const install_completions = struct {
-        pub const info: completion.Command = blk: {
-            var cmd = completion.Command.init("completion", "Install shell completions", install_completions);
-
-            cmd.addFlag('h', "help", "Display help");
-            cmd.addOption('s', "shell", "shell", completion.shells.List, "The shell to install completions for. One of zsh");
-            cmd.addPositional("dir", completion.Param.Directory, .one, "Where to install the completion");
-
-            cmd.done();
-
-            break :blk cmd;
-        };
-
-        pub const Args = info.ClapComptime();
-        pub fn run(allocator: std.mem.Allocator, args: *Args, _: *std.process.ArgIterator) !void {
-            const positionals = args.positionals();
-
-            if (positionals.len < 1) {
-                std.log.err("missing completion install path", .{});
-
-                return error.Explained;
-            }
-
-            const shell_name = args.option("--shell") orelse {
-                std.log.err("missing shell", .{});
-
-                return error.Explained;
-            };
-
-            const shell = std.meta.stringToEnum(completion.shells.List, shell_name) orelse {
-                std.log.err("invalid shell", .{});
-
-                return error.Explained;
-            };
-
-            switch (shell) {
-                .zsh => {
-                    const path = try std.fs.path.join(allocator, &.{ positionals[0], "_gyro" });
-                    defer allocator.free(path);
-
-                    const file = try std.fs.cwd().createFile(path, .{});
-                    defer file.close();
-
-                    try completion.shells.zsh.writeAll(file.writer(), all_commands);
-                },
-            }
+        pub const description = "Manage local development";
+        pub const params = clap.parseParamsComptime(
+            \\-h, --help         Display help
+            \\-c, --clean        Undo all local redirects
+            \\-a, --alias <str>  Package to redirect
+            \\-p, --path <str>   Project root directory
+            \\-b, --build_dep    Redirect a build dependency
+            \\    --check        Return successfully if there are no redirects (intended for git pre-commit hook)
+            \\
+        );
+        pub fn run(allocator: std.mem.Allocator, res: anytype, _: *std.process.ArgIterator) !void {
+            try cmds.redirect(allocator, res.args.check, res.args.clean, res.args.build_dep, res.args.alias, res.args.path);
         }
     };
 };

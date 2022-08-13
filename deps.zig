@@ -21,7 +21,7 @@ pub const pkgs = struct {
     pub const clap = Pkg{
         .name = "clap",
         .source = FileSource{
-            .path = ".gyro/zig-clap-Hejsil-github.com-7188a9fc/pkg/clap.zig",
+            .path = ".gyro/zig-clap-Hejsil-github.com-1c09e0dc/pkg/clap.zig",
         },
     };
 
@@ -35,7 +35,7 @@ pub const pkgs = struct {
     pub const @"known-folders" = Pkg{
         .name = "known-folders",
         .source = FileSource{
-            .path = ".gyro/known-folders-ziglibs-github.com-9db1b992/pkg/known-folders.zig",
+            .path = ".gyro/known-folders-ziglibs-github.com-24845b01/pkg/known-folders.zig",
         },
     };
 
