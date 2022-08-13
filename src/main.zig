@@ -122,7 +122,7 @@ fn runCommands(allocator: std.mem.Allocator) !void {
             var args = if (!is_build) blk: {
                 var diag = clap.Diagnostic{};
 
-                var res = clap.parse(clap.Help, &cmd.params, clap.parsers.default, .{
+                var res = clap.parseEx(clap.Help, &cmd.params, clap.parsers.default, &iter, .{
                     .diagnostic = &diag,
                 }) catch |err| {
                     // Report useful error and exit
