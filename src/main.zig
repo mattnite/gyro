@@ -90,7 +90,8 @@ fn help(comptime name: []const u8, comptime command: type) !void {
 
     try stderr.writeAll("Usage: gyro " ++ name ++ " ");
     try clap.usage(stderr, clap.Help, &command.params);
-    try stderr.writeAll("\n\nOptions:\n\n");
+    try stderr.print("\n\n{s}\n", .{command.description});
+    try stderr.writeAll("\nOptions:\n\n");
 
     try clap.help(stderr, clap.Help, &command.params, .{});
     try stderr.writeAll("\n");
@@ -188,6 +189,11 @@ pub const commands = struct {
         );
 
         pub fn run(allocator: std.mem.Allocator, res: anytype, _: *std.process.ArgIterator) !void {
+            if (res.positionals.len != 1) {
+                std.log.err("only specify one package at a time", .{});
+                return error.Explained;
+            }
+
             const src_str = res.args.src orelse "pkg";
             const src_tag = inline for (std.meta.fields(Dependency.SourceType)) |field| {
                 if (std.mem.eql(u8, src_str, field.name))
@@ -196,8 +202,6 @@ pub const commands = struct {
                 std.log.err("{s} is not a valid source type", .{src_str});
                 return error.Explained;
             };
-
-            // TODO: only one positional
 
             try cmds.add(
                 allocator,
@@ -217,7 +221,7 @@ pub const commands = struct {
         pub const params = clap.parseParamsComptime(
             \\-h, --help       Display help
             \\-b, --build_dep  Remove this as a build dependency
-            \\<str>
+            \\<str>...
             \\
         );
 
@@ -306,6 +310,7 @@ pub const commands = struct {
             \\    --check        Return successfully if there are no redirects (intended for git pre-commit hook)
             \\
         );
+
         pub fn run(allocator: std.mem.Allocator, res: anytype, _: *std.process.ArgIterator) !void {
             try cmds.redirect(allocator, res.args.check, res.args.clean, res.args.build_dep, res.args.alias, res.args.path);
         }
