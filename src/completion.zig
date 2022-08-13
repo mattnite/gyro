@@ -75,8 +75,8 @@ pub const Command = struct {
         for (self.params) |p| {
             self.clap_params = self.clap_params ++ [_]ClapParam{.{
                 .id = .{
-                    .msg = p.description,
-                    .value = p.value_name orelse "",
+                    .desc = p.description,
+                    .val = p.value_name orelse "",
                 },
                 .names = .{
                     .short = p.short_name,
@@ -87,8 +87,8 @@ pub const Command = struct {
         }
     }
 
-    pub fn ClapComptime(comptime self: *const Command) type {
-        return clap.ComptimeClap(clap.Help, self.clap_params);
+    pub fn parseParamsComptime(comptime self: *const Command) type {
+        return clap.parseParamsComptime(clap.Help, self.clap_params);
     }
 };
 

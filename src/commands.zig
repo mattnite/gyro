@@ -606,7 +606,7 @@ fn gitDependency(
                 break;
             }
         } else {
-            std.log.err("failed to find package that matched the alias '{s}', the advertised packages are:", .{alias});
+            std.log.err("failed to find package that matched the alias '{s}', the advertised packages are:", .{alias.?});
             var it = project.packages.iterator();
             while (it.next()) |pkgs_entry| {
                 const pkg_root = pkgs_entry.value_ptr.root orelse utils.default_root;

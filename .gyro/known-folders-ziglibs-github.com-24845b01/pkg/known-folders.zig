@@ -26,6 +26,7 @@ pub const KnownFolder = enum {
 pub const Error = error{ ParseError, OutOfMemory };
 
 pub const KnownFolderConfig = struct {
+    xdg_force_default: bool = false,
     xdg_on_mac: bool = false,
 };
 
@@ -136,6 +137,17 @@ fn getPathXdg(allocator: std.mem.Allocator, arena: *std.heap.ArenaAllocator, fol
 
     var env_opt = std.os.getenv(folder_spec.env.name);
 
+    if (@hasDecl(root, "known_folders_config") and root.known_folders_config.xdg_force_default) {
+        if (folder_spec.default) |default| {
+            if (default[0] == '~') {
+                const home = std.os.getenv("HOME") orelse return null;
+                return try std.mem.concat(allocator, u8, &[_][]const u8{ home, default[1..] });
+            } else {
+                return try allocator.dupe(u8, default);
+            }
+        }
+    }
+
     // TODO: add caching so we only need to read once in a run
     if (env_opt == null and folder_spec.env.user_dir) block: {
         const config_dir_path = if (std.io.is_async) blk: {
@@ -174,7 +186,12 @@ fn getPathXdg(allocator: std.mem.Allocator, arena: *std.heap.ArenaAllocator, fol
         if (folder_spec.env.suffix) |suffix| {
             return try std.mem.concat(allocator, u8, &[_][]const u8{ env, suffix });
         } else {
-            return try allocator.dupe(u8, env);
+            if (std.mem.eql(u8, folder_spec.env.name, "XDG_CONFIG_DIRS")) {
+                var iter = std.mem.split(u8, env, ":");
+                return try allocator.dupe(u8, iter.next() orelse "");
+            } else {
+                return try allocator.dupe(u8, env);
+            }
         }
     } else {
         const default = folder_spec.default orelse return null;
@@ -329,7 +346,7 @@ test "query each known folders" {
 
 test "open each known folders" {
     inline for (std.meta.fields(KnownFolder)) |fld| {
-        var dir_or_null = open(std.testing.allocator, @field(KnownFolder, fld.name), .{ .iterate = false, .access_sub_paths = true }) catch |e| switch (e) {
+        var dir_or_null = open(std.testing.allocator, @field(KnownFolder, fld.name), .{ .access_sub_paths = true }) catch |e| switch (e) {
             error.FileNotFound => return,
             else => return e,
         };
