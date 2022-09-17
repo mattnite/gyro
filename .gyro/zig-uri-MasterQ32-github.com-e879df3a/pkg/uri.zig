@@ -213,7 +213,7 @@ const SliceReader = struct {
         return self.slice[start..end];
     }
 
-    fn readUntil(self: *Self, predicate: fn (u8) bool) []const u8 {
+    fn readUntil(self: *Self, comptime predicate: fn (u8) bool) []const u8 {
         const start = self.offset;
         var end = start;
         while (end < self.slice.len and !predicate(self.slice[end])) {
