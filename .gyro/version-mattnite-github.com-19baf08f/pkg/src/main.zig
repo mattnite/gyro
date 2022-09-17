@@ -170,7 +170,6 @@ pub const Range = struct {
         options: std.fmt.FormatOptions,
         writer: anytype,
     ) @TypeOf(writer).Error!void {
-        _ = fmt;
         _ = options;
         switch (self.kind) {
             .exact => try writer.print("{}", .{self.min}),

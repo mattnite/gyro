@@ -29,7 +29,7 @@ pub fn create(b: *std.build.Builder, target: std.zig.CrossTarget, mode: std.buil
     ret.setTarget(target);
     ret.setBuildMode(mode);
     ret.linkLibC();
-    ret.addCSourceFiles(srcs, &.{});
+    ret.addCSourceFiles(srcs, &.{"-std=c89"});
 
     return Library{ .step = ret };
 }

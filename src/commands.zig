@@ -194,12 +194,9 @@ pub fn build(allocator: Allocator, args: *std.process.ArgIterator) !void {
         else => return error.UnknownTerm,
     }
 
+    var token_stream = std.json.TokenStream.init(result.stdout);
     const parse_opts = std.json.ParseOptions{ .allocator = allocator };
-    const env = try std.json.parse(
-        EnvInfo,
-        &std.json.TokenStream.init(result.stdout),
-        parse_opts,
-    );
+    const env = try std.json.parse(EnvInfo, &token_stream, parse_opts);
     defer std.json.parseFree(EnvInfo, env, parse_opts);
 
     var zig_lib_dir = try std.fs.openDirAbsolute(
@@ -562,7 +559,8 @@ fn gitDependency(
     defer project.destroy();
 
     if (project.packages.count() == 1) {
-        const pkg_entry = project.packages.iterator().next().?;
+        var it = project.packages.iterator();
+        const pkg_entry = it.next().?;
         if (alias == null)
             alias = pkg_entry.key_ptr.*;
 

@@ -6,7 +6,7 @@ pub const build_pkgs = struct {
     pub const mbedtls = @import(".gyro/zig-mbedtls-mattnite-github.com-a4f5357c/pkg/mbedtls.zig");
     pub const libgit2 = @import(".gyro/zig-libgit2-mattnite-github.com-0537beea/pkg/libgit2.zig");
     pub const libssh2 = @import(".gyro/zig-libssh2-mattnite-github.com-b5472a81/pkg/libssh2.zig");
-    pub const zlib = @import(".gyro/zig-zlib-mattnite-github.com-eca7a5ba/pkg/zlib.zig");
+    pub const zlib = @import(".gyro/zig-zlib-mattnite-github.com-1aef33df/pkg/zlib.zig");
     pub const libcurl = @import(".gyro/zig-libcurl-mattnite-github.com-f1f316dc/pkg/libcurl.zig");
 };
 

@@ -212,9 +212,10 @@ pub fn findBestMatchingPackage(self: Self, alias: []const u8) !?Package {
     const count = self.packages.count();
     if (0 == count)
         return null
-    else if (1 == count)
-        return self.packages.iterator().next().?.value_ptr.*
-    else if (self.packages.get(alias)) |pkg|
+    else if (1 == count) {
+        var it = self.packages.iterator();
+        return it.next().?.value_ptr.*;
+    } else if (self.packages.get(alias)) |pkg|
         return pkg
     else {
         std.log.err("ambiguous package selection, dependency has alias of '{s}', options are:", .{alias});

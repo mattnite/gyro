@@ -8,5 +8,5 @@ git https://github.com/mattnite/zzz.git main src/main.zig 564b924e50f133fbb177e7
 git https://github.com/mattnite/zig-mbedtls.git main mbedtls.zig a4f5357ca74a7d8586f9464580a0e860ab119e78
 git https://github.com/mattnite/zig-libgit2.git main libgit2.zig 0537beeaf38bee849e6a0240ce7b68f240c8385f
 git https://github.com/mattnite/zig-libssh2.git main libssh2.zig b5472a817a2b363565c984a3b3d5715b4a519a3f
-git https://github.com/mattnite/zig-zlib.git main zlib.zig eca7a5ba547ccf032f2094e2d4e7b1d61520e5eb
 git https://github.com/mattnite/zig-libcurl.git main libcurl.zig f1f316dc2dcd219fe9ad48e91812bc176f64dfe0
+git https://github.com/mattnite/zig-zlib.git main zlib.zig 1aef33df42907e5b7f4e299f71d3d536ba04cc03

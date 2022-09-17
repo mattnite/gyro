@@ -622,8 +622,6 @@ pub fn writeDepBegin(self: Engine, writer: anytype, indent: usize, edge: Edge) !
 
     try writer.writeByteNTimes(' ', 4 * (indent + 1));
     try writer.print("}},\n", .{});
-
-    _ = self;
 }
 
 pub fn writeDepEnd(writer: anytype, indent: usize) !void {
