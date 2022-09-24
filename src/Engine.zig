@@ -7,8 +7,8 @@ const ThreadSafeArenaAllocator = @import("ThreadSafeArenaAllocator.zig");
 
 const Engine = @This();
 const Allocator = std.mem.Allocator;
-const StructField = std.builtin.TypeInfo.StructField;
-const UnionField = std.builtin.TypeInfo.UnionField;
+const StructField = std.builtin.Type.StructField;
+const UnionField = std.builtin.Type.UnionField;
 const testing = std.testing;
 const assert = std.debug.assert;
 
@@ -87,7 +87,7 @@ pub const Resolutions = blk: {
         };
     }
 
-    const Tables = @Type(std.builtin.TypeInfo{
+    const Tables = @Type(std.builtin.Type{
         .Struct = .{
             .layout = .Auto,
             .is_tuple = false,
@@ -96,7 +96,7 @@ pub const Resolutions = blk: {
         },
     });
 
-    const Edges = @Type(std.builtin.TypeInfo{
+    const Edges = @Type(std.builtin.Type{
         .Struct = .{
             .layout = .Auto,
             .is_tuple = false,
@@ -209,7 +209,7 @@ pub const FetchQueue = blk: {
         };
     }
 
-    const Tables = @Type(std.builtin.TypeInfo{
+    const Tables = @Type(std.builtin.Type{
         .Struct = .{
             .layout = .Auto,
             .is_tuple = false,
@@ -218,7 +218,7 @@ pub const FetchQueue = blk: {
         },
     });
 
-    const NextType = @Type(std.builtin.TypeInfo{
+    const NextType = @Type(std.builtin.Type{
         .Struct = .{
             .layout = .Auto,
             .is_tuple = false,

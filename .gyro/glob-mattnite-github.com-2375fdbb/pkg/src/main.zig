@@ -120,7 +120,8 @@ pub const Iterator = struct {
 
             i -= 1;
             _ = self.components.pop();
-            self.stack.pop().dir.close();
+            var dir_it = self.stack.pop();
+            dir_it.dir.close();
         }
     }
 };

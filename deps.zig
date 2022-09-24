@@ -6,7 +6,7 @@ pub const build_pkgs = struct {
     pub const mbedtls = @import(".gyro/zig-mbedtls-mattnite-github.com-a4f5357c/pkg/mbedtls.zig");
     pub const libgit2 = @import(".gyro/zig-libgit2-mattnite-github.com-0537beea/pkg/libgit2.zig");
     pub const libssh2 = @import(".gyro/zig-libssh2-mattnite-github.com-b5472a81/pkg/libssh2.zig");
-    pub const zlib = @import(".gyro/zig-zlib-mattnite-github.com-1aef33df/pkg/zlib.zig");
+    pub const zlib = @import(".gyro/zig-zlib-mattnite-github.com-31cba674/pkg/zlib.zig");
     pub const libcurl = @import(".gyro/zig-libcurl-mattnite-github.com-f1f316dc/pkg/libcurl.zig");
 };
 
@@ -21,7 +21,7 @@ pub const pkgs = struct {
     pub const clap = Pkg{
         .name = "clap",
         .source = FileSource{
-            .path = ".gyro/zig-clap-Hejsil-github.com-1c09e0dc/pkg/clap.zig",
+            .path = ".gyro/zig-clap-Hejsil-github.com-4f4196fc/pkg/clap.zig",
         },
     };
 
@@ -49,7 +49,7 @@ pub const pkgs = struct {
     pub const uri = Pkg{
         .name = "uri",
         .source = FileSource{
-            .path = ".gyro/zig-uri-MasterQ32-github.com-e879df3a/pkg/uri.zig",
+            .path = ".gyro/zig-uri-MasterQ32-github.com-b7e688fc/pkg/uri.zig",
         },
     };
 

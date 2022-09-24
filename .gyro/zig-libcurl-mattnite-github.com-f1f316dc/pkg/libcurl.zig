@@ -27,7 +27,7 @@ pub const Library = struct {
         for (self.exported_defines) |def|
             other.defineCMacro(def.key, def.value);
 
-        other.addIncludeDir(include_dir);
+        other.addIncludePath(include_dir);
         other.linkLibrary(self.step);
 
         if (opts.import_name) |import_name|
@@ -44,8 +44,8 @@ pub fn create(
     ret.setTarget(target);
     ret.setBuildMode(mode);
     ret.addCSourceFiles(srcs, &.{});
-    ret.addIncludeDir(include_dir);
-    ret.addIncludeDir(lib_dir);
+    ret.addIncludePath(include_dir);
+    ret.addIncludePath(lib_dir);
     ret.linkLibC();
 
     var exported_defines = std.ArrayList(Define).init(b.allocator);
