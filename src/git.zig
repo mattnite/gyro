@@ -126,7 +126,7 @@ pub fn getHEADCommit(
     defer allocator.free(url_z);
 
     var remote: ?*c.git_remote = null;
-    var err = c.git_remote_create_anonymous(&remote, null, url_z);
+    var err = c.git_remote_create_anonymous(&remote, null, url_z.ptr);
     if (err < 0) {
         const last_error = c.git_error_last();
         std.log.err("{s}", .{last_error.*.message});
@@ -213,7 +213,7 @@ pub fn getHeadCommitOfRef(
     defer allocator.free(url_z);
 
     var remote: ?*c.git_remote = null;
-    var err = c.git_remote_create_anonymous(&remote, null, url_z);
+    var err = c.git_remote_create_anonymous(&remote, null, url_z.ptr);
     if (err < 0) {
         const last_error = c.git_error_last();
         std.log.err("{s}", .{last_error.*.message});
@@ -424,7 +424,7 @@ pub fn clone(
     options.fetch_opts.callbacks.transfer_progress = indexerCb;
     options.fetch_opts.callbacks.payload = &handle;
 
-    var err = c.git_clone(&repo, url_z, path_z, &options);
+    var err = c.git_clone(&repo, url_z.ptr, path_z.ptr, &options);
     if (err != 0) {
         std.log.err("{s}", .{c.git_error_last().*.message});
         return error.GitClone;
@@ -432,7 +432,7 @@ pub fn clone(
     defer c.git_repository_free(repo);
 
     var oid: c.git_oid = undefined;
-    err = c.git_oid_fromstr(&oid, commit_z);
+    err = c.git_oid_fromstr(&oid, commit_z.ptr);
     if (err != 0) {
         std.log.err("{s}", .{c.git_error_last().*.message});
         return error.GitOidFromString;

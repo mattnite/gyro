@@ -194,12 +194,9 @@ pub fn build(allocator: Allocator, args: *std.process.ArgIterator) !void {
         else => return error.UnknownTerm,
     }
 
+    var token_stream = std.json.TokenStream.init(result.stdout);
     const parse_opts = std.json.ParseOptions{ .allocator = allocator };
-    const env = try std.json.parse(
-        EnvInfo,
-        &std.json.TokenStream.init(result.stdout),
-        parse_opts,
-    );
+    const env = try std.json.parse(EnvInfo, &token_stream, parse_opts);
     defer std.json.parseFree(EnvInfo, env, parse_opts);
 
     var zig_lib_dir = try std.fs.openDirAbsolute(
@@ -562,7 +559,8 @@ fn gitDependency(
     defer project.destroy();
 
     if (project.packages.count() == 1) {
-        const pkg_entry = project.packages.iterator().next().?;
+        var it = project.packages.iterator();
+        const pkg_entry = it.next().?;
         if (alias == null)
             alias = pkg_entry.key_ptr.*;
 
@@ -847,9 +845,10 @@ pub fn publish(allocator: Allocator, repository: ?[]const u8, pkg: ?[]const u8) 
         }
 
         break :blk p;
-    } else if (project.packages.count() == 1)
-        project.iterator().next().?.name
-    else {
+    } else if (project.packages.count() == 1) blk: {
+        var it = project.iterator();
+        break :blk it.next().?.name;
+    } else {
         std.log.err("there are multiple packages exported, choose one", .{});
         return error.Explained;
     };
@@ -905,7 +904,8 @@ pub fn publish(allocator: Allocator, repository: ?[]const u8, pkg: ?[]const u8) 
         const interval_ns = device_code_resp.interval * std.time.ns_per_s;
         access_token = while (std.time.timestamp() < end_time) : (std.time.sleep(interval_ns)) {
             if (try api.pollDeviceCode(allocator, client_id, device_code_resp.device_code)) |resp| {
-                if (try known_folders.open(allocator, .cache, .{ .access_sub_paths = true })) |*dir| {
+                if (try known_folders.open(allocator, .cache, .{ .access_sub_paths = true })) |d| {
+                    var dir = d;
                     defer dir.close();
 
                     const cache_file = try dir.createFile("gyro-access-token", .{ .truncate = true });
@@ -934,7 +934,8 @@ pub fn publish(allocator: Allocator, repository: ?[]const u8, pkg: ?[]const u8) 
                 return error.Explained;
             }
             std.log.info("looks like you were using an old token, deleting your cached one.", .{});
-            if (try known_folders.open(allocator, .cache, .{ .access_sub_paths = true })) |*dir| {
+            if (try known_folders.open(allocator, .cache, .{ .access_sub_paths = true })) |d| {
+                var dir = d;
                 defer dir.close();
                 try dir.deleteFile("gyro-access-token");
             }

@@ -6,7 +6,7 @@ pub const Library = struct {
     step: *LibExeObjStep,
 
     pub fn link(self: Library, other: *LibExeObjStep) void {
-        other.addIncludeDir(include_dir);
+        other.addIncludePath(include_dir);
         other.linkLibrary(self.step);
     }
 };
@@ -23,8 +23,8 @@ pub fn create(b: *Builder, target: std.zig.CrossTarget, mode: std.builtin.Mode) 
     const ret = b.addStaticLibrary("mbedtls", null);
     ret.setTarget(target);
     ret.setBuildMode(mode);
-    ret.addIncludeDir(include_dir);
-    ret.addIncludeDir(library_include);
+    ret.addIncludePath(include_dir);
+    ret.addIncludePath(library_include);
 
     // not sure why, but mbedtls has runtime issues when it's not built as
     // release-small or with the -Os flag, definitely need to figure out what's

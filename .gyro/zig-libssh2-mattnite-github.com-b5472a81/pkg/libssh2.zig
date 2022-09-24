@@ -39,7 +39,7 @@ pub const Library = struct {
     step: *std.build.LibExeObjStep,
 
     pub fn link(self: Library, other: *std.build.LibExeObjStep) void {
-        other.addIncludeDir(include_dir);
+        other.addIncludePath(include_dir);
         other.linkLibrary(self.step);
     }
 };
@@ -52,8 +52,8 @@ pub fn create(
     var ret = b.addStaticLibrary("ssh2", null);
     ret.setTarget(target);
     ret.setBuildMode(mode);
-    ret.addIncludeDir(include_dir);
-    ret.addIncludeDir(config_dir);
+    ret.addIncludePath(include_dir);
+    ret.addIncludePath(config_dir);
     ret.addCSourceFiles(srcs, &.{});
     ret.linkLibC();
 

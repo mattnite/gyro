@@ -16,7 +16,7 @@ pub const Library = struct {
     step: *std.build.LibExeObjStep,
 
     pub fn link(self: Library, other: *std.build.LibExeObjStep, opts: Options) void {
-        other.addIncludeDir(include_dir);
+        other.addIncludePath(include_dir);
         other.linkLibrary(self.step);
 
         if (opts.import_name) |import_name|
@@ -29,7 +29,7 @@ pub fn create(b: *std.build.Builder, target: std.zig.CrossTarget, mode: std.buil
     ret.setTarget(target);
     ret.setBuildMode(mode);
     ret.linkLibC();
-    ret.addCSourceFiles(srcs, &.{});
+    ret.addCSourceFiles(srcs, &.{"-std=c89"});
 
     return Library{ .step = ret };
 }
