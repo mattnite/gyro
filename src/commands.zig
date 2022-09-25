@@ -195,7 +195,7 @@ pub fn build(allocator: Allocator, args: *std.process.ArgIterator) !void {
     }
 
     var token_stream = std.json.TokenStream.init(result.stdout);
-    const parse_opts = std.json.ParseOptions{ .allocator = allocator };
+    const parse_opts = std.json.ParseOptions{ .allocator = allocator, .ignore_unknown_fields = true };
     const env = try std.json.parse(EnvInfo, &token_stream, parse_opts);
     defer std.json.parseFree(EnvInfo, env, parse_opts);
 
