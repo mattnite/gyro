@@ -147,14 +147,9 @@ pub fn init(location: *Self, allocator: std.mem.Allocator) !void {
             }
         },
         else => {
-            const c = @cImport({
-                @cInclude("sys/ioctl.h");
-                @cInclude("unistd.h");
-            });
-
-            var winsize: c.winsize = undefined;
-            const rc = c.ioctl(0, c.TIOCGWINSZ, &winsize);
-            if (rc != 0 or c.isatty(std.io.getStdOut().handle) != 1 or
+            var winsize: std.os.linux.winsize = undefined;
+            const rc = std.c.ioctl(0, std.os.linux.T.IOCGWINSZ, &winsize);
+            if (rc != 0 or !std.os.isatty(std.io.getStdOut().handle) or
                 std.process.hasEnvVarConstant("GYRO_DIRECT_LOG"))
             {
                 location.* = Self{ .mode = .{ .direct_log = {} } };
