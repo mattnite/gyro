@@ -4,4 +4,4 @@ build_runner.zig
 .gyro/redirects
 tests/.gyro
 tests/deps.zig
-result/
+result
