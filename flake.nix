@@ -71,7 +71,7 @@
 
       devShells.default = pkgs.mkShell {
         nativeBuildInputs = with pkgs; [ ];
-        buildInputs = with pkgs; [ z gyro ];
+        buildInputs = with pkgs; [ z ];
       };
 
       devShell = self.devShells.${system}.default;
