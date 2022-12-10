@@ -24,7 +24,7 @@ jobs:
         version: 0.10.0
 
     - name: Build 32-bit
-      run: zig build test -Dtarget=x86-linux-musl --prefix tmp
+      run: zig build test -Dtarget=i386-linux-musl --prefix tmp
 
     - name: Build 64-bit
       run: zig build
