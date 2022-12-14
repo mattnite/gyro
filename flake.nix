@@ -56,7 +56,7 @@
         meta = with pkgs.lib; {
           description = "A Zig package manager with an index, build runner, and build dependencies.";
           license = licenses.mit;
-          platforms = platforms.linux;
+          platforms = with platforms; linux ++ darwin;
           maintainers = with maintainers; [ jakeisnt ];
         };
       };
