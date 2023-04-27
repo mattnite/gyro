@@ -76,7 +76,7 @@ a branch, tag, or commit hash, if not specified, gyro uses the default branch.
 In order to install gyro, all you need to do is extract one of the [release
 tarballs](https://github.com/mattnite/gyro/releases) for your system and add the
 single static binary to your PATH. Gyro requires the latest stable version of
-the Zig compiler (0.10.0 at time of writing)
+the Zig compiler (0.10.1 at time of writing)
 
 ### Building
 
