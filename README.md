@@ -10,6 +10,8 @@
 
 ---
 
+GYRO IS NOW ARCHIVED, THANK YOU EVERYONE FOR YOUR FEEDBACK AND TIME. ZIG NOW HAS AN OFFICIAL PACKAGE MANAGER AND DAMN IT'S GOOD.
+
 Table of contents
 =================
 * [Introduction](#introduction)
